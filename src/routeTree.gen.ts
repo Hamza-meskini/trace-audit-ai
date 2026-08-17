@@ -15,6 +15,7 @@ import { Route as FindingsRouteImport } from './routes/findings'
 import { Route as FrameworksRouteImport } from './routes/frameworks'
 import { Route as ProjectsRouteImport } from './routes/projects'
 import { Route as ReportsRouteImport } from './routes/reports'
+import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as TraceabilityRouteImport } from './routes/traceability'
 import { Route as RequirementsIndexRouteImport } from './routes/requirements.index'
 import { Route as RequirementsIdRouteImport } from './routes/requirements.$id'
@@ -49,6 +50,11 @@ const ReportsRoute = ReportsRouteImport.update({
   path: '/reports',
   getParentRoute: () => rootRouteImport,
 } as any)
+const SettingsRoute = SettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const TraceabilityRoute = TraceabilityRouteImport.update({
   id: '/traceability',
   path: '/traceability',
@@ -72,6 +78,7 @@ export interface FileRoutesByFullPath {
   '/frameworks': typeof FrameworksRoute
   '/projects': typeof ProjectsRoute
   '/reports': typeof ReportsRoute
+  '/settings': typeof SettingsRoute
   '/traceability': typeof TraceabilityRoute
   '/requirements/$id': typeof RequirementsIdRoute
   '/requirements/': typeof RequirementsIndexRoute
@@ -83,6 +90,7 @@ export interface FileRoutesByTo {
   '/frameworks': typeof FrameworksRoute
   '/projects': typeof ProjectsRoute
   '/reports': typeof ReportsRoute
+  '/settings': typeof SettingsRoute
   '/traceability': typeof TraceabilityRoute
   '/requirements/$id': typeof RequirementsIdRoute
   '/requirements': typeof RequirementsIndexRoute
@@ -95,6 +103,7 @@ export interface FileRoutesById {
   '/frameworks': typeof FrameworksRoute
   '/projects': typeof ProjectsRoute
   '/reports': typeof ReportsRoute
+  '/settings': typeof SettingsRoute
   '/traceability': typeof TraceabilityRoute
   '/requirements/$id': typeof RequirementsIdRoute
   '/requirements/': typeof RequirementsIndexRoute
@@ -108,6 +117,7 @@ export interface FileRouteTypes {
     | '/frameworks'
     | '/projects'
     | '/reports'
+    | '/settings'
     | '/traceability'
     | '/requirements/$id'
     | '/requirements/'
@@ -119,6 +129,7 @@ export interface FileRouteTypes {
     | '/frameworks'
     | '/projects'
     | '/reports'
+    | '/settings'
     | '/traceability'
     | '/requirements/$id'
     | '/requirements'
@@ -130,6 +141,7 @@ export interface FileRouteTypes {
     | '/frameworks'
     | '/projects'
     | '/reports'
+    | '/settings'
     | '/traceability'
     | '/requirements/$id'
     | '/requirements/'
@@ -142,6 +154,7 @@ export interface RootRouteChildren {
   FrameworksRoute: typeof FrameworksRoute
   ProjectsRoute: typeof ProjectsRoute
   ReportsRoute: typeof ReportsRoute
+  SettingsRoute: typeof SettingsRoute
   TraceabilityRoute: typeof TraceabilityRoute
   RequirementsIdRoute: typeof RequirementsIdRoute
   RequirementsIndexRoute: typeof RequirementsIndexRoute
@@ -191,6 +204,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ReportsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/settings': {
+      id: '/settings'
+      path: '/settings'
+      fullPath: '/settings'
+      preLoaderRoute: typeof SettingsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/traceability': {
       id: '/traceability'
       path: '/traceability'
@@ -222,6 +242,7 @@ const rootRouteChildren: RootRouteChildren = {
   FrameworksRoute: FrameworksRoute,
   ProjectsRoute: ProjectsRoute,
   ReportsRoute: ReportsRoute,
+  SettingsRoute: SettingsRoute,
   TraceabilityRoute: TraceabilityRoute,
   RequirementsIdRoute: RequirementsIdRoute,
   RequirementsIndexRoute: RequirementsIndexRoute,
