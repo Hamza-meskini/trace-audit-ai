@@ -13,6 +13,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as DocumentsRouteImport } from './routes/documents'
 import { Route as FindingsRouteImport } from './routes/findings'
 import { Route as FrameworksRouteImport } from './routes/frameworks'
+import { Route as NewAuditRouteImport } from './routes/new-audit'
 import { Route as ProjectsRouteImport } from './routes/projects'
 import { Route as ReportsRouteImport } from './routes/reports'
 import { Route as SettingsRouteImport } from './routes/settings'
@@ -38,6 +39,11 @@ const FindingsRoute = FindingsRouteImport.update({
 const FrameworksRoute = FrameworksRouteImport.update({
   id: '/frameworks',
   path: '/frameworks',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const NewAuditRoute = NewAuditRouteImport.update({
+  id: '/new-audit',
+  path: '/new-audit',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ProjectsRoute = ProjectsRouteImport.update({
@@ -76,6 +82,7 @@ export interface FileRoutesByFullPath {
   '/documents': typeof DocumentsRoute
   '/findings': typeof FindingsRoute
   '/frameworks': typeof FrameworksRoute
+  '/new-audit': typeof NewAuditRoute
   '/projects': typeof ProjectsRoute
   '/reports': typeof ReportsRoute
   '/settings': typeof SettingsRoute
@@ -88,6 +95,7 @@ export interface FileRoutesByTo {
   '/documents': typeof DocumentsRoute
   '/findings': typeof FindingsRoute
   '/frameworks': typeof FrameworksRoute
+  '/new-audit': typeof NewAuditRoute
   '/projects': typeof ProjectsRoute
   '/reports': typeof ReportsRoute
   '/settings': typeof SettingsRoute
@@ -101,6 +109,7 @@ export interface FileRoutesById {
   '/documents': typeof DocumentsRoute
   '/findings': typeof FindingsRoute
   '/frameworks': typeof FrameworksRoute
+  '/new-audit': typeof NewAuditRoute
   '/projects': typeof ProjectsRoute
   '/reports': typeof ReportsRoute
   '/settings': typeof SettingsRoute
@@ -115,6 +124,7 @@ export interface FileRouteTypes {
     | '/documents'
     | '/findings'
     | '/frameworks'
+    | '/new-audit'
     | '/projects'
     | '/reports'
     | '/settings'
@@ -127,6 +137,7 @@ export interface FileRouteTypes {
     | '/documents'
     | '/findings'
     | '/frameworks'
+    | '/new-audit'
     | '/projects'
     | '/reports'
     | '/settings'
@@ -139,6 +150,7 @@ export interface FileRouteTypes {
     | '/documents'
     | '/findings'
     | '/frameworks'
+    | '/new-audit'
     | '/projects'
     | '/reports'
     | '/settings'
@@ -152,6 +164,7 @@ export interface RootRouteChildren {
   DocumentsRoute: typeof DocumentsRoute
   FindingsRoute: typeof FindingsRoute
   FrameworksRoute: typeof FrameworksRoute
+  NewAuditRoute: typeof NewAuditRoute
   ProjectsRoute: typeof ProjectsRoute
   ReportsRoute: typeof ReportsRoute
   SettingsRoute: typeof SettingsRoute
@@ -188,6 +201,13 @@ declare module '@tanstack/react-router' {
       path: '/frameworks'
       fullPath: '/frameworks'
       preLoaderRoute: typeof FrameworksRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/new-audit': {
+      id: '/new-audit'
+      path: '/new-audit'
+      fullPath: '/new-audit'
+      preLoaderRoute: typeof NewAuditRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/projects': {
@@ -240,6 +260,7 @@ const rootRouteChildren: RootRouteChildren = {
   DocumentsRoute: DocumentsRoute,
   FindingsRoute: FindingsRoute,
   FrameworksRoute: FrameworksRoute,
+  NewAuditRoute: NewAuditRoute,
   ProjectsRoute: ProjectsRoute,
   ReportsRoute: ReportsRoute,
   SettingsRoute: SettingsRoute,

@@ -40,7 +40,7 @@ function FrameworksPage() {
                   ? "border-success/25 bg-success-soft text-success"
                   : f.status === "Configuration required"
                     ? "border-warning/30 bg-warning-soft text-warning"
-                    : undefined
+                    : ""
               }
             >
               {f.status}
