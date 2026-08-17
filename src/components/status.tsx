@@ -52,7 +52,7 @@ const reviewStyles: Record<string, string> = {
 };
 
 export function ReviewBadge({ state }: { state: ReviewState | string }) {
-  return <span className={cn(base, reviewStyles[state] ?? reviewStyles.Open)}>{state}</span>;
+  return <span className={cn(base, reviewStyles[state] ?? reviewStyles["Open"])}>{state}</span>;
 }
 
 export function Tag({ children, className }: { children: ReactNode; className?: string }) {
