@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as DocumentsRouteImport } from './routes/documents'
 import { Route as RequirementsIndexRouteImport } from './routes/requirements.index'
+import { Route as RequirementsIdRouteImport } from './routes/requirements.$id'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -28,34 +29,43 @@ const RequirementsIndexRoute = RequirementsIndexRouteImport.update({
   path: '/requirements/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const RequirementsIdRoute = RequirementsIdRouteImport.update({
+  id: '/requirements/$id',
+  path: '/requirements/$id',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/documents': typeof DocumentsRoute
+  '/requirements/$id': typeof RequirementsIdRoute
   '/requirements/': typeof RequirementsIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/documents': typeof DocumentsRoute
+  '/requirements/$id': typeof RequirementsIdRoute
   '/requirements': typeof RequirementsIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/documents': typeof DocumentsRoute
+  '/requirements/$id': typeof RequirementsIdRoute
   '/requirements/': typeof RequirementsIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/documents' | '/requirements/'
+  fullPaths: '/' | '/documents' | '/requirements/$id' | '/requirements/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/documents' | '/requirements'
-  id: '__root__' | '/' | '/documents' | '/requirements/'
+  to: '/' | '/documents' | '/requirements/$id' | '/requirements'
+  id: '__root__' | '/' | '/documents' | '/requirements/$id' | '/requirements/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   DocumentsRoute: typeof DocumentsRoute
+  RequirementsIdRoute: typeof RequirementsIdRoute
   RequirementsIndexRoute: typeof RequirementsIndexRoute
 }
 
@@ -82,12 +92,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof RequirementsIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/requirements/$id': {
+      id: '/requirements/$id'
+      path: '/requirements/$id'
+      fullPath: '/requirements/$id'
+      preLoaderRoute: typeof RequirementsIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   DocumentsRoute: DocumentsRoute,
+  RequirementsIdRoute: RequirementsIdRoute,
   RequirementsIndexRoute: RequirementsIndexRoute,
 }
 export const routeTree = rootRouteImport
