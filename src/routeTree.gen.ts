@@ -10,33 +10,167 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as DocumentsRouteImport } from './routes/documents'
+import { Route as FindingsRouteImport } from './routes/findings'
+import { Route as FrameworksRouteImport } from './routes/frameworks'
+import { Route as NewAuditRouteImport } from './routes/new-audit'
+import { Route as ProjectsRouteImport } from './routes/projects'
+import { Route as ReportsRouteImport } from './routes/reports'
+import { Route as SettingsRouteImport } from './routes/settings'
+import { Route as TraceabilityRouteImport } from './routes/traceability'
+import { Route as RequirementsIndexRouteImport } from './routes/requirements.index'
+import { Route as RequirementsIdRouteImport } from './routes/requirements.$id'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const DocumentsRoute = DocumentsRouteImport.update({
+  id: '/documents',
+  path: '/documents',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const FindingsRoute = FindingsRouteImport.update({
+  id: '/findings',
+  path: '/findings',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const FrameworksRoute = FrameworksRouteImport.update({
+  id: '/frameworks',
+  path: '/frameworks',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const NewAuditRoute = NewAuditRouteImport.update({
+  id: '/new-audit',
+  path: '/new-audit',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ProjectsRoute = ProjectsRouteImport.update({
+  id: '/projects',
+  path: '/projects',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ReportsRoute = ReportsRouteImport.update({
+  id: '/reports',
+  path: '/reports',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SettingsRoute = SettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const TraceabilityRoute = TraceabilityRouteImport.update({
+  id: '/traceability',
+  path: '/traceability',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const RequirementsIndexRoute = RequirementsIndexRouteImport.update({
+  id: '/requirements/',
+  path: '/requirements/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const RequirementsIdRoute = RequirementsIdRouteImport.update({
+  id: '/requirements/$id',
+  path: '/requirements/$id',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/documents': typeof DocumentsRoute
+  '/findings': typeof FindingsRoute
+  '/frameworks': typeof FrameworksRoute
+  '/new-audit': typeof NewAuditRoute
+  '/projects': typeof ProjectsRoute
+  '/reports': typeof ReportsRoute
+  '/settings': typeof SettingsRoute
+  '/traceability': typeof TraceabilityRoute
+  '/requirements/$id': typeof RequirementsIdRoute
+  '/requirements/': typeof RequirementsIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/documents': typeof DocumentsRoute
+  '/findings': typeof FindingsRoute
+  '/frameworks': typeof FrameworksRoute
+  '/new-audit': typeof NewAuditRoute
+  '/projects': typeof ProjectsRoute
+  '/reports': typeof ReportsRoute
+  '/settings': typeof SettingsRoute
+  '/traceability': typeof TraceabilityRoute
+  '/requirements/$id': typeof RequirementsIdRoute
+  '/requirements': typeof RequirementsIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/documents': typeof DocumentsRoute
+  '/findings': typeof FindingsRoute
+  '/frameworks': typeof FrameworksRoute
+  '/new-audit': typeof NewAuditRoute
+  '/projects': typeof ProjectsRoute
+  '/reports': typeof ReportsRoute
+  '/settings': typeof SettingsRoute
+  '/traceability': typeof TraceabilityRoute
+  '/requirements/$id': typeof RequirementsIdRoute
+  '/requirements/': typeof RequirementsIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/'
+  fullPaths:
+    | '/'
+    | '/documents'
+    | '/findings'
+    | '/frameworks'
+    | '/new-audit'
+    | '/projects'
+    | '/reports'
+    | '/settings'
+    | '/traceability'
+    | '/requirements/$id'
+    | '/requirements/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/'
-  id: '__root__' | '/'
+  to:
+    | '/'
+    | '/documents'
+    | '/findings'
+    | '/frameworks'
+    | '/new-audit'
+    | '/projects'
+    | '/reports'
+    | '/settings'
+    | '/traceability'
+    | '/requirements/$id'
+    | '/requirements'
+  id:
+    | '__root__'
+    | '/'
+    | '/documents'
+    | '/findings'
+    | '/frameworks'
+    | '/new-audit'
+    | '/projects'
+    | '/reports'
+    | '/settings'
+    | '/traceability'
+    | '/requirements/$id'
+    | '/requirements/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  DocumentsRoute: typeof DocumentsRoute
+  FindingsRoute: typeof FindingsRoute
+  FrameworksRoute: typeof FrameworksRoute
+  NewAuditRoute: typeof NewAuditRoute
+  ProjectsRoute: typeof ProjectsRoute
+  ReportsRoute: typeof ReportsRoute
+  SettingsRoute: typeof SettingsRoute
+  TraceabilityRoute: typeof TraceabilityRoute
+  RequirementsIdRoute: typeof RequirementsIdRoute
+  RequirementsIndexRoute: typeof RequirementsIndexRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -48,11 +182,91 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/documents': {
+      id: '/documents'
+      path: '/documents'
+      fullPath: '/documents'
+      preLoaderRoute: typeof DocumentsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/findings': {
+      id: '/findings'
+      path: '/findings'
+      fullPath: '/findings'
+      preLoaderRoute: typeof FindingsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/frameworks': {
+      id: '/frameworks'
+      path: '/frameworks'
+      fullPath: '/frameworks'
+      preLoaderRoute: typeof FrameworksRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/new-audit': {
+      id: '/new-audit'
+      path: '/new-audit'
+      fullPath: '/new-audit'
+      preLoaderRoute: typeof NewAuditRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/projects': {
+      id: '/projects'
+      path: '/projects'
+      fullPath: '/projects'
+      preLoaderRoute: typeof ProjectsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/reports': {
+      id: '/reports'
+      path: '/reports'
+      fullPath: '/reports'
+      preLoaderRoute: typeof ReportsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/settings': {
+      id: '/settings'
+      path: '/settings'
+      fullPath: '/settings'
+      preLoaderRoute: typeof SettingsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/traceability': {
+      id: '/traceability'
+      path: '/traceability'
+      fullPath: '/traceability'
+      preLoaderRoute: typeof TraceabilityRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/requirements/': {
+      id: '/requirements/'
+      path: '/requirements'
+      fullPath: '/requirements/'
+      preLoaderRoute: typeof RequirementsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/requirements/$id': {
+      id: '/requirements/$id'
+      path: '/requirements/$id'
+      fullPath: '/requirements/$id'
+      preLoaderRoute: typeof RequirementsIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  DocumentsRoute: DocumentsRoute,
+  FindingsRoute: FindingsRoute,
+  FrameworksRoute: FrameworksRoute,
+  NewAuditRoute: NewAuditRoute,
+  ProjectsRoute: ProjectsRoute,
+  ReportsRoute: ReportsRoute,
+  SettingsRoute: SettingsRoute,
+  TraceabilityRoute: TraceabilityRoute,
+  RequirementsIdRoute: RequirementsIdRoute,
+  RequirementsIndexRoute: RequirementsIndexRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
