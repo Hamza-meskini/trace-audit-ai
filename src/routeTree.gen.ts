@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as DocumentsRouteImport } from './routes/documents'
 import { Route as FindingsRouteImport } from './routes/findings'
+import { Route as FrameworksRouteImport } from './routes/frameworks'
 import { Route as ProjectsRouteImport } from './routes/projects'
 import { Route as ReportsRouteImport } from './routes/reports'
 import { Route as TraceabilityRouteImport } from './routes/traceability'
@@ -31,6 +32,11 @@ const DocumentsRoute = DocumentsRouteImport.update({
 const FindingsRoute = FindingsRouteImport.update({
   id: '/findings',
   path: '/findings',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const FrameworksRoute = FrameworksRouteImport.update({
+  id: '/frameworks',
+  path: '/frameworks',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ProjectsRoute = ProjectsRouteImport.update({
@@ -63,6 +69,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/documents': typeof DocumentsRoute
   '/findings': typeof FindingsRoute
+  '/frameworks': typeof FrameworksRoute
   '/projects': typeof ProjectsRoute
   '/reports': typeof ReportsRoute
   '/traceability': typeof TraceabilityRoute
@@ -73,6 +80,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/documents': typeof DocumentsRoute
   '/findings': typeof FindingsRoute
+  '/frameworks': typeof FrameworksRoute
   '/projects': typeof ProjectsRoute
   '/reports': typeof ReportsRoute
   '/traceability': typeof TraceabilityRoute
@@ -84,6 +92,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/documents': typeof DocumentsRoute
   '/findings': typeof FindingsRoute
+  '/frameworks': typeof FrameworksRoute
   '/projects': typeof ProjectsRoute
   '/reports': typeof ReportsRoute
   '/traceability': typeof TraceabilityRoute
@@ -96,6 +105,7 @@ export interface FileRouteTypes {
     | '/'
     | '/documents'
     | '/findings'
+    | '/frameworks'
     | '/projects'
     | '/reports'
     | '/traceability'
@@ -106,6 +116,7 @@ export interface FileRouteTypes {
     | '/'
     | '/documents'
     | '/findings'
+    | '/frameworks'
     | '/projects'
     | '/reports'
     | '/traceability'
@@ -116,6 +127,7 @@ export interface FileRouteTypes {
     | '/'
     | '/documents'
     | '/findings'
+    | '/frameworks'
     | '/projects'
     | '/reports'
     | '/traceability'
@@ -127,6 +139,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   DocumentsRoute: typeof DocumentsRoute
   FindingsRoute: typeof FindingsRoute
+  FrameworksRoute: typeof FrameworksRoute
   ProjectsRoute: typeof ProjectsRoute
   ReportsRoute: typeof ReportsRoute
   TraceabilityRoute: typeof TraceabilityRoute
@@ -155,6 +168,13 @@ declare module '@tanstack/react-router' {
       path: '/findings'
       fullPath: '/findings'
       preLoaderRoute: typeof FindingsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/frameworks': {
+      id: '/frameworks'
+      path: '/frameworks'
+      fullPath: '/frameworks'
+      preLoaderRoute: typeof FrameworksRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/projects': {
@@ -199,6 +219,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   DocumentsRoute: DocumentsRoute,
   FindingsRoute: FindingsRoute,
+  FrameworksRoute: FrameworksRoute,
   ProjectsRoute: ProjectsRoute,
   ReportsRoute: ReportsRoute,
   TraceabilityRoute: TraceabilityRoute,
