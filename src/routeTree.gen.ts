@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as DocumentsRouteImport } from './routes/documents'
 import { Route as FindingsRouteImport } from './routes/findings'
+import { Route as ProjectsRouteImport } from './routes/projects'
 import { Route as RequirementsIndexRouteImport } from './routes/requirements.index'
 import { Route as RequirementsIdRouteImport } from './routes/requirements.$id'
 
@@ -30,6 +31,11 @@ const FindingsRoute = FindingsRouteImport.update({
   path: '/findings',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ProjectsRoute = ProjectsRouteImport.update({
+  id: '/projects',
+  path: '/projects',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const RequirementsIndexRoute = RequirementsIndexRouteImport.update({
   id: '/requirements/',
   path: '/requirements/',
@@ -45,6 +51,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/documents': typeof DocumentsRoute
   '/findings': typeof FindingsRoute
+  '/projects': typeof ProjectsRoute
   '/requirements/$id': typeof RequirementsIdRoute
   '/requirements/': typeof RequirementsIndexRoute
 }
@@ -52,6 +59,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/documents': typeof DocumentsRoute
   '/findings': typeof FindingsRoute
+  '/projects': typeof ProjectsRoute
   '/requirements/$id': typeof RequirementsIdRoute
   '/requirements': typeof RequirementsIndexRoute
 }
@@ -60,20 +68,33 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/documents': typeof DocumentsRoute
   '/findings': typeof FindingsRoute
+  '/projects': typeof ProjectsRoute
   '/requirements/$id': typeof RequirementsIdRoute
   '/requirements/': typeof RequirementsIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
-    '/' | '/documents' | '/findings' | '/requirements/$id' | '/requirements/'
+    | '/'
+    | '/documents'
+    | '/findings'
+    | '/projects'
+    | '/requirements/$id'
+    | '/requirements/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/documents' | '/findings' | '/requirements/$id' | '/requirements'
+  to:
+    | '/'
+    | '/documents'
+    | '/findings'
+    | '/projects'
+    | '/requirements/$id'
+    | '/requirements'
   id:
     | '__root__'
     | '/'
     | '/documents'
     | '/findings'
+    | '/projects'
     | '/requirements/$id'
     | '/requirements/'
   fileRoutesById: FileRoutesById
@@ -82,6 +103,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   DocumentsRoute: typeof DocumentsRoute
   FindingsRoute: typeof FindingsRoute
+  ProjectsRoute: typeof ProjectsRoute
   RequirementsIdRoute: typeof RequirementsIdRoute
   RequirementsIndexRoute: typeof RequirementsIndexRoute
 }
@@ -109,6 +131,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof FindingsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/projects': {
+      id: '/projects'
+      path: '/projects'
+      fullPath: '/projects'
+      preLoaderRoute: typeof ProjectsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/requirements/': {
       id: '/requirements/'
       path: '/requirements'
@@ -130,6 +159,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   DocumentsRoute: DocumentsRoute,
   FindingsRoute: FindingsRoute,
+  ProjectsRoute: ProjectsRoute,
   RequirementsIdRoute: RequirementsIdRoute,
   RequirementsIndexRoute: RequirementsIndexRoute,
 }
