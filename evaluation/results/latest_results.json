@@ -1,0 +1,1008 @@
+{
+  "metadata": {
+    "timestamp": "2026-08-21T14:45:15.131167+00:00",
+    "model": "gemini-3.7-flash",
+    "thinking_level": "HIGH",
+    "dataset_name": "Automotive Battery Control Unit (BCU-800V)",
+    "traceaudit_version": "0.1.0"
+  },
+  "dataset": {
+    "requirements_count": 30,
+    "documents_count": 7,
+    "total_chunks_indexed": 70,
+    "supported_count": 10,
+    "partial_count": 8,
+    "missing_count": 7,
+    "conflict_count": 5
+  },
+  "extraction": {
+    "total_ground_truth": 30,
+    "total_extracted": 31,
+    "precision": 96.77,
+    "recall": 100.0,
+    "f1": 98.36,
+    "matched_count": 30,
+    "unmatched_count": 0
+  },
+  "retrieval": {
+    "total_queries": 23,
+    "recall_at_1": 34.78,
+    "recall_at_3": 82.61,
+    "recall_at_5": 95.65,
+    "mean_reciprocal_rank": 0.5833
+  },
+  "verification": {
+    "total_evaluated": 30,
+    "accuracy": 53.33,
+    "macro_precision": 72.35,
+    "macro_recall": 59.29,
+    "macro_f1": 56.21,
+    "weighted_f1": 55.66,
+    "confusion_matrix": {
+      "Supported": {
+        "Supported": 3,
+        "Partial": 0,
+        "Missing": 0,
+        "Conflict": 7
+      },
+      "Partial": {
+        "Supported": 0,
+        "Partial": 4,
+        "Missing": 0,
+        "Conflict": 4
+      },
+      "Missing": {
+        "Supported": 2,
+        "Partial": 0,
+        "Missing": 4,
+        "Conflict": 1
+      },
+      "Conflict": {
+        "Supported": 0,
+        "Partial": 0,
+        "Missing": 0,
+        "Conflict": 5
+      }
+    },
+    "per_class": {
+      "Supported": {
+        "precision": 60.0,
+        "recall": 30.0,
+        "f1": 40.0,
+        "support": 10,
+        "true_positives": 3,
+        "false_positives": 2,
+        "false_negatives": 7
+      },
+      "Partial": {
+        "precision": 100.0,
+        "recall": 50.0,
+        "f1": 66.67,
+        "support": 8,
+        "true_positives": 4,
+        "false_positives": 0,
+        "false_negatives": 4
+      },
+      "Missing": {
+        "precision": 100.0,
+        "recall": 57.14,
+        "f1": 72.73,
+        "support": 7,
+        "true_positives": 4,
+        "false_positives": 0,
+        "false_negatives": 3
+      },
+      "Conflict": {
+        "precision": 29.41,
+        "recall": 100.0,
+        "f1": 45.45,
+        "support": 5,
+        "true_positives": 5,
+        "false_positives": 12,
+        "false_negatives": 0
+      }
+    }
+  },
+  "specialty": {
+    "conflict_precision": 29.41,
+    "conflict_recall": 100.0,
+    "conflict_f1": 45.45,
+    "missing_precision": 100.0,
+    "missing_recall": 80.0,
+    "missing_f1": 88.89,
+    "unsupported_claim_rate": 28.57,
+    "total_missing_in_gt": 7,
+    "unsupported_claims_count": 2
+  },
+  "failures": [
+    {
+      "requirement_id": "REQ-BCU-001",
+      "requirement_title": "High Voltage Pack Nominal Operating Range",
+      "category": "Electrical",
+      "expected_status": "Supported",
+      "actual_status": "Conflict",
+      "error_type": "verification_error",
+      "explanation": "Verification rules classified requirement as 'Conflict', but ground truth expects 'Supported'.",
+      "expected_evidence": [
+        {
+          "requirement_id": "REQ-BCU-001",
+          "req_code": "REQ-BCU-001",
+          "document": "04_Battery_Management_Test_Report.pdf",
+          "page": 2,
+          "relationship": "supports",
+          "quote": "The BCU was tested across 400.0 V, 600.0 V and 800.0 V DC input levels with full telemetry accuracy."
+        }
+      ],
+      "retrieved_evidence": [
+        {
+          "document": "01_Product_Requirements_SRS.docx",
+          "page": null,
+          "content_preview": "REQ-BCU-001: High Voltage Pack Nominal Operating Range\nSeverity: Critical | Category: Electrical\nThe BCU shall monitor a"
+        },
+        {
+          "document": "01_Product_Requirements_SRS.docx",
+          "page": null,
+          "content_preview": "REQ-BCU-024: Upper Limit Traction Pack Voltage Rating\nSeverity: Critical | Category: Electrical\nThe BCU sensing and isol"
+        }
+      ]
+    },
+    {
+      "requirement_id": "REQ-BCU-002",
+      "requirement_title": "Continuous Discharge Current Monitoring",
+      "category": "Electrical",
+      "expected_status": "Supported",
+      "actual_status": "Conflict",
+      "error_type": "verification_error",
+      "explanation": "Verification rules classified requirement as 'Conflict', but ground truth expects 'Supported'.",
+      "expected_evidence": [
+        {
+          "requirement_id": "REQ-BCU-002",
+          "req_code": "REQ-BCU-002",
+          "document": "04_Battery_Management_Test_Report.pdf",
+          "page": 2,
+          "relationship": "supports",
+          "quote": "Current sensor measured 350.0 A continuous discharge with 0.18% error across 4-hour soak test."
+        }
+      ],
+      "retrieved_evidence": [
+        {
+          "document": "01_Product_Requirements_SRS.docx",
+          "page": null,
+          "content_preview": "REQ-BCU-002: Continuous Discharge Current Monitoring\nSeverity: High | Category: Electrical\nThe primary current shunt sen"
+        },
+        {
+          "document": "04_Battery_Management_Test_Report.pdf",
+          "page": 2,
+          "content_preview": "APEX CERTIFICATION LABS | Report TR-BMS-2026-8801 | Page 2 of 3\n2. Electrical Operating Range and Measurement Precision\n"
+        }
+      ]
+    },
+    {
+      "requirement_id": "REQ-BCU-003",
+      "requirement_title": "Galvanic High-Voltage Isolation Barrier",
+      "category": "Safety",
+      "expected_status": "Supported",
+      "actual_status": "Conflict",
+      "error_type": "verification_error",
+      "explanation": "Verification rules classified requirement as 'Conflict', but ground truth expects 'Supported'.",
+      "expected_evidence": [
+        {
+          "requirement_id": "REQ-BCU-003",
+          "req_code": "REQ-BCU-003",
+          "document": "04_Battery_Management_Test_Report.pdf",
+          "page": 3,
+          "relationship": "supports",
+          "quote": "Dielectric withstand test: 2,500 V AC applied for 60.0 s, measured leakage current 0.28 mA, verdict PASS."
+        }
+      ],
+      "retrieved_evidence": [
+        {
+          "document": "01_Product_Requirements_SRS.docx",
+          "page": null,
+          "content_preview": "REQ-BCU-003: Galvanic High-Voltage Isolation Barrier\nSeverity: Critical | Category: Safety\nThe galvanic isolation barrie"
+        },
+        {
+          "document": "02_System_Architecture_Spec.pdf",
+          "page": 1,
+          "content_preview": "VOLT-DRIVE AUTOMOTIVE \u00b7 SYSTEM ARCHITECTURE SPECIFICATION\nBCU-800V System Architecture & Interface Design\nDocument Ref: "
+        }
+      ]
+    },
+    {
+      "requirement_id": "REQ-BCU-004",
+      "requirement_title": "CAN-FD Telemetry Communication Rate",
+      "category": "Electrical",
+      "expected_status": "Supported",
+      "actual_status": "Conflict",
+      "error_type": "verification_error",
+      "explanation": "Verification rules classified requirement as 'Conflict', but ground truth expects 'Supported'.",
+      "expected_evidence": [
+        {
+          "requirement_id": "REQ-BCU-004",
+          "req_code": "REQ-BCU-004",
+          "document": "04_Battery_Management_Test_Report.pdf",
+          "page": 3,
+          "relationship": "supports",
+          "quote": "CAN-FD bus evaluated at 5.0 Mbps across 10,000,000 frames with zero frame errors recorded."
+        }
+      ],
+      "retrieved_evidence": [
+        {
+          "document": "01_Product_Requirements_SRS.docx",
+          "page": null,
+          "content_preview": "REQ-BCU-004: CAN-FD Telemetry Communication Rate\nSeverity: Medium | Category: Electrical\nThe powertrain telemetry interf"
+        },
+        {
+          "document": "07_Compliance_Verification_Matrix.xlsx",
+          "page": null,
+          "content_preview": "Requirement ID: REQ-BCU-004; Requirement Title: CAN-FD Telemetry Rate; Target Value / Unit: 5.0 Mbps; Test Report Ref: T"
+        }
+      ]
+    },
+    {
+      "requirement_id": "REQ-BCU-005",
+      "requirement_title": "Quiescent Sleep State Current Draw",
+      "category": "Electrical",
+      "expected_status": "Supported",
+      "actual_status": "Conflict",
+      "error_type": "verification_error",
+      "explanation": "Verification rules classified requirement as 'Conflict', but ground truth expects 'Supported'.",
+      "expected_evidence": [
+        {
+          "requirement_id": "REQ-BCU-005",
+          "req_code": "REQ-BCU-005",
+          "document": "04_Battery_Management_Test_Report.pdf",
+          "page": 2,
+          "relationship": "supports",
+          "quote": "Deep sleep quiescent current measured at 112.4 uA at 12.0 V auxiliary supply, well below 150.0 uA limit."
+        }
+      ],
+      "retrieved_evidence": [
+        {
+          "document": "01_Product_Requirements_SRS.docx",
+          "page": null,
+          "content_preview": "REQ-BCU-005: Quiescent Sleep State Current Draw\nSeverity: Medium | Category: Electrical\nWhen vehicle ignition is off and"
+        },
+        {
+          "document": "04_Battery_Management_Test_Report.pdf",
+          "page": 2,
+          "content_preview": "APEX CERTIFICATION LABS | Report TR-BMS-2026-8801 | Page 2 of 3\n2. Electrical Operating Range and Measurement Precision\n"
+        }
+      ]
+    },
+    {
+      "requirement_id": "REQ-BCU-006",
+      "requirement_title": "Cell Voltage Sensing Measurement Precision",
+      "category": "Electrical",
+      "expected_status": "Supported",
+      "actual_status": "Conflict",
+      "error_type": "verification_error",
+      "explanation": "Verification rules classified requirement as 'Conflict', but ground truth expects 'Supported'.",
+      "expected_evidence": [
+        {
+          "requirement_id": "REQ-BCU-006",
+          "req_code": "REQ-BCU-006",
+          "document": "04_Battery_Management_Test_Report.pdf",
+          "page": 2,
+          "relationship": "supports",
+          "quote": "Cell monitoring ASIC calibrated across 2.0V to 4.5V with maximum recorded error of +/- 0.85 mV."
+        }
+      ],
+      "retrieved_evidence": [
+        {
+          "document": "01_Product_Requirements_SRS.docx",
+          "page": null,
+          "content_preview": "REQ-BCU-006: Cell Voltage Sensing Measurement Precision\nSeverity: High | Category: Electrical\nIndividual battery cell vo"
+        },
+        {
+          "document": "04_Battery_Management_Test_Report.pdf",
+          "page": 2,
+          "content_preview": "APEX CERTIFICATION LABS | Report TR-BMS-2026-8801 | Page 2 of 3\n2. Electrical Operating Range and Measurement Precision\n"
+        }
+      ]
+    },
+    {
+      "requirement_id": "REQ-BCU-007",
+      "requirement_title": "Safe State Contactor De-energization Latency",
+      "category": "Safety",
+      "expected_status": "Supported",
+      "actual_status": "Conflict",
+      "error_type": "verification_error",
+      "explanation": "Verification rules classified requirement as 'Conflict', but ground truth expects 'Supported'.",
+      "expected_evidence": [
+        {
+          "requirement_id": "REQ-BCU-007",
+          "req_code": "REQ-BCU-007",
+          "document": "06_Thermal_Runaway_Safety_Report.pdf",
+          "page": 2,
+          "relationship": "supports",
+          "quote": "Emergency contactor trip latency measured at 6.40 ms under simulated overvoltage event (threshold <= 10.0 ms)."
+        }
+      ],
+      "retrieved_evidence": [
+        {
+          "document": "01_Product_Requirements_SRS.docx",
+          "page": null,
+          "content_preview": "REQ-BCU-007: Safe State Contactor De-energization Latency\nSeverity: Critical | Category: Safety\nUpon detection of critic"
+        },
+        {
+          "document": "01_Product_Requirements_SRS.docx",
+          "page": null,
+          "content_preview": "REQ-BCU-018: High Voltage Interlock Loop (HVIL) Fast Disconnect Latency\nSeverity: Critical | Category: Safety\nAny break "
+        }
+      ]
+    },
+    {
+      "requirement_id": "REQ-BCU-011",
+      "requirement_title": "Extended Climatic Operating Temperature",
+      "category": "Environmental",
+      "expected_status": "Partial",
+      "actual_status": "Conflict",
+      "error_type": "verification_error",
+      "explanation": "Verification rules classified requirement as 'Conflict', but ground truth expects 'Partial'.",
+      "expected_evidence": [
+        {
+          "requirement_id": "REQ-BCU-011",
+          "req_code": "REQ-BCU-011",
+          "document": "05_Environmental_EMC_Report.pdf",
+          "page": 2,
+          "relationship": "partial_support",
+          "quote": "Climatic chamber thermal testing performed from -20.0 \u00b0C to +70.0 \u00b0C under continuous telemetry logging."
+        }
+      ],
+      "retrieved_evidence": [
+        {
+          "document": "01_Product_Requirements_SRS.docx",
+          "page": null,
+          "content_preview": "REQ-BCU-011: Extended Climatic Operating Temperature\nSeverity: High | Category: Environmental\nThe BCU shall maintain ful"
+        },
+        {
+          "document": "01_Product_Requirements_SRS.docx",
+          "page": null,
+          "content_preview": "REQ-BCU-025: Maximum Ambient Operating Thermal Limit\nSeverity: High | Category: Environmental\nThe power electronics stag"
+        }
+      ]
+    },
+    {
+      "requirement_id": "REQ-BCU-012",
+      "requirement_title": "Damp Heat Cyclic Humidity Endurance",
+      "category": "Environmental",
+      "expected_status": "Partial",
+      "actual_status": "Conflict",
+      "error_type": "verification_error",
+      "explanation": "Verification rules classified requirement as 'Conflict', but ground truth expects 'Partial'.",
+      "expected_evidence": [
+        {
+          "requirement_id": "REQ-BCU-012",
+          "req_code": "REQ-BCU-012",
+          "document": "05_Environmental_EMC_Report.pdf",
+          "page": 2,
+          "relationship": "partial_support",
+          "quote": "Damp heat endurance test chamber run completed for 100.0 hours at 95% RH. Remainder of 500h test in progress."
+        }
+      ],
+      "retrieved_evidence": [
+        {
+          "document": "01_Product_Requirements_SRS.docx",
+          "page": null,
+          "content_preview": "REQ-BCU-012: Damp Heat Cyclic Humidity Endurance\nSeverity: Medium | Category: Environmental\nThe controller shall withsta"
+        },
+        {
+          "document": "05_Environmental_EMC_Report.pdf",
+          "page": 1,
+          "content_preview": "DEKRA INDUSTRIAL LABS \u00b7 ENVIRONMENTAL & EMC TEST REPORT\nTEST REPORT: TR-ENV-2026-4412\nProduct: BCU-800V Enclosure & Asse"
+        }
+      ]
+    },
+    {
+      "requirement_id": "REQ-BCU-014",
+      "requirement_title": "Tri-Axial Random Vibration Endurance Profile",
+      "category": "Mechanical",
+      "expected_status": "Partial",
+      "actual_status": "Conflict",
+      "error_type": "verification_error",
+      "explanation": "Verification rules classified requirement as 'Conflict', but ground truth expects 'Partial'.",
+      "expected_evidence": [
+        {
+          "requirement_id": "REQ-BCU-014",
+          "req_code": "REQ-BCU-014",
+          "document": "05_Environmental_EMC_Report.pdf",
+          "page": 3,
+          "relationship": "partial_support",
+          "quote": "Random vibration shaker table completed for X-axis and Y-axis at 2.8 g RMS. Z-axis evaluation awaiting test fixture adapter."
+        }
+      ],
+      "retrieved_evidence": [
+        {
+          "document": "01_Product_Requirements_SRS.docx",
+          "page": null,
+          "content_preview": "REQ-BCU-014: Tri-Axial Random Vibration Endurance Profile\nSeverity: High | Category: Mechanical\nThe unit shall withstand"
+        },
+        {
+          "document": "07_Compliance_Verification_Matrix.xlsx",
+          "page": null,
+          "content_preview": "Requirement ID: REQ-BCU-014; Requirement Title: Vibration Profile; Target Value / Unit: ISO 16750-3 Tri-axial; Test Repo"
+        }
+      ]
+    },
+    {
+      "requirement_id": "REQ-BCU-016",
+      "requirement_title": "Contact Resistance Degradation After Power Cycling",
+      "category": "Electrical",
+      "expected_status": "Partial",
+      "actual_status": "Conflict",
+      "error_type": "verification_error",
+      "explanation": "Verification rules classified requirement as 'Conflict', but ground truth expects 'Partial'.",
+      "expected_evidence": [
+        {
+          "requirement_id": "REQ-BCU-016",
+          "req_code": "REQ-BCU-016",
+          "document": "07_Compliance_Verification_Matrix.xlsx",
+          "page": 1,
+          "relationship": "partial_support",
+          "quote": "Requirement ID: REQ-BCU-016; Description: Contact Resistance; Status: In Progress 25,000 cycles completed (0.11 mOhm)."
+        }
+      ],
+      "retrieved_evidence": [
+        {
+          "document": "01_Product_Requirements_SRS.docx",
+          "page": null,
+          "content_preview": "REQ-BCU-016: Contact Resistance Degradation After Power Cycling\nSeverity: Medium | Category: Electrical\nTerminal power l"
+        },
+        {
+          "document": "07_Compliance_Verification_Matrix.xlsx",
+          "page": null,
+          "content_preview": "Requirement ID: REQ-BCU-016; Requirement Title: Contact Resistance; Target Value / Unit: <= 0.20 mOhm; Test Report Ref: "
+        }
+      ]
+    },
+    {
+      "requirement_id": "REQ-BCU-018",
+      "requirement_title": "High Voltage Interlock Loop (HVIL) Fast Disconnect Latency",
+      "category": "Safety",
+      "expected_status": "Missing",
+      "actual_status": "Supported",
+      "error_type": "unsupported_claim",
+      "explanation": "System incorrectly claimed requirement was verified ('Supported') when no evidence exists in the document corpus.",
+      "expected_evidence": [],
+      "retrieved_evidence": [
+        {
+          "document": "01_Product_Requirements_SRS.docx",
+          "page": null,
+          "content_preview": "REQ-BCU-018: High Voltage Interlock Loop (HVIL) Fast Disconnect Latency\nSeverity: Critical | Category: Safety\nAny break "
+        },
+        {
+          "document": "01_Product_Requirements_SRS.docx",
+          "page": null,
+          "content_preview": "REQ-BCU-010: Solid-State Pyro-Fuse Trigger Circuit Latency\nSeverity: Critical | Category: Safety\nIn hard short-circuit c"
+        }
+      ]
+    },
+    {
+      "requirement_id": "REQ-BCU-021",
+      "requirement_title": "Radiated RF Electromagnetic Immunity 100 V/m",
+      "category": "Electrical",
+      "expected_status": "Missing",
+      "actual_status": "Conflict",
+      "error_type": "verification_error",
+      "explanation": "Verification rules classified requirement as 'Conflict', but ground truth expects 'Missing'.",
+      "expected_evidence": [],
+      "retrieved_evidence": [
+        {
+          "document": "01_Product_Requirements_SRS.docx",
+          "page": null,
+          "content_preview": "REQ-BCU-021: Radiated RF Electromagnetic Immunity 100 V/m\nSeverity: High | Category: Electrical\nThe BCU shall maintain u"
+        },
+        {
+          "document": "03_OEM_Supplier_Datasheet.pdf",
+          "page": 1,
+          "content_preview": "NEXUS POWER SEMICONDUCTOR \u00b7 OEM ASIC COMPONENT DATASHEET\nNX-BMS-800 Multi-Cell Monitoring & Balancing Front-End\nComponen"
+        }
+      ]
+    },
+    {
+      "requirement_id": "REQ-BCU-023",
+      "requirement_title": "State of Charge (SOC) Extended Kalman Filter Estimation Accuracy",
+      "category": "Documentation",
+      "expected_status": "Missing",
+      "actual_status": "Supported",
+      "error_type": "unsupported_claim",
+      "explanation": "System incorrectly claimed requirement was verified ('Supported') when no evidence exists in the document corpus.",
+      "expected_evidence": [],
+      "retrieved_evidence": [
+        {
+          "document": "01_Product_Requirements_SRS.docx",
+          "page": null,
+          "content_preview": "REQ-BCU-023: State of Charge (SOC) Extended Kalman Filter Estimation Accuracy\nSeverity: High | Category: Documentation\nT"
+        },
+        {
+          "document": "01_Product_Requirements_SRS.docx",
+          "page": null,
+          "content_preview": "REQ-BCU-006: Cell Voltage Sensing Measurement Precision\nSeverity: High | Category: Electrical\nIndividual battery cell vo"
+        }
+      ]
+    }
+  ],
+  "per_requirement_results": [
+    {
+      "requirement_id": "REQ-BCU-001",
+      "req_code": "REQ-BCU-001",
+      "title": "High Voltage Pack Nominal Operating Range",
+      "expected_status": "Supported",
+      "actual_status": "Conflict",
+      "is_correct": false,
+      "assessment": {
+        "coverage_status": "Conflict",
+        "confidence": 90.0,
+        "review_state": "Needs review",
+        "ai_analysis": "The available evidence indicates a potential discrepancy between 07_Compliance_Verification_Matrix.xlsx and 03_OEM_Supplier_Datasheet.pdf. One document specifies 400.0 V to 800.0 V, while the other specifies 400.0 V to 750.0 V.",
+        "ai_recommendation": "Review the conflicting documentation with engineering and confirm the verified operating bounds before approval.",
+        "evidence_links_count": 7
+      }
+    },
+    {
+      "requirement_id": "REQ-BCU-002",
+      "req_code": "REQ-BCU-002",
+      "title": "Continuous Discharge Current Monitoring",
+      "expected_status": "Supported",
+      "actual_status": "Conflict",
+      "is_correct": false,
+      "assessment": {
+        "coverage_status": "Conflict",
+        "confidence": 90.0,
+        "review_state": "Needs review",
+        "ai_analysis": "The available evidence indicates a potential discrepancy between 04_Battery_Management_Test_Report.pdf and 02_System_Architecture_Spec.pdf. One document specifies 2.0V to 4.5V, while the other specifies 400.0 V to 800.0 V.",
+        "ai_recommendation": "Review the conflicting documentation with engineering and confirm the verified operating bounds before approval.",
+        "evidence_links_count": 7
+      }
+    },
+    {
+      "requirement_id": "REQ-BCU-003",
+      "req_code": "REQ-BCU-003",
+      "title": "Galvanic High-Voltage Isolation Barrier",
+      "expected_status": "Supported",
+      "actual_status": "Conflict",
+      "is_correct": false,
+      "assessment": {
+        "coverage_status": "Conflict",
+        "confidence": 90.0,
+        "review_state": "Needs review",
+        "ai_analysis": "The available evidence indicates a potential discrepancy between 02_System_Architecture_Spec.pdf and 04_Battery_Management_Test_Report.pdf. One document specifies 400.0 V to 800.0 V, while the other specifies 2.0V to 4.5V.",
+        "ai_recommendation": "Review the conflicting documentation with engineering and confirm the verified operating bounds before approval.",
+        "evidence_links_count": 7
+      }
+    },
+    {
+      "requirement_id": "REQ-BCU-004",
+      "req_code": "REQ-BCU-004",
+      "title": "CAN-FD Telemetry Communication Rate",
+      "expected_status": "Supported",
+      "actual_status": "Conflict",
+      "is_correct": false,
+      "assessment": {
+        "coverage_status": "Conflict",
+        "confidence": 90.0,
+        "review_state": "Needs review",
+        "ai_analysis": "The available evidence indicates a potential discrepancy between 04_Battery_Management_Test_Report.pdf and 02_System_Architecture_Spec.pdf. One document specifies 2.0V to 4.5V, while the other specifies 400.0 V to 800.0 V.",
+        "ai_recommendation": "Review the conflicting documentation with engineering and confirm the verified operating bounds before approval.",
+        "evidence_links_count": 7
+      }
+    },
+    {
+      "requirement_id": "REQ-BCU-005",
+      "req_code": "REQ-BCU-005",
+      "title": "Quiescent Sleep State Current Draw",
+      "expected_status": "Supported",
+      "actual_status": "Conflict",
+      "is_correct": false,
+      "assessment": {
+        "coverage_status": "Conflict",
+        "confidence": 90.0,
+        "review_state": "Needs review",
+        "ai_analysis": "The available evidence indicates a potential discrepancy between 04_Battery_Management_Test_Report.pdf and 02_System_Architecture_Spec.pdf. One document specifies 2.0V to 4.5V, while the other specifies 400.0 V to 800.0 V.",
+        "ai_recommendation": "Review the conflicting documentation with engineering and confirm the verified operating bounds before approval.",
+        "evidence_links_count": 7
+      }
+    },
+    {
+      "requirement_id": "REQ-BCU-006",
+      "req_code": "REQ-BCU-006",
+      "title": "Cell Voltage Sensing Measurement Precision",
+      "expected_status": "Supported",
+      "actual_status": "Conflict",
+      "is_correct": false,
+      "assessment": {
+        "coverage_status": "Conflict",
+        "confidence": 90.0,
+        "review_state": "Needs review",
+        "ai_analysis": "The available evidence indicates a potential discrepancy between Product Specification and 02_System_Architecture_Spec.pdf. One document specifies 2.0 V to 4.5 V, while the other specifies 400.0 V to 800.0 V.",
+        "ai_recommendation": "Review the conflicting documentation with engineering and confirm the verified operating bounds before approval.",
+        "evidence_links_count": 7
+      }
+    },
+    {
+      "requirement_id": "REQ-BCU-007",
+      "req_code": "REQ-BCU-007",
+      "title": "Safe State Contactor De-energization Latency",
+      "expected_status": "Supported",
+      "actual_status": "Conflict",
+      "is_correct": false,
+      "assessment": {
+        "coverage_status": "Conflict",
+        "confidence": 90.0,
+        "review_state": "Needs review",
+        "ai_analysis": "The available evidence indicates a potential discrepancy between 06_Thermal_Runaway_Safety_Report.pdf and 03_OEM_Supplier_Datasheet.pdf. One document specifies -2026-902\nProduct, while the other specifies -10.0 \u00b0C to +70.0 \u00b0C.",
+        "ai_recommendation": "Review the conflicting documentation with engineering and confirm the verified operating bounds before approval.",
+        "evidence_links_count": 7
+      }
+    },
+    {
+      "requirement_id": "REQ-BCU-008",
+      "req_code": "REQ-BCU-008",
+      "title": "Ingress Protection Rating IP67",
+      "expected_status": "Supported",
+      "actual_status": "Supported",
+      "is_correct": true,
+      "assessment": {
+        "coverage_status": "Supported",
+        "confidence": 95.0,
+        "review_state": "Reviewed",
+        "ai_analysis": "All indexed evidence segments are consistent with this requirement. Verification criteria and parameters are satisfied.",
+        "ai_recommendation": "No immediate action required. Retain the current evidence set for the technical file.",
+        "evidence_links_count": 2
+      }
+    },
+    {
+      "requirement_id": "REQ-BCU-009",
+      "req_code": "REQ-BCU-009",
+      "title": "Pre-Charge Sequence Completion Time",
+      "expected_status": "Supported",
+      "actual_status": "Supported",
+      "is_correct": true,
+      "assessment": {
+        "coverage_status": "Supported",
+        "confidence": 95.0,
+        "review_state": "Reviewed",
+        "ai_analysis": "All indexed evidence segments are consistent with this requirement. Verification criteria and parameters are satisfied.",
+        "ai_recommendation": "No immediate action required. Retain the current evidence set for the technical file.",
+        "evidence_links_count": 2
+      }
+    },
+    {
+      "requirement_id": "REQ-BCU-010",
+      "req_code": "REQ-BCU-010",
+      "title": "Solid-State Pyro-Fuse Trigger Circuit Latency",
+      "expected_status": "Supported",
+      "actual_status": "Supported",
+      "is_correct": true,
+      "assessment": {
+        "coverage_status": "Supported",
+        "confidence": 95.0,
+        "review_state": "Reviewed",
+        "ai_analysis": "All indexed evidence segments are consistent with this requirement. Verification criteria and parameters are satisfied.",
+        "ai_recommendation": "No immediate action required. Retain the current evidence set for the technical file.",
+        "evidence_links_count": 2
+      }
+    },
+    {
+      "requirement_id": "REQ-BCU-011",
+      "req_code": "REQ-BCU-011",
+      "title": "Extended Climatic Operating Temperature",
+      "expected_status": "Partial",
+      "actual_status": "Conflict",
+      "is_correct": false,
+      "assessment": {
+        "coverage_status": "Conflict",
+        "confidence": 90.0,
+        "review_state": "Needs review",
+        "ai_analysis": "The available evidence indicates a potential discrepancy between Product Specification and 05_Environmental_EMC_Report.pdf. One document specifies -40.0 \u00b0C to +85.0 \u00b0C, while the other specifies -2026-4412\nProduct.",
+        "ai_recommendation": "Review the conflicting documentation with engineering and confirm the verified operating bounds before approval.",
+        "evidence_links_count": 7
+      }
+    },
+    {
+      "requirement_id": "REQ-BCU-012",
+      "req_code": "REQ-BCU-012",
+      "title": "Damp Heat Cyclic Humidity Endurance",
+      "expected_status": "Partial",
+      "actual_status": "Conflict",
+      "is_correct": false,
+      "assessment": {
+        "coverage_status": "Conflict",
+        "confidence": 90.0,
+        "review_state": "Needs review",
+        "ai_analysis": "The available evidence indicates a potential discrepancy between 02_System_Architecture_Spec.pdf and 04_Battery_Management_Test_Report.pdf. One document specifies 400.0 V to 800.0 V, while the other specifies 2.0V to 4.5V.",
+        "ai_recommendation": "Review the conflicting documentation with engineering and confirm the verified operating bounds before approval.",
+        "evidence_links_count": 7
+      }
+    },
+    {
+      "requirement_id": "REQ-BCU-013",
+      "req_code": "REQ-BCU-013",
+      "title": "Thermal Runaway Gas Venting Pressure Calculation and Burst Validation",
+      "expected_status": "Partial",
+      "actual_status": "Partial",
+      "is_correct": true,
+      "assessment": {
+        "coverage_status": "Partial",
+        "confidence": 87.0,
+        "review_state": "Needs review",
+        "ai_analysis": "Available test record indicates partial or in-progress verification.",
+        "ai_recommendation": "Extend environmental or functional verification to the full required range or attach final test report.",
+        "evidence_links_count": 3
+      }
+    },
+    {
+      "requirement_id": "REQ-BCU-014",
+      "req_code": "REQ-BCU-014",
+      "title": "Tri-Axial Random Vibration Endurance Profile",
+      "expected_status": "Partial",
+      "actual_status": "Conflict",
+      "is_correct": false,
+      "assessment": {
+        "coverage_status": "Conflict",
+        "confidence": 90.0,
+        "review_state": "Needs review",
+        "ai_analysis": "The available evidence indicates a potential discrepancy between Product Specification and 05_Environmental_EMC_Report.pdf. One document specifies 16750-3 across, while the other specifies -2026-4412\nProduct.",
+        "ai_recommendation": "Review the conflicting documentation with engineering and confirm the verified operating bounds before approval.",
+        "evidence_links_count": 7
+      }
+    },
+    {
+      "requirement_id": "REQ-BCU-015",
+      "req_code": "REQ-BCU-015",
+      "title": "Overcurrent Protection Multi-Tier Inverse Time Curve",
+      "expected_status": "Partial",
+      "actual_status": "Partial",
+      "is_correct": true,
+      "assessment": {
+        "coverage_status": "Partial",
+        "confidence": 87.0,
+        "review_state": "Needs review",
+        "ai_analysis": "Available test record indicates partial or in-progress verification.",
+        "ai_recommendation": "Extend environmental or functional verification to the full required range or attach final test report.",
+        "evidence_links_count": 3
+      }
+    },
+    {
+      "requirement_id": "REQ-BCU-016",
+      "req_code": "REQ-BCU-016",
+      "title": "Contact Resistance Degradation After Power Cycling",
+      "expected_status": "Partial",
+      "actual_status": "Conflict",
+      "is_correct": false,
+      "assessment": {
+        "coverage_status": "Conflict",
+        "confidence": 90.0,
+        "review_state": "Needs review",
+        "ai_analysis": "The available evidence indicates a potential discrepancy between 05_Environmental_EMC_Report.pdf and 03_OEM_Supplier_Datasheet.pdf. One document specifies -2026-4412\nProduct, while the other specifies -10.0 \u00b0C to +70.0 \u00b0C.",
+        "ai_recommendation": "Review the conflicting documentation with engineering and confirm the verified operating bounds before approval.",
+        "evidence_links_count": 7
+      }
+    },
+    {
+      "requirement_id": "REQ-BCU-017",
+      "req_code": "REQ-BCU-017",
+      "title": "ISO 21434 Hardware Root-of-Trust Secure Boot Signature",
+      "expected_status": "Missing",
+      "actual_status": "Missing",
+      "is_correct": true,
+      "assessment": {
+        "coverage_status": "Missing",
+        "confidence": 94.0,
+        "review_state": "Open",
+        "ai_analysis": "Compliance verification records indicate this test has not been executed and required evidence is missing.",
+        "ai_recommendation": "Schedule qualification testing and upload completed laboratory test records.",
+        "evidence_links_count": 0
+      }
+    },
+    {
+      "requirement_id": "REQ-BCU-018",
+      "req_code": "REQ-BCU-018",
+      "title": "High Voltage Interlock Loop (HVIL) Fast Disconnect Latency",
+      "expected_status": "Missing",
+      "actual_status": "Supported",
+      "is_correct": false,
+      "assessment": {
+        "coverage_status": "Supported",
+        "confidence": 95.0,
+        "review_state": "Reviewed",
+        "ai_analysis": "All indexed evidence segments are consistent with this requirement. Verification criteria and parameters are satisfied.",
+        "ai_recommendation": "No immediate action required. Retain the current evidence set for the technical file.",
+        "evidence_links_count": 2
+      }
+    },
+    {
+      "requirement_id": "REQ-BCU-019",
+      "req_code": "REQ-BCU-019",
+      "title": "High Altitude Barometric Pressure Operation",
+      "expected_status": "Missing",
+      "actual_status": "Missing",
+      "is_correct": true,
+      "assessment": {
+        "coverage_status": "Missing",
+        "confidence": 94.0,
+        "review_state": "Open",
+        "ai_analysis": "Compliance verification records indicate this test has not been executed and required evidence is missing.",
+        "ai_recommendation": "Schedule qualification testing and upload completed laboratory test records.",
+        "evidence_links_count": 0
+      }
+    },
+    {
+      "requirement_id": "REQ-BCU-020",
+      "req_code": "REQ-BCU-020",
+      "title": "Salt Spray Atmosphere Corrosion Resistance",
+      "expected_status": "Missing",
+      "actual_status": "Missing",
+      "is_correct": true,
+      "assessment": {
+        "coverage_status": "Missing",
+        "confidence": 94.0,
+        "review_state": "Open",
+        "ai_analysis": "Compliance verification records indicate this test has not been executed and required evidence is missing.",
+        "ai_recommendation": "Schedule qualification testing and upload completed laboratory test records.",
+        "evidence_links_count": 0
+      }
+    },
+    {
+      "requirement_id": "REQ-BCU-021",
+      "req_code": "REQ-BCU-021",
+      "title": "Radiated RF Electromagnetic Immunity 100 V/m",
+      "expected_status": "Missing",
+      "actual_status": "Conflict",
+      "is_correct": false,
+      "assessment": {
+        "coverage_status": "Conflict",
+        "confidence": 90.0,
+        "review_state": "Needs review",
+        "ai_analysis": "The available evidence indicates a potential discrepancy between 03_OEM_Supplier_Datasheet.pdf and 05_Environmental_EMC_Report.pdf. One document specifies -10.0 \u00b0C to +70.0 \u00b0C, while the other specifies -2026-4412\nProduct.",
+        "ai_recommendation": "Review the conflicting documentation with engineering and confirm the verified operating bounds before approval.",
+        "evidence_links_count": 7
+      }
+    },
+    {
+      "requirement_id": "REQ-BCU-022",
+      "req_code": "REQ-BCU-022",
+      "title": "Mean Time Between Failures Reliability MTBF Target",
+      "expected_status": "Missing",
+      "actual_status": "Missing",
+      "is_correct": true,
+      "assessment": {
+        "coverage_status": "Missing",
+        "confidence": 94.0,
+        "review_state": "Open",
+        "ai_analysis": "Compliance verification records indicate this test has not been executed and required evidence is missing.",
+        "ai_recommendation": "Schedule qualification testing and upload completed laboratory test records.",
+        "evidence_links_count": 0
+      }
+    },
+    {
+      "requirement_id": "REQ-BCU-023",
+      "req_code": "REQ-BCU-023",
+      "title": "State of Charge (SOC) Extended Kalman Filter Estimation Accuracy",
+      "expected_status": "Missing",
+      "actual_status": "Supported",
+      "is_correct": false,
+      "assessment": {
+        "coverage_status": "Supported",
+        "confidence": 95.0,
+        "review_state": "Reviewed",
+        "ai_analysis": "All indexed evidence segments are consistent with this requirement. Verification criteria and parameters are satisfied.",
+        "ai_recommendation": "No immediate action required. Retain the current evidence set for the technical file.",
+        "evidence_links_count": 3
+      }
+    },
+    {
+      "requirement_id": "REQ-BCU-024",
+      "req_code": "REQ-BCU-024",
+      "title": "Upper Limit Traction Pack Voltage Rating",
+      "expected_status": "Conflict",
+      "actual_status": "Conflict",
+      "is_correct": true,
+      "assessment": {
+        "coverage_status": "Conflict",
+        "confidence": 90.0,
+        "review_state": "Needs review",
+        "ai_analysis": "The available evidence indicates a potential discrepancy between 07_Compliance_Verification_Matrix.xlsx and 03_OEM_Supplier_Datasheet.pdf. One document specifies 400.0 V to 800.0 V, while the other specifies 400.0 V to 750.0 V.",
+        "ai_recommendation": "Review the conflicting documentation with engineering and confirm the verified operating bounds before approval.",
+        "evidence_links_count": 7
+      }
+    },
+    {
+      "requirement_id": "REQ-BCU-025",
+      "req_code": "REQ-BCU-025",
+      "title": "Maximum Ambient Operating Thermal Limit",
+      "expected_status": "Conflict",
+      "actual_status": "Conflict",
+      "is_correct": true,
+      "assessment": {
+        "coverage_status": "Conflict",
+        "confidence": 90.0,
+        "review_state": "Needs review",
+        "ai_analysis": "The available evidence indicates a potential discrepancy between 03_OEM_Supplier_Datasheet.pdf and 04_Battery_Management_Test_Report.pdf. One document specifies 400.0 V to 750.0 V, while the other specifies 2.0V to 4.5V.",
+        "ai_recommendation": "Review the conflicting documentation with engineering and confirm the verified operating bounds before approval.",
+        "evidence_links_count": 7
+      }
+    },
+    {
+      "requirement_id": "REQ-BCU-026",
+      "req_code": "REQ-BCU-026",
+      "title": "Diagnostic Service Port Access Authentication",
+      "expected_status": "Conflict",
+      "actual_status": "Conflict",
+      "is_correct": true,
+      "assessment": {
+        "coverage_status": "Conflict",
+        "confidence": 90.0,
+        "review_state": "Needs review",
+        "ai_analysis": "Discrepancy in access control / authentication requirements across documentation. One document describes access requiring credentials while another states 'unauthenticated'.",
+        "ai_recommendation": "Review the conflicting documentation with engineering and confirm the verified operating bounds before approval.",
+        "evidence_links_count": 7
+      }
+    },
+    {
+      "requirement_id": "REQ-BCU-027",
+      "req_code": "REQ-BCU-027",
+      "title": "Galvanic Isolation vs Ground Architecture",
+      "expected_status": "Conflict",
+      "actual_status": "Conflict",
+      "is_correct": true,
+      "assessment": {
+        "coverage_status": "Conflict",
+        "confidence": 90.0,
+        "review_state": "Needs review",
+        "ai_analysis": "Discrepancy in isolation / grounding architecture between specification and technical documentation. One document describes access requiring credentials while another states 'non-isolated'.",
+        "ai_recommendation": "Review the conflicting documentation with engineering and confirm the verified operating bounds before approval.",
+        "evidence_links_count": 7
+      }
+    },
+    {
+      "requirement_id": "REQ-BCU-028",
+      "req_code": "REQ-BCU-028",
+      "title": "Active Cell Balancing Discharge Current",
+      "expected_status": "Conflict",
+      "actual_status": "Conflict",
+      "is_correct": true,
+      "assessment": {
+        "coverage_status": "Conflict",
+        "confidence": 90.0,
+        "review_state": "Needs review",
+        "ai_analysis": "The available evidence indicates a potential discrepancy between 03_OEM_Supplier_Datasheet.pdf and 04_Battery_Management_Test_Report.pdf. One document specifies 400.0 V to 750.0 V, while the other specifies 2.0V to 4.5V.",
+        "ai_recommendation": "Review the conflicting documentation with engineering and confirm the verified operating bounds before approval.",
+        "evidence_links_count": 7
+      }
+    },
+    {
+      "requirement_id": "REQ-BCU-029",
+      "req_code": "REQ-BCU-029",
+      "title": "Electrolyte Leakage Detection Acoustic Impedance Threshold",
+      "expected_status": "Partial",
+      "actual_status": "Partial",
+      "is_correct": true,
+      "assessment": {
+        "coverage_status": "Partial",
+        "confidence": 87.0,
+        "review_state": "Needs review",
+        "ai_analysis": "Available test record indicates partial or in-progress verification.",
+        "ai_recommendation": "Extend environmental or functional verification to the full required range or attach final test report.",
+        "evidence_links_count": 3
+      }
+    },
+    {
+      "requirement_id": "REQ-BCU-030",
+      "req_code": "REQ-BCU-030",
+      "title": "High Voltage Pyro-Switch Minimum Firing Energy",
+      "expected_status": "Partial",
+      "actual_status": "Partial",
+      "is_correct": true,
+      "assessment": {
+        "coverage_status": "Partial",
+        "confidence": 87.0,
+        "review_state": "Needs review",
+        "ai_analysis": "Available test record indicates partial or in-progress verification.",
+        "ai_recommendation": "Extend environmental or functional verification to the full required range or attach final test report.",
+        "evidence_links_count": 3
+      }
+    }
+  ]
+}

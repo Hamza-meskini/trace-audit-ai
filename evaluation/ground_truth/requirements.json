@@ -1,0 +1,302 @@
+[
+  {
+    "requirement_id": "REQ-BCU-001",
+    "req_code": "REQ-BCU-001",
+    "title": "High Voltage Pack Nominal Operating Range",
+    "description": "The BCU shall monitor and regulate high-voltage traction packs operating from 400.0 V DC to 800.0 V DC under all standard driving and fast-charging conditions.",
+    "category": "Electrical",
+    "severity": "Critical",
+    "expected_status": "Supported",
+    "expected_review_state": "Reviewed"
+  },
+  {
+    "requirement_id": "REQ-BCU-002",
+    "req_code": "REQ-BCU-002",
+    "title": "Continuous Discharge Current Monitoring",
+    "description": "The primary current shunt sensing stage shall accurately measure continuous discharge currents up to 350.0 A with maximum error <= 0.5% full-scale.",
+    "category": "Electrical",
+    "severity": "High",
+    "expected_status": "Supported",
+    "expected_review_state": "Reviewed"
+  },
+  {
+    "requirement_id": "REQ-BCU-003",
+    "req_code": "REQ-BCU-003",
+    "title": "Galvanic High-Voltage Isolation Barrier",
+    "description": "The galvanic isolation barrier between high-voltage traction circuitry and 12V low-voltage logic domain shall withstand 2.5 kV AC RMS for 60 seconds with leakage current < 1.0 mA.",
+    "category": "Safety",
+    "severity": "Critical",
+    "expected_status": "Supported",
+    "expected_review_state": "Reviewed"
+  },
+  {
+    "requirement_id": "REQ-BCU-004",
+    "req_code": "REQ-BCU-004",
+    "title": "CAN-FD Telemetry Communication Rate",
+    "description": "The powertrain telemetry interface shall support ISO 11898-2 CAN-FD protocol at 5.0 Mbps data phase rate with zero frame errors during full bus load.",
+    "category": "Electrical",
+    "severity": "Medium",
+    "expected_status": "Supported",
+    "expected_review_state": "Reviewed"
+  },
+  {
+    "requirement_id": "REQ-BCU-005",
+    "req_code": "REQ-BCU-005",
+    "title": "Quiescent Sleep State Current Draw",
+    "description": "When vehicle ignition is off and BCU enters deep sleep mode, total quiescent current from the 12V auxiliary battery shall not exceed 150.0 uA.",
+    "category": "Electrical",
+    "severity": "Medium",
+    "expected_status": "Supported",
+    "expected_review_state": "Reviewed"
+  },
+  {
+    "requirement_id": "REQ-BCU-006",
+    "req_code": "REQ-BCU-006",
+    "title": "Cell Voltage Sensing Measurement Precision",
+    "description": "Individual battery cell voltage measurement accuracy shall be within +/- 1.5 mV across the entire 2.0 V to 4.5 V cell chemistry operating window.",
+    "category": "Electrical",
+    "severity": "High",
+    "expected_status": "Supported",
+    "expected_review_state": "Reviewed"
+  },
+  {
+    "requirement_id": "REQ-BCU-007",
+    "req_code": "REQ-BCU-007",
+    "title": "Safe State Contactor De-energization Latency",
+    "description": "Upon detection of critical overvoltage or overtemperature fault, the safety supervisor shall open main DC contactors within maximum latency <= 10.0 ms.",
+    "category": "Safety",
+    "severity": "Critical",
+    "expected_status": "Supported",
+    "expected_review_state": "Reviewed"
+  },
+  {
+    "requirement_id": "REQ-BCU-008",
+    "req_code": "REQ-BCU-008",
+    "title": "Ingress Protection Rating IP67",
+    "description": "The BCU aluminum die-cast housing and sealed automotive connectors shall satisfy IP67 ingress protection per ISO 20653 / IEC 60529.",
+    "category": "Mechanical",
+    "severity": "High",
+    "expected_status": "Supported",
+    "expected_review_state": "Reviewed"
+  },
+  {
+    "requirement_id": "REQ-BCU-009",
+    "req_code": "REQ-BCU-009",
+    "title": "Pre-Charge Sequence Completion Time",
+    "description": "The DC link pre-charge circuit sequence shall charge inverter DC-link capacitance to 95% of pack voltage within maximum duration <= 200.0 ms.",
+    "category": "Electrical",
+    "severity": "Medium",
+    "expected_status": "Supported",
+    "expected_review_state": "Reviewed"
+  },
+  {
+    "requirement_id": "REQ-BCU-010",
+    "req_code": "REQ-BCU-010",
+    "title": "Solid-State Pyro-Fuse Trigger Circuit Latency",
+    "description": "In hard short-circuit conditions, the solid-state pyro-fuse ignition circuit shall issue trigger pulse in <= 5.0 microseconds to isolate traction battery.",
+    "category": "Safety",
+    "severity": "Critical",
+    "expected_status": "Supported",
+    "expected_review_state": "Reviewed"
+  },
+  {
+    "requirement_id": "REQ-BCU-011",
+    "req_code": "REQ-BCU-011",
+    "title": "Extended Climatic Operating Temperature",
+    "description": "The BCU shall maintain full functional performance and sensor accuracy across ambient operating temperature range from -40.0 \u00b0C to +85.0 \u00b0C.",
+    "category": "Environmental",
+    "severity": "High",
+    "expected_status": "Partial",
+    "expected_review_state": "Needs review"
+  },
+  {
+    "requirement_id": "REQ-BCU-012",
+    "req_code": "REQ-BCU-012",
+    "title": "Damp Heat Cyclic Humidity Endurance",
+    "description": "The controller shall withstand damp heat cyclic testing at 95.0% relative humidity and +65.0 \u00b0C for a continuous duration of 500.0 hours without insulation degradation.",
+    "category": "Environmental",
+    "severity": "Medium",
+    "expected_status": "Partial",
+    "expected_review_state": "Needs review"
+  },
+  {
+    "requirement_id": "REQ-BCU-013",
+    "req_code": "REQ-BCU-013",
+    "title": "Thermal Runaway Gas Venting Pressure Calculation and Burst Validation",
+    "description": "The pack pressure relief membrane must calculate thermal runaway gas release dynamics and demonstrate physical burst opening at pressure <= 300.0 mbar.",
+    "category": "Safety",
+    "severity": "Critical",
+    "expected_status": "Partial",
+    "expected_review_state": "Needs review"
+  },
+  {
+    "requirement_id": "REQ-BCU-014",
+    "req_code": "REQ-BCU-014",
+    "title": "Tri-Axial Random Vibration Endurance Profile",
+    "description": "The unit shall withstand random vibration per ISO 16750-3 across all three orthogonal axes (X, Y, and Z) for 32 hours per axis at 2.8 g RMS.",
+    "category": "Mechanical",
+    "severity": "High",
+    "expected_status": "Partial",
+    "expected_review_state": "Needs review"
+  },
+  {
+    "requirement_id": "REQ-BCU-015",
+    "req_code": "REQ-BCU-015",
+    "title": "Overcurrent Protection Multi-Tier Inverse Time Curve",
+    "description": "Overcurrent trip response shall verify the complete multi-tier curve spanning 100.0 A to 500.0 A with programmable inverse-time characteristics.",
+    "category": "Electrical",
+    "severity": "High",
+    "expected_status": "Partial",
+    "expected_review_state": "Needs review"
+  },
+  {
+    "requirement_id": "REQ-BCU-016",
+    "req_code": "REQ-BCU-016",
+    "title": "Contact Resistance Degradation After Power Cycling",
+    "description": "Terminal power lug contact resistance shall remain <= 0.20 mOhm after 100,000 power cycles as verified by micro-ohmmeter measurement record.",
+    "category": "Electrical",
+    "severity": "Medium",
+    "expected_status": "Partial",
+    "expected_review_state": "Needs review"
+  },
+  {
+    "requirement_id": "REQ-BCU-017",
+    "req_code": "REQ-BCU-017",
+    "title": "ISO 21434 Hardware Root-of-Trust Secure Boot Signature",
+    "description": "The BCU microcontroller shall enforce secure boot verification with ECDSA P-384 hardware root-of-trust key validation to prevent unauthorized firmware execution.",
+    "category": "Cybersecurity",
+    "severity": "Critical",
+    "expected_status": "Missing",
+    "expected_review_state": "Open"
+  },
+  {
+    "requirement_id": "REQ-BCU-018",
+    "req_code": "REQ-BCU-018",
+    "title": "High Voltage Interlock Loop (HVIL) Fast Disconnect Latency",
+    "description": "Any break or interruption in the continuous high-voltage interlock loop shall trigger active discharge and contactor opening in <= 5.0 ms.",
+    "category": "Safety",
+    "severity": "Critical",
+    "expected_status": "Missing",
+    "expected_review_state": "Open"
+  },
+  {
+    "requirement_id": "REQ-BCU-019",
+    "req_code": "REQ-BCU-019",
+    "title": "High Altitude Barometric Pressure Operation",
+    "description": "The BCU shall operate without high-voltage corona discharge or thermal overheating at altitudes up to 4000.0 m (61.6 kPa atmospheric pressure).",
+    "category": "Environmental",
+    "severity": "Medium",
+    "expected_status": "Missing",
+    "expected_review_state": "Open"
+  },
+  {
+    "requirement_id": "REQ-BCU-020",
+    "req_code": "REQ-BCU-020",
+    "title": "Salt Spray Atmosphere Corrosion Resistance",
+    "description": "External connectors and housing shall show no galvanic corrosion or pitting after 720.0 hours neutral salt spray test per ASTM B117 / ISO 9227.",
+    "category": "Mechanical",
+    "severity": "Medium",
+    "expected_status": "Missing",
+    "expected_review_state": "Open"
+  },
+  {
+    "requirement_id": "REQ-BCU-021",
+    "req_code": "REQ-BCU-021",
+    "title": "Radiated RF Electromagnetic Immunity 100 V/m",
+    "description": "The BCU shall maintain uninterrupted operation during radiated RF field immunity exposure of 100.0 V/m from 200.0 MHz to 2.0 GHz per ISO 11452-2.",
+    "category": "Electrical",
+    "severity": "High",
+    "expected_status": "Missing",
+    "expected_review_state": "Open"
+  },
+  {
+    "requirement_id": "REQ-BCU-022",
+    "req_code": "REQ-BCU-022",
+    "title": "Mean Time Between Failures Reliability MTBF Target",
+    "description": "Theoretical system reliability MTBF shall exceed 250,000 hours continuous operation at 40\u00b0C ambient calculated per Telcordia SR-332 / SN 29500.",
+    "category": "Documentation",
+    "severity": "Medium",
+    "expected_status": "Missing",
+    "expected_review_state": "Open"
+  },
+  {
+    "requirement_id": "REQ-BCU-023",
+    "req_code": "REQ-BCU-023",
+    "title": "State of Charge (SOC) Extended Kalman Filter Estimation Accuracy",
+    "description": "The battery state-of-charge estimator shall maintain SOC tracking drift < 2.0% across dynamic WLTP and US06 drive cycles over 1,000 operating hours.",
+    "category": "Documentation",
+    "severity": "High",
+    "expected_status": "Missing",
+    "expected_review_state": "Open"
+  },
+  {
+    "requirement_id": "REQ-BCU-024",
+    "req_code": "REQ-BCU-024",
+    "title": "Upper Limit Traction Pack Voltage Rating",
+    "description": "The BCU sensing and isolation design shall operate across 400.0 V DC to 800.0 V DC traction bus voltage envelope.",
+    "category": "Electrical",
+    "severity": "Critical",
+    "expected_status": "Conflict",
+    "expected_review_state": "Needs review"
+  },
+  {
+    "requirement_id": "REQ-BCU-025",
+    "req_code": "REQ-BCU-025",
+    "title": "Maximum Ambient Operating Thermal Limit",
+    "description": "The power electronics stage shall operate up to +85.0 \u00b0C ambient temperature under continuous current load.",
+    "category": "Environmental",
+    "severity": "High",
+    "expected_status": "Conflict",
+    "expected_review_state": "Needs review"
+  },
+  {
+    "requirement_id": "REQ-BCU-026",
+    "req_code": "REQ-BCU-026",
+    "title": "Diagnostic Service Port Access Authentication",
+    "description": "Unified Diagnostic Services (UDS) over Ethernet shall mandate cryptographic seed-key authentication before permitting flashing or calibration access.",
+    "category": "Cybersecurity",
+    "severity": "High",
+    "expected_status": "Conflict",
+    "expected_review_state": "Needs review"
+  },
+  {
+    "requirement_id": "REQ-BCU-027",
+    "req_code": "REQ-BCU-027",
+    "title": "Galvanic Isolation vs Ground Architecture",
+    "description": "The high-voltage analog measurement sub-circuit shall maintain complete galvanic isolation from the vehicle chassis ground.",
+    "category": "Safety",
+    "severity": "Critical",
+    "expected_status": "Conflict",
+    "expected_review_state": "Needs review"
+  },
+  {
+    "requirement_id": "REQ-BCU-028",
+    "req_code": "REQ-BCU-028",
+    "title": "Active Cell Balancing Discharge Current",
+    "description": "Active cell balancing circuit shall deliver balancing current of 200.0 mA per channel to equalize pack state-of-charge.",
+    "category": "Electrical",
+    "severity": "Medium",
+    "expected_status": "Conflict",
+    "expected_review_state": "Needs review"
+  },
+  {
+    "requirement_id": "REQ-BCU-029",
+    "req_code": "REQ-BCU-029",
+    "title": "Electrolyte Leakage Detection Acoustic Impedance Threshold",
+    "description": "The ultrasonic acoustic sensing channel shall flag electrolyte leakage when acoustic signature dampening exceeds 12.0 dB relative to dry baseline.",
+    "category": "Safety",
+    "severity": "High",
+    "expected_status": "Partial",
+    "expected_review_state": "Needs review"
+  },
+  {
+    "requirement_id": "REQ-BCU-030",
+    "req_code": "REQ-BCU-030",
+    "title": "High Voltage Pyro-Switch Minimum Firing Energy",
+    "description": "Capacitive firing module shall store minimum 4.5 J energy at 24V booster stage to guarantee single-pulse detonation of the main safety disconnector.",
+    "category": "Safety",
+    "severity": "Critical",
+    "expected_status": "Partial",
+    "expected_review_state": "Needs review"
+  }
+]

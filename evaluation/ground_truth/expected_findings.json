@@ -1,0 +1,287 @@
+[
+  {
+    "finding_code": "EXP-F-001",
+    "requirement_id": "REQ-BCU-011",
+    "req_code": "REQ-BCU-011",
+    "expected_status": "Partial",
+    "finding_type": "Partial evidence",
+    "severity": "High",
+    "category": "Environmental",
+    "expected_evidence": [
+      {
+        "document": "05_Environmental_EMC_Report.pdf",
+        "page": 2
+      }
+    ]
+  },
+  {
+    "finding_code": "EXP-F-002",
+    "requirement_id": "REQ-BCU-012",
+    "req_code": "REQ-BCU-012",
+    "expected_status": "Partial",
+    "finding_type": "Partial evidence",
+    "severity": "Medium",
+    "category": "Environmental",
+    "expected_evidence": [
+      {
+        "document": "05_Environmental_EMC_Report.pdf",
+        "page": 2
+      }
+    ]
+  },
+  {
+    "finding_code": "EXP-F-003",
+    "requirement_id": "REQ-BCU-013",
+    "req_code": "REQ-BCU-013",
+    "expected_status": "Partial",
+    "finding_type": "Partial evidence",
+    "severity": "Critical",
+    "category": "Safety",
+    "expected_evidence": [
+      {
+        "document": "06_Thermal_Runaway_Safety_Report.pdf",
+        "page": 3
+      }
+    ]
+  },
+  {
+    "finding_code": "EXP-F-004",
+    "requirement_id": "REQ-BCU-014",
+    "req_code": "REQ-BCU-014",
+    "expected_status": "Partial",
+    "finding_type": "Partial evidence",
+    "severity": "High",
+    "category": "Mechanical",
+    "expected_evidence": [
+      {
+        "document": "05_Environmental_EMC_Report.pdf",
+        "page": 3
+      }
+    ]
+  },
+  {
+    "finding_code": "EXP-F-005",
+    "requirement_id": "REQ-BCU-015",
+    "req_code": "REQ-BCU-015",
+    "expected_status": "Partial",
+    "finding_type": "Partial evidence",
+    "severity": "High",
+    "category": "Electrical",
+    "expected_evidence": [
+      {
+        "document": "04_Battery_Management_Test_Report.pdf",
+        "page": 3
+      }
+    ]
+  },
+  {
+    "finding_code": "EXP-F-006",
+    "requirement_id": "REQ-BCU-016",
+    "req_code": "REQ-BCU-016",
+    "expected_status": "Partial",
+    "finding_type": "Partial evidence",
+    "severity": "Medium",
+    "category": "Electrical",
+    "expected_evidence": [
+      {
+        "document": "07_Compliance_Verification_Matrix.xlsx",
+        "page": 1
+      }
+    ]
+  },
+  {
+    "finding_code": "EXP-F-007",
+    "requirement_id": "REQ-BCU-017",
+    "req_code": "REQ-BCU-017",
+    "expected_status": "Missing",
+    "finding_type": "Missing evidence",
+    "severity": "Critical",
+    "category": "Cybersecurity",
+    "expected_evidence": []
+  },
+  {
+    "finding_code": "EXP-F-008",
+    "requirement_id": "REQ-BCU-018",
+    "req_code": "REQ-BCU-018",
+    "expected_status": "Missing",
+    "finding_type": "Missing evidence",
+    "severity": "Critical",
+    "category": "Safety",
+    "expected_evidence": []
+  },
+  {
+    "finding_code": "EXP-F-009",
+    "requirement_id": "REQ-BCU-019",
+    "req_code": "REQ-BCU-019",
+    "expected_status": "Missing",
+    "finding_type": "Missing evidence",
+    "severity": "Medium",
+    "category": "Environmental",
+    "expected_evidence": []
+  },
+  {
+    "finding_code": "EXP-F-010",
+    "requirement_id": "REQ-BCU-020",
+    "req_code": "REQ-BCU-020",
+    "expected_status": "Missing",
+    "finding_type": "Missing evidence",
+    "severity": "Medium",
+    "category": "Mechanical",
+    "expected_evidence": []
+  },
+  {
+    "finding_code": "EXP-F-011",
+    "requirement_id": "REQ-BCU-021",
+    "req_code": "REQ-BCU-021",
+    "expected_status": "Missing",
+    "finding_type": "Missing evidence",
+    "severity": "High",
+    "category": "Electrical",
+    "expected_evidence": []
+  },
+  {
+    "finding_code": "EXP-F-012",
+    "requirement_id": "REQ-BCU-022",
+    "req_code": "REQ-BCU-022",
+    "expected_status": "Missing",
+    "finding_type": "Missing evidence",
+    "severity": "Medium",
+    "category": "Documentation",
+    "expected_evidence": []
+  },
+  {
+    "finding_code": "EXP-F-013",
+    "requirement_id": "REQ-BCU-023",
+    "req_code": "REQ-BCU-023",
+    "expected_status": "Missing",
+    "finding_type": "Missing evidence",
+    "severity": "High",
+    "category": "Documentation",
+    "expected_evidence": []
+  },
+  {
+    "finding_code": "EXP-F-014",
+    "requirement_id": "REQ-BCU-024",
+    "req_code": "REQ-BCU-024",
+    "expected_status": "Conflict",
+    "finding_type": "Potential conflict",
+    "severity": "Critical",
+    "category": "Electrical",
+    "expected_evidence": [
+      {
+        "document": "01_Product_Requirements_SRS.docx",
+        "page": null
+      },
+      {
+        "document": "03_OEM_Supplier_Datasheet.pdf",
+        "page": 1
+      }
+    ]
+  },
+  {
+    "finding_code": "EXP-F-015",
+    "requirement_id": "REQ-BCU-025",
+    "req_code": "REQ-BCU-025",
+    "expected_status": "Conflict",
+    "finding_type": "Potential conflict",
+    "severity": "High",
+    "category": "Environmental",
+    "expected_evidence": [
+      {
+        "document": "01_Product_Requirements_SRS.docx",
+        "page": null
+      },
+      {
+        "document": "03_OEM_Supplier_Datasheet.pdf",
+        "page": 1
+      }
+    ]
+  },
+  {
+    "finding_code": "EXP-F-016",
+    "requirement_id": "REQ-BCU-026",
+    "req_code": "REQ-BCU-026",
+    "expected_status": "Conflict",
+    "finding_type": "Potential conflict",
+    "severity": "High",
+    "category": "Cybersecurity",
+    "expected_evidence": [
+      {
+        "document": "01_Product_Requirements_SRS.docx",
+        "page": null
+      },
+      {
+        "document": "02_System_Architecture_Spec.pdf",
+        "page": 2
+      }
+    ]
+  },
+  {
+    "finding_code": "EXP-F-017",
+    "requirement_id": "REQ-BCU-027",
+    "req_code": "REQ-BCU-027",
+    "expected_status": "Conflict",
+    "finding_type": "Potential conflict",
+    "severity": "Critical",
+    "category": "Safety",
+    "expected_evidence": [
+      {
+        "document": "01_Product_Requirements_SRS.docx",
+        "page": null
+      },
+      {
+        "document": "03_OEM_Supplier_Datasheet.pdf",
+        "page": 1
+      }
+    ]
+  },
+  {
+    "finding_code": "EXP-F-018",
+    "requirement_id": "REQ-BCU-028",
+    "req_code": "REQ-BCU-028",
+    "expected_status": "Conflict",
+    "finding_type": "Potential conflict",
+    "severity": "Medium",
+    "category": "Electrical",
+    "expected_evidence": [
+      {
+        "document": "01_Product_Requirements_SRS.docx",
+        "page": null
+      },
+      {
+        "document": "03_OEM_Supplier_Datasheet.pdf",
+        "page": 1
+      }
+    ]
+  },
+  {
+    "finding_code": "EXP-F-019",
+    "requirement_id": "REQ-BCU-029",
+    "req_code": "REQ-BCU-029",
+    "expected_status": "Partial",
+    "finding_type": "Partial evidence",
+    "severity": "High",
+    "category": "Safety",
+    "expected_evidence": [
+      {
+        "document": "06_Thermal_Runaway_Safety_Report.pdf",
+        "page": 3
+      }
+    ]
+  },
+  {
+    "finding_code": "EXP-F-020",
+    "requirement_id": "REQ-BCU-030",
+    "req_code": "REQ-BCU-030",
+    "expected_status": "Partial",
+    "finding_type": "Partial evidence",
+    "severity": "Critical",
+    "category": "Safety",
+    "expected_evidence": [
+      {
+        "document": "06_Thermal_Runaway_Safety_Report.pdf",
+        "page": 2
+      }
+    ]
+  }
+]

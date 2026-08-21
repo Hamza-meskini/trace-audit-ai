@@ -44,7 +44,7 @@ CATEGORY_KEYWORDS = {
     "Documentation": ["manual", "instructions", "mtbf", "datasheet", "specification", "archived", "declaration", "certificate"],
 }
 
-NUMERIC_RANGE_REGEX = re.compile(r"([+-]?\d+(?:\.\d+)?)\s*(?:–|-|to)\s*([+-]?\d+(?:\.\d+)?)\s*([°\w/]+)?", re.IGNORECASE)
+NUMERIC_RANGE_REGEX = re.compile(r"([+-]?\d+(?:\.\d+)?)\s*([°\w/]+)?\s*(?:–|-|to)\s*([+-]?\d+(?:\.\d+)?)\s*([°\w/]+)?", re.IGNORECASE)
 
 
 def infer_category(text: str) -> str:
@@ -57,16 +57,20 @@ def infer_category(text: str) -> str:
 
 def extract_parameters_from_text(text: str) -> list[ExtractedParameter]:
     params = []
-    # Check for range: e.g. 18–32 V DC, -20°C to +70°C
+    # Check for range: e.g. 18–32 V DC, -20°C to +70°C, 400.0 V to 800.0 V DC
     for match in NUMERIC_RANGE_REGEX.finditer(text):
-        min_v, max_v, unit = match.groups()
+        min_v = match.group(1)
+        unit_pre = match.group(2)
+        max_v = match.group(3)
+        unit_post = match.group(4)
+        unit = (unit_post or unit_pre or "").strip()
         try:
             params.append(ExtractedParameter(
                 name="operating_range",
                 value=match.group(0),
                 min_val=float(min_v),
                 max_val=float(max_v),
-                unit=unit.strip() if unit else None,
+                unit=unit if unit else None,
             ))
         except (ValueError, TypeError):
             pass
@@ -95,10 +99,10 @@ def fallback_extract_requirements(text_content: str, doc_name: str = "") -> list
         if not cleaned or len(cleaned) < 15:
             continue
 
-        # Check for explicit code e.g. "REQ-001: ..."
-        req_match = re.match(r"^(REQ[-_]?\d+|R[-_]?\d+)\s*[:\-–]?\s*(.*)", cleaned, re.IGNORECASE)
+        # Check for explicit code e.g. "REQ-001: ...", "REQ-BCU-001: ...", "REQ_ELE_001: ..."
+        req_match = re.match(r"^(REQ[-_]?[A-Za-z0-9_-]*\d+|R[-_]?[A-Za-z0-9_-]*\d+)\s*[:\-–]?\s*(.*)", cleaned, re.IGNORECASE)
         if req_match:
-            code = req_match.group(1).upper()
+            code = req_match.group(1).upper().replace("_", "-")
             title = req_match.group(2).strip() or cleaned
             cat = infer_category(title)
             params = extract_parameters_from_text(title)
@@ -111,6 +115,13 @@ def fallback_extract_requirements(text_content: str, doc_name: str = "") -> list
                 parameters=params,
             ))
         elif any(verb in cleaned.lower() for verb in [" shall ", " must ", " required to ", " operates between ", " operating range"]):
+            # If the previous requirement has no description yet, append to it
+            if reqs and (reqs[-1].description == reqs[-1].title or len(reqs[-1].description or "") < 80):
+                reqs[-1].description = f"{reqs[-1].title}. {cleaned}"
+                if not reqs[-1].parameters:
+                    reqs[-1].parameters = extract_parameters_from_text(cleaned)
+                continue
+
             code = f"REQ-{req_counter:03d}"
             req_counter += 1
             cat = infer_category(cleaned)

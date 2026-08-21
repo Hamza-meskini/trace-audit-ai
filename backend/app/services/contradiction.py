@@ -24,14 +24,43 @@ SEMANTIC_CONFLICT_PAIRS = [
     (
         ["credential", "authentication", "login", "password", "authorized", "restricted"],
         ["no login", "no authentication", "unauthenticated", "no password", "open access", "no login required"],
+        ["diagnostic", "port", "service", "access", "uds", "security", "calibration", "flashing", "service port"],
         "Discrepancy in access control / authentication requirements across documentation.",
     ),
     (
-        ["isolated", "galvanic isolation"],
+        ["isolated", "galvanic isolation", "optical and magnetic isolation"],
         ["non-isolated", "common ground", "shared ground"],
+        ["ground", "isolation", "barrier", "chassis", "sensing", "dielectric", "return"],
         "Discrepancy in isolation / grounding architecture between specification and technical documentation.",
     ),
 ]
+
+
+def normalize_unit(unit_str: str) -> str:
+    if not unit_str:
+        return ""
+    u = unit_str.strip().lower()
+    if "°" in u or "c" in u:
+        return "°c"
+    if "mv" in u:
+        return "mv"
+    if "kv" in u:
+        return "kv"
+    if "v" in u:
+        return "v"
+    if "ma" in u:
+        return "ma"
+    if "a" in u:
+        return "a"
+    if "h" in u:
+        return "h"
+    if "ms" in u:
+        return "ms"
+    if "us" in u or "µs" in u:
+        return "us"
+    if "j" in u:
+        return "j"
+    return u
 
 
 def detect_cross_document_contradiction(
@@ -58,27 +87,39 @@ def detect_cross_document_contradiction(
             ranges_b = extract_numeric_ranges(text_b)
 
             if ranges_a and ranges_b:
-                ra = ranges_a[0]
-                rb = ranges_b[0]
-                # If units match or are compatible and upper limits conflict (e.g. 32 V vs 30 V)
-                if abs(ra.max_val - rb.max_val) > 0.5:
-                    highlight = f"{rb.max_val:g} {rb.unit}".strip()
-                    desc = (
-                        f"The available evidence indicates a potential discrepancy between {item_a.get('document_name')} and {item_b.get('document_name')}. "
-                        f"One document specifies {ra.raw_str}, while the other specifies {rb.raw_str}."
-                    )
-                    return ContradictionFinding(
-                        has_conflict=True,
-                        source_a_doc=item_a.get("document_name", "Doc A"),
-                        source_a_quote=text_a,
-                        source_b_doc=item_b.get("document_name", "Doc B"),
-                        source_b_quote=text_b,
-                        highlight=highlight,
-                        description=desc,
-                    )
+                for ra in ranges_a:
+                    for rb in ranges_b:
+                        ua = normalize_unit(ra.unit)
+                        ub = normalize_unit(rb.unit)
+                        # Only compare if both have valid, matching physical measurement units
+                        if ua and ub and ua == ub:
+                            if abs(ra.max_val - rb.max_val) > 0.5:
+                                doc_a_lower = item_a.get("document_name", "").lower()
+                                doc_b_lower = item_b.get("document_name", "").lower()
+                                is_datasheet_or_spec = any(k in doc_a_lower or k in doc_b_lower for k in ["datasheet", "spec", "manual", "srs", "ds-"])
+                                if is_datasheet_or_spec:
+                                    highlight = f"{rb.max_val:g} {rb.unit}".strip()
+                                    desc = (
+                                        f"The available evidence indicates a potential discrepancy between {item_a.get('document_name')} and {item_b.get('document_name')}. "
+                                        f"One document specifies {ra.raw_str}, while the other specifies {rb.raw_str}."
+                                    )
+                                    return ContradictionFinding(
+                                        has_conflict=True,
+                                        source_a_doc=item_a.get("document_name", "Doc A"),
+                                        source_a_quote=text_a,
+                                        source_b_doc=item_b.get("document_name", "Doc B"),
+                                        source_b_quote=text_b,
+                                        highlight=highlight,
+                                        description=desc,
+                                    )
 
             # 2. Check semantic conflicts (e.g., requires authentication vs no login required)
-            for set_a, set_b, explanation in SEMANTIC_CONFLICT_PAIRS:
+            for set_a, set_b, topics, explanation in SEMANTIC_CONFLICT_PAIRS:
+                # Require topical overlap in both items
+                topic_match = any(t in text_a.lower() for t in topics) and any(t in text_b.lower() for t in topics)
+                if not topic_match:
+                    continue
+
                 a_matches_pos = any(kw in text_a.lower() for kw in set_a)
                 b_matches_neg = any(kw in text_b.lower() for kw in set_b)
                 if a_matches_pos and b_matches_neg:

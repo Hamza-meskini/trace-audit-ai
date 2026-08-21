@@ -34,7 +34,7 @@ def parse_pdf(file_path: str) -> list[ParsedChunk]:
 
 
 def parse_docx(file_path: str) -> list[ParsedChunk]:
-    """Extract text from a DOCX file, grouped by heading sections."""
+    """Extract text from a DOCX file, grouped by heading sections or requirement boundaries."""
     from docx import Document
 
     doc = Document(file_path)
@@ -47,16 +47,18 @@ def parse_docx(file_path: str) -> list[ParsedChunk]:
         if not text:
             continue
 
-        # Start a new chunk on headings
-        if para.style and para.style.name.startswith("Heading"):
-            if current_section:
-                chunks.append(ParsedChunk(
-                    content="\n".join(current_section),
-                    page_number=None,
-                    chunk_index=chunk_idx,
-                ))
-                chunk_idx += 1
-                current_section = []
+        is_heading = para.style and para.style.name.startswith("Heading")
+        is_req_header = bool(re.match(r"^(REQ[-_]?[A-Za-z0-9_-]*\d+|R[-_]?[A-Za-z0-9_-]*\d+)\s*[:\-–]", text, re.IGNORECASE))
+
+        # Start a new chunk on headings or requirement boundaries or length overflow
+        if (is_heading or is_req_header or len("\n".join(current_section)) > 1500) and current_section:
+            chunks.append(ParsedChunk(
+                content="\n".join(current_section),
+                page_number=None,
+                chunk_index=chunk_idx,
+            ))
+            chunk_idx += 1
+            current_section = []
 
         current_section.append(text)
 

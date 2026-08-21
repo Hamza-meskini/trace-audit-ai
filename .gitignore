@@ -42,11 +42,15 @@ backend/uploads/
 backend/chroma_data/
 backend/.env
 
-# Python bytecode (anywhere in tree)
+# Python bytecode & test caches (anywhere in tree)
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
+.pytest_cache/
+.coverage
+htmlcov/
+*.sqlite3
 
 # ── Generated / local-only files ─────────────────────────────
 sample_documents/

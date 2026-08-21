@@ -1,0 +1,226 @@
+[
+  {
+    "requirement_id": "REQ-BCU-001",
+    "req_code": "REQ-BCU-001",
+    "document": "04_Battery_Management_Test_Report.pdf",
+    "page": 2,
+    "relationship": "supports",
+    "quote": "The BCU was tested across 400.0 V, 600.0 V and 800.0 V DC input levels with full telemetry accuracy."
+  },
+  {
+    "requirement_id": "REQ-BCU-002",
+    "req_code": "REQ-BCU-002",
+    "document": "04_Battery_Management_Test_Report.pdf",
+    "page": 2,
+    "relationship": "supports",
+    "quote": "Current sensor measured 350.0 A continuous discharge with 0.18% error across 4-hour soak test."
+  },
+  {
+    "requirement_id": "REQ-BCU-003",
+    "req_code": "REQ-BCU-003",
+    "document": "04_Battery_Management_Test_Report.pdf",
+    "page": 3,
+    "relationship": "supports",
+    "quote": "Dielectric withstand test: 2,500 V AC applied for 60.0 s, measured leakage current 0.28 mA, verdict PASS."
+  },
+  {
+    "requirement_id": "REQ-BCU-004",
+    "req_code": "REQ-BCU-004",
+    "document": "04_Battery_Management_Test_Report.pdf",
+    "page": 3,
+    "relationship": "supports",
+    "quote": "CAN-FD bus evaluated at 5.0 Mbps across 10,000,000 frames with zero frame errors recorded."
+  },
+  {
+    "requirement_id": "REQ-BCU-005",
+    "req_code": "REQ-BCU-005",
+    "document": "04_Battery_Management_Test_Report.pdf",
+    "page": 2,
+    "relationship": "supports",
+    "quote": "Deep sleep quiescent current measured at 112.4 uA at 12.0 V auxiliary supply, well below 150.0 uA limit."
+  },
+  {
+    "requirement_id": "REQ-BCU-006",
+    "req_code": "REQ-BCU-006",
+    "document": "04_Battery_Management_Test_Report.pdf",
+    "page": 2,
+    "relationship": "supports",
+    "quote": "Cell monitoring ASIC calibrated across 2.0V to 4.5V with maximum recorded error of +/- 0.85 mV."
+  },
+  {
+    "requirement_id": "REQ-BCU-007",
+    "req_code": "REQ-BCU-007",
+    "document": "06_Thermal_Runaway_Safety_Report.pdf",
+    "page": 2,
+    "relationship": "supports",
+    "quote": "Emergency contactor trip latency measured at 6.40 ms under simulated overvoltage event (threshold <= 10.0 ms)."
+  },
+  {
+    "requirement_id": "REQ-BCU-008",
+    "req_code": "REQ-BCU-008",
+    "document": "05_Environmental_EMC_Report.pdf",
+    "page": 2,
+    "relationship": "supports",
+    "quote": "IP67 immersion test completed (1.0 meter submersion for 30 minutes). Zero water ingress detected inside enclosure."
+  },
+  {
+    "requirement_id": "REQ-BCU-009",
+    "req_code": "REQ-BCU-009",
+    "document": "04_Battery_Management_Test_Report.pdf",
+    "page": 3,
+    "relationship": "supports",
+    "quote": "DC bus pre-charge timing test: 95% voltage reached in 142.0 ms with pre-charge resistor peak temperature within bounds."
+  },
+  {
+    "requirement_id": "REQ-BCU-010",
+    "req_code": "REQ-BCU-010",
+    "document": "06_Thermal_Runaway_Safety_Report.pdf",
+    "page": 2,
+    "relationship": "supports",
+    "quote": "Hardware short-circuit analog comparator triggered pyro-switch in 2.8 microseconds."
+  },
+  {
+    "requirement_id": "REQ-BCU-011",
+    "req_code": "REQ-BCU-011",
+    "document": "05_Environmental_EMC_Report.pdf",
+    "page": 2,
+    "relationship": "partial_support",
+    "quote": "Climatic chamber thermal testing performed from -20.0 \u00b0C to +70.0 \u00b0C under continuous telemetry logging."
+  },
+  {
+    "requirement_id": "REQ-BCU-012",
+    "req_code": "REQ-BCU-012",
+    "document": "05_Environmental_EMC_Report.pdf",
+    "page": 2,
+    "relationship": "partial_support",
+    "quote": "Damp heat endurance test chamber run completed for 100.0 hours at 95% RH. Remainder of 500h test in progress."
+  },
+  {
+    "requirement_id": "REQ-BCU-013",
+    "req_code": "REQ-BCU-013",
+    "document": "06_Thermal_Runaway_Safety_Report.pdf",
+    "page": 3,
+    "relationship": "partial_support",
+    "quote": "Computational fluid dynamics simulation and gas venting rate calculation completed for 300 mbar burst target; physical burst validation fixture pending."
+  },
+  {
+    "requirement_id": "REQ-BCU-014",
+    "req_code": "REQ-BCU-014",
+    "document": "05_Environmental_EMC_Report.pdf",
+    "page": 3,
+    "relationship": "partial_support",
+    "quote": "Random vibration shaker table completed for X-axis and Y-axis at 2.8 g RMS. Z-axis evaluation awaiting test fixture adapter."
+  },
+  {
+    "requirement_id": "REQ-BCU-015",
+    "req_code": "REQ-BCU-015",
+    "document": "04_Battery_Management_Test_Report.pdf",
+    "page": 3,
+    "relationship": "partial_support",
+    "quote": "Single-point overcurrent verification conducted at 200.0 A setting only; multi-point curve characterization incomplete."
+  },
+  {
+    "requirement_id": "REQ-BCU-016",
+    "req_code": "REQ-BCU-016",
+    "document": "07_Compliance_Verification_Matrix.xlsx",
+    "page": 1,
+    "relationship": "partial_support",
+    "quote": "Requirement ID: REQ-BCU-016; Description: Contact Resistance; Status: In Progress 25,000 cycles completed (0.11 mOhm)."
+  },
+  {
+    "requirement_id": "REQ-BCU-024",
+    "req_code": "REQ-BCU-024",
+    "document": "01_Product_Requirements_SRS.docx",
+    "page": null,
+    "relationship": "specification",
+    "quote": "The system must remain fully functional across an input tolerance range of 400.0 V DC to 800.0 V DC."
+  },
+  {
+    "requirement_id": "REQ-BCU-024",
+    "req_code": "REQ-BCU-024",
+    "document": "03_OEM_Supplier_Datasheet.pdf",
+    "page": 1,
+    "relationship": "contradicts",
+    "quote": "Maximum rated pack sensing voltage: 400.0 V to 750.0 V DC maximum. Operation above 750V is not supported."
+  },
+  {
+    "requirement_id": "REQ-BCU-025",
+    "req_code": "REQ-BCU-025",
+    "document": "01_Product_Requirements_SRS.docx",
+    "page": null,
+    "relationship": "specification",
+    "quote": "The equipment shall maintain full functional performance across an ambient operating temperature range of -40.0 \u00b0C to +85.0 \u00b0C."
+  },
+  {
+    "requirement_id": "REQ-BCU-025",
+    "req_code": "REQ-BCU-025",
+    "document": "03_OEM_Supplier_Datasheet.pdf",
+    "page": 1,
+    "relationship": "contradicts",
+    "quote": "Operating Ambient Temperature: -10.0 \u00b0C to +70.0 \u00b0C. Operation above +70\u00b0C causes thermal shutdown."
+  },
+  {
+    "requirement_id": "REQ-BCU-026",
+    "req_code": "REQ-BCU-026",
+    "document": "01_Product_Requirements_SRS.docx",
+    "page": null,
+    "relationship": "specification",
+    "quote": "UDS service interface requires authenticated credential login and cryptographic seed-key security."
+  },
+  {
+    "requirement_id": "REQ-BCU-026",
+    "req_code": "REQ-BCU-026",
+    "document": "02_System_Architecture_Spec.pdf",
+    "page": 2,
+    "relationship": "contradicts",
+    "quote": "Engineering service port provides open access with no login required for factory automated calibration."
+  },
+  {
+    "requirement_id": "REQ-BCU-027",
+    "req_code": "REQ-BCU-027",
+    "document": "01_Product_Requirements_SRS.docx",
+    "page": null,
+    "relationship": "specification",
+    "quote": "All primary sensing channels shall feature galvanic optical and magnetic isolation from vehicle ground."
+  },
+  {
+    "requirement_id": "REQ-BCU-027",
+    "req_code": "REQ-BCU-027",
+    "document": "03_OEM_Supplier_Datasheet.pdf",
+    "page": 1,
+    "relationship": "contradicts",
+    "quote": "Architecture Note: Low-side sensing circuitry uses a non-isolated shared ground tied directly to chassis return."
+  },
+  {
+    "requirement_id": "REQ-BCU-028",
+    "req_code": "REQ-BCU-028",
+    "document": "01_Product_Requirements_SRS.docx",
+    "page": null,
+    "relationship": "specification",
+    "quote": "Cell balancing circuit operates between 150 mA and 200.0 mA discharge current."
+  },
+  {
+    "requirement_id": "REQ-BCU-028",
+    "req_code": "REQ-BCU-028",
+    "document": "03_OEM_Supplier_Datasheet.pdf",
+    "page": 1,
+    "relationship": "contradicts",
+    "quote": "Integrated balancing switch operates between 50 mA and 100.0 mA maximum continuous dissipation."
+  },
+  {
+    "requirement_id": "REQ-BCU-029",
+    "req_code": "REQ-BCU-029",
+    "document": "06_Thermal_Runaway_Safety_Report.pdf",
+    "page": 3,
+    "relationship": "ambiguous",
+    "quote": "Acoustic impedance sensor characterization demonstrated signal dampening in presence of liquid solvent, but exact dB threshold calibration requires vehicle pack installation test."
+  },
+  {
+    "requirement_id": "REQ-BCU-030",
+    "req_code": "REQ-BCU-030",
+    "document": "06_Thermal_Runaway_Safety_Report.pdf",
+    "page": 2,
+    "relationship": "partial_support",
+    "quote": "Firing capacitor energy calculation confirmed 4.8 J nominal theoretical capacity; physical discharge waveform capture pending final harness qualification."
+  }
+]
