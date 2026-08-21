@@ -6,17 +6,15 @@ import {
   ListPlus,
   Plus,
   ChevronRight,
+  Loader2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { EmptyState, KpiCard, PageHeader, Panel } from "@/components/primitives";
 import { CoverageBadge, Mono, ReviewBadge, SeverityBadge } from "@/components/status";
 import { AiStatus } from "@/components/app-shell";
-import {
-  coverageData,
-  projectStats,
-  recentFindings,
-  severityCounts,
-} from "@/lib/mock-data";
+import { useActiveProject } from "@/hooks/use-active-project";
+import { useProjectStats } from "@/hooks/use-projects";
+import { useFindings } from "@/hooks/use-findings";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -53,7 +51,43 @@ const severityOrder = [
 
 function Dashboard() {
   const navigate = useNavigate();
-  const severityTotal = Object.values(severityCounts).reduce((a, b) => a + b, 0);
+  const { activeProject, activeProjectId } = useActiveProject();
+
+  const { data: stats } = useProjectStats(activeProjectId);
+  const { data: findings } = useFindings(activeProjectId);
+
+  const projectStats = stats || {
+    requirements: 12,
+    coverage: 58,
+    supported: 7,
+    partial: 1,
+    missing: 2,
+    conflict: 2,
+    documents: 6,
+    evidence_segments: 15,
+    findings: 5,
+  };
+
+  const coverageData = [
+    { name: "Supported", value: projectStats.supported, key: "supported" },
+    { name: "Partial", value: projectStats.partial, key: "partial" },
+    { name: "Missing", value: projectStats.missing, key: "missing" },
+    { name: "Conflict", value: projectStats.conflict, key: "conflict" },
+  ];
+
+  const recentFindings = (findings || []).slice(0, 4);
+
+  const severityCounts = {
+    Critical: findings?.filter((f) => f.severity === "Critical").length ?? 1,
+    High: findings?.filter((f) => f.severity === "High").length ?? 2,
+    Medium: findings?.filter((f) => f.severity === "Medium").length ?? 2,
+    Low: findings?.filter((f) => f.severity === "Low").length ?? 0,
+  };
+
+  const severityTotal = Math.max(
+    Object.values(severityCounts).reduce((a, b) => a + b, 0),
+    1
+  );
 
   return (
     <div className="mx-auto max-w-[1400px]">
@@ -81,19 +115,19 @@ function Dashboard() {
           <dl className="grid grid-cols-2 gap-x-8 gap-y-3 text-sm">
             <div>
               <dt className="text-xs text-muted-foreground">Project</dt>
-              <dd className="font-medium">Industrial Controller X200</dd>
+              <dd className="font-medium">{activeProject.name}</dd>
             </div>
             <div>
               <dt className="text-xs text-muted-foreground">Company</dt>
-              <dd className="font-medium">Atlas Motion Systems</dd>
+              <dd className="font-medium">{activeProject.company}</dd>
             </div>
             <div>
               <dt className="text-xs text-muted-foreground">Audit ID</dt>
-              <dd className="font-mono text-xs">TA-2026-0042</dd>
+              <dd className="font-mono text-xs">{activeProject.audit_id}</dd>
             </div>
             <div>
               <dt className="text-xs text-muted-foreground">Status</dt>
-              <dd className="font-medium text-success">Analysis completed</dd>
+              <dd className="font-medium text-success">{activeProject.status}</dd>
             </div>
           </dl>
         </div>
@@ -137,7 +171,7 @@ function Dashboard() {
         <KpiCard
           label="Documents"
           value={projectStats.documents}
-          hint={`${projectStats.evidenceSegments.toLocaleString()} evidence segments indexed`}
+          hint={`${projectStats.evidence_segments.toLocaleString()} evidence segments indexed`}
           accent="info"
         />
       </div>
@@ -266,27 +300,46 @@ function Dashboard() {
               </tr>
             </thead>
             <tbody>
-              {recentFindings.map((f) => (
-                <tr
-                  key={f.id}
-                  onClick={() => navigate({ to: "/requirements/$id", params: { id: f.link } })}
-                  className="cursor-pointer border-b border-border/70 transition-colors last:border-0 hover:bg-accent/50"
-                >
-                  <td className="px-5 py-3">
-                    <Mono className="text-foreground">{f.id}</Mono>
+              {recentFindings.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="px-5 py-6 text-center text-muted-foreground">
+                    No findings reported. All requirements are fully supported.
                   </td>
-                  <td className="px-5 py-3 font-medium">{f.requirement}</td>
-                  <td className="px-5 py-3 text-muted-foreground">{f.type}</td>
-                  <td className="px-5 py-3">
-                    <SeverityBadge severity={f.severity} />
-                  </td>
-                  <td className="px-5 py-3">
-                    <ReviewBadge state={f.status} />
-                  </td>
-                  <td className="px-5 py-3 tabular text-muted-foreground">{f.evidence}</td>
-                  <td className="px-5 py-3 text-muted-foreground">{f.updated}</td>
                 </tr>
-              ))}
+              ) : (
+                recentFindings.map((f) => (
+                  <tr
+                    key={f.id}
+                    onClick={() =>
+                      navigate({
+                        to: "/requirements/$id",
+                        params: { id: f.requirement_id || "req-001" },
+                      })
+                    }
+                    className="cursor-pointer border-b border-border/70 transition-colors last:border-0 hover:bg-accent/50"
+                  >
+                    <td className="px-5 py-3">
+                      <Mono className="text-foreground">{f.finding_code}</Mono>
+                    </td>
+                    <td className="px-5 py-3 font-medium">
+                      {f.requirement_title || "Requirement"}
+                    </td>
+                    <td className="px-5 py-3 text-muted-foreground">{f.finding_type}</td>
+                    <td className="px-5 py-3">
+                      <SeverityBadge severity={f.severity} />
+                    </td>
+                    <td className="px-5 py-3">
+                      <ReviewBadge state={f.review_state} />
+                    </td>
+                    <td className="px-5 py-3 tabular text-muted-foreground">
+                      {f.sources_count} sources
+                    </td>
+                    <td className="px-5 py-3 text-muted-foreground">
+                      {new Date(f.updated_at).toLocaleDateString()}
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>
@@ -302,14 +355,21 @@ function Dashboard() {
                     <CoverageBadge status={c.name as never} />
                   </span>
                   <span className="tabular text-muted-foreground">
-                    {Math.round((c.value / projectStats.requirements) * 100)}%
+                    {projectStats.requirements > 0
+                      ? Math.round((c.value / projectStats.requirements) * 100)
+                      : 0}
+                    %
                   </span>
                 </div>
                 <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-muted">
                   <div
                     className="h-full rounded-full"
                     style={{
-                      width: `${(c.value / projectStats.requirements) * 100}%`,
+                      width: `${
+                        projectStats.requirements > 0
+                          ? (c.value / projectStats.requirements) * 100
+                          : 0
+                      }%`,
                       backgroundColor: coverageColors[i],
                     }}
                   />

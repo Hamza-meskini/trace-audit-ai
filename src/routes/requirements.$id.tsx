@@ -1,9 +1,10 @@
-import { createFileRoute, Link, notFound } from "@tanstack/react-router";
+import { createFileRoute, Link, useParams } from "@tanstack/react-router";
 import { useState } from "react";
 import {
   ArrowLeft,
   Check,
   FileText,
+  Loader2,
   MessageSquare,
   Sparkles,
   ThumbsDown,
@@ -14,41 +15,33 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { MetaItem, Panel } from "@/components/primitives";
 import { CoverageBadge, Mono, ReviewBadge, SeverityBadge, Tag } from "@/components/status";
-import { requirements, type Evidence, type ReviewState } from "@/lib/mock-data";
+import { useActiveProject } from "@/hooks/use-active-project";
+import { useRequirement } from "@/hooks/use-requirements";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/requirements/$id")({
-  loader: ({ params }) => {
-    const requirement = requirements.find((r) => r.id === params.id);
-    if (!requirement) throw notFound();
-    return { requirement };
-  },
-  head: ({ loaderData }) => {
-    if (!loaderData) {
-      return { meta: [{ title: "Requirement unavailable — TraceAudit" }, { name: "robots", content: "noindex" }] };
-    }
-    const title = `${loaderData.requirement.id} — TraceAudit`;
-    return {
-      meta: [
-        { title },
-        { name: "description", content: loaderData.requirement.title },
-        { property: "og:title", content: title },
-        { property: "og:description", content: loaderData.requirement.title },
-      ],
-    };
-  },
+  head: () => ({
+    meta: [
+      { title: "Requirement Detail — TraceAudit" },
+      { name: "description", content: "Detailed evidence analysis and traceability." },
+      { property: "og:title", content: "Requirement Detail — TraceAudit" },
+    ],
+  }),
   component: RequirementDetail,
 });
 
-const evidenceTone: Record<Evidence["status"], string> = {
+const evidenceTone: Record<string, string> = {
   "Supports requirement": "border-success/25 bg-success-soft text-success",
   "Potential conflict": "border-critical/25 bg-critical-soft text-critical",
   "Supporting evidence": "border-info/25 bg-info-soft text-info",
 };
 
 function RequirementDetail() {
-  const { requirement } = Route.useLoaderData();
-  const [review, setReview] = useState<ReviewState>(requirement.review);
+  const { id } = useParams({ from: "/requirements/$id" });
+  const { activeProjectId } = useActiveProject();
+  const { data: requirement, isLoading } = useRequirement(activeProjectId, id);
+
+  const [reviewState, setReviewState] = useState<string | null>(null);
   const [comment, setComment] = useState("");
   const [comments, setComments] = useState([
     {
@@ -58,9 +51,33 @@ function RequirementDetail() {
     },
   ]);
 
-  const act = (state: ReviewState, message: string) => {
-    setReview(state);
-    toast.success(message, { description: `${requirement.id} updated` });
+  if (isLoading) {
+    return (
+      <div className="flex h-64 items-center justify-center">
+        <Loader2 className="size-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  if (!requirement) {
+    return (
+      <div className="mx-auto max-w-[1400px] p-8 text-center">
+        <h2 className="text-xl font-semibold">Requirement not found</h2>
+        <p className="mt-2 text-sm text-muted-foreground">
+          The requested requirement could not be located in this audit workspace.
+        </p>
+        <Button className="mt-4" asChild>
+          <Link to="/requirements">Back to requirements</Link>
+        </Button>
+      </div>
+    );
+  }
+
+  const currentReview = reviewState || requirement.review_state;
+
+  const act = (state: string, message: string) => {
+    setReviewState(state);
+    toast.success(message, { description: `${requirement.req_code} updated` });
   };
 
   return (
@@ -76,24 +93,24 @@ function RequirementDetail() {
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
         <div className="space-y-4 lg:col-span-5">
           <Panel title="Requirement">
-            <Mono className="text-muted-foreground">{requirement.id}</Mono>
+            <Mono className="text-muted-foreground">{requirement.req_code}</Mono>
             <h1 className="mt-2 text-lg font-semibold leading-snug">{requirement.title}</h1>
             <div className="mt-4 grid grid-cols-2 gap-4">
               <MetaItem label="Category" value={requirement.category} />
-              <MetaItem label="Severity" value={<SeverityBadge severity={requirement.severity} />} />
+              <MetaItem label="Severity" value={<SeverityBadge severity={requirement.severity as never} />} />
               <MetaItem
                 label="Status"
                 value={
-                  requirement.status === "Conflict" ? (
+                  requirement.coverage_status === "Conflict" ? (
                     <span className="text-critical">Potential conflict</span>
                   ) : (
-                    <CoverageBadge status={requirement.status} />
+                    <CoverageBadge status={requirement.coverage_status as never} />
                   )
                 }
               />
-              <MetaItem label="Confidence" value={`${requirement.confidence}%`} />
-              <MetaItem label="Review state" value={<ReviewBadge state={review} />} />
-              <MetaItem label="Evidence sources" value={`${requirement.sources} sources`} />
+              <MetaItem label="Confidence" value={`${Math.round(requirement.confidence)}%`} />
+              <MetaItem label="Review state" value={<ReviewBadge state={currentReview as never} />} />
+              <MetaItem label="Evidence sources" value={`${requirement.sources_count} sources`} />
             </div>
             <div className="mt-4 border-t border-border pt-4">
               <div className="text-[11px] uppercase tracking-wide text-muted-foreground">
@@ -101,7 +118,7 @@ function RequirementDetail() {
               </div>
               <div className="mt-1.5 flex items-center gap-2 text-sm">
                 <FileText className="size-4 text-primary" />
-                {requirement.sourceDocument}
+                {requirement.source_document || "General System Specification"}
               </div>
             </div>
           </Panel>
@@ -116,7 +133,7 @@ function RequirementDetail() {
             }
           >
             <p className="text-sm leading-relaxed text-foreground/90">
-              {requirement.analysis ??
+              {requirement.ai_analysis ??
                 "All indexed evidence segments are consistent with this requirement. No discrepancies were detected."}
             </p>
             <div className="mt-4 rounded-lg border border-border bg-surface/70 p-4">
@@ -124,7 +141,7 @@ function RequirementDetail() {
                 Recommended action
               </div>
               <p className="mt-1.5 text-sm">
-                {requirement.recommendation ??
+                {requirement.ai_recommendation ??
                   "No action required. Retain the current evidence set for the technical file."}
               </p>
             </div>
@@ -137,9 +154,9 @@ function RequirementDetail() {
         <div className="space-y-4 lg:col-span-7">
           <Panel
             title="Evidence analysis"
-            description={`${requirement.evidence.length} evidence segments linked from the indexed document set.`}
+            description={`${(requirement.evidence || []).length} evidence segments linked from the indexed document set.`}
           >
-            {requirement.evidence.length === 0 ? (
+            {(requirement.evidence || []).length === 0 ? (
               <div className="rounded-lg border border-dashed border-border bg-surface/60 px-5 py-10 text-center">
                 <h3 className="text-sm font-semibold">No evidence identified</h3>
                 <p className="mt-1 text-sm text-muted-foreground">
@@ -151,7 +168,7 @@ function RequirementDetail() {
               </div>
             ) : (
               <ul className="space-y-3">
-                {requirement.evidence.map((e) => (
+                {(requirement.evidence || []).map((e) => (
                   <li
                     key={e.id}
                     className="rounded-lg border border-border bg-card p-4 transition-shadow hover:shadow-card"
@@ -159,23 +176,23 @@ function RequirementDetail() {
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <div className="flex items-center gap-2">
                         <FileText className="size-4 text-primary" />
-                        <span className="text-sm font-semibold">{e.label}</span>
+                        <span className="text-sm font-semibold">{e.label || e.document_name}</span>
                       </div>
                       <span
                         className={cn(
                           "rounded-md border px-2 py-0.5 text-xs font-medium",
-                          evidenceTone[e.status],
+                          evidenceTone[e.status] || "border-border bg-muted",
                         )}
                       >
                         {e.status}
                       </span>
                     </div>
                     <div className="mt-1.5 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                      <span className="font-mono">{e.document}</span>
-                      <Tag>Page {e.page}</Tag>
+                      <span className="font-mono">{e.document_name}</span>
+                      {e.page_number && <Tag>Page {e.page_number}</Tag>}
                     </div>
                     <blockquote className="mt-3 border-l-2 border-border pl-3 text-sm italic leading-relaxed">
-                      {e.highlight ? (
+                      {e.highlight && e.quote.includes(e.highlight) ? (
                         <>
                           {e.quote.split(e.highlight)[0]}
                           <mark className="rounded bg-warning-soft px-1 not-italic text-warning">

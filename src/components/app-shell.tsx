@@ -63,10 +63,12 @@ const labels: Record<string, string> = {
   "new-audit": "New Audit",
 };
 
+import { useActiveProject } from "@/hooks/use-active-project";
+
 export function AppShell({ children }: { children: React.ReactNode }) {
   const [collapsed, setCollapsed] = useState(false);
   const [openSearch, setOpenSearch] = useState(false);
-  const [project, setProject] = useState(projects[0]!);
+  const { activeProject, projects: apiProjects, selectProject } = useActiveProject();
   const [unread, setUnread] = useState(3);
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const navigate = useNavigate();
@@ -178,23 +180,28 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <DropdownMenuTrigger asChild>
                 <Button variant="outline" size="sm" className="hidden gap-2 sm:inline-flex">
                   <span className="size-1.5 rounded-full bg-success" />
-                  <span className="max-w-[180px] truncate">{project.name}</span>
+                  <span className="max-w-[180px] truncate">{activeProject?.name || "Select Project"}</span>
                   <ChevronDown className="size-3.5 opacity-60" />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-72">
                 <DropdownMenuLabel className="text-xs text-muted-foreground">
-                  Projects
+                  Projects ({apiProjects.length})
                 </DropdownMenuLabel>
-                {projects.map((p) => (
+                {apiProjects.map((p) => (
                   <DropdownMenuItem
                     key={p.id}
-                    onSelect={() => setProject(p)}
+                    onSelect={() => selectProject(p.id)}
                     className="flex-col items-start gap-0.5"
                   >
-                    <span className="text-sm font-medium">{p.name}</span>
+                    <div className="flex w-full items-center justify-between">
+                      <span className="text-sm font-medium">{p.name}</span>
+                      {p.id === activeProject.id && (
+                        <span className="size-1.5 rounded-full bg-primary" />
+                      )}
+                    </div>
                     <span className="font-mono text-[11px] text-muted-foreground">
-                      {p.auditId} · {p.status}
+                      {p.audit_id} · {p.status}
                     </span>
                   </DropdownMenuItem>
                 ))}

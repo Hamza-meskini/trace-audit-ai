@@ -1,6 +1,6 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
-import { Search } from "lucide-react";
+import { Search, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -12,20 +12,23 @@ import {
 } from "@/components/ui/select";
 import { EmptyState, PageHeader, Panel } from "@/components/primitives";
 import { Mono, ReviewBadge, SeverityBadge } from "@/components/status";
-import { categories, findings, projectStats, severityCounts } from "@/lib/mock-data";
+import { useActiveProject } from "@/hooks/use-active-project";
+import { useFindings, useUpdateFinding } from "@/hooks/use-findings";
+import { categories } from "@/lib/mock-data";
+import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/findings")({
   head: () => ({
     meta: [
-      { title: "Findings — TraceAudit" },
+      { title: "Findings & Triage — TraceAudit" },
       {
         name: "description",
-        content: "Triage missing evidence, partial evidence and potential conflicts.",
+        content: "Triage and resolve audit findings, missing evidence and conflicts.",
       },
-      { property: "og:title", content: "Findings — TraceAudit" },
+      { property: "og:title", content: "Findings & Triage — TraceAudit" },
       {
         property: "og:description",
-        content: "A workspace to triage and review audit findings requiring human attention.",
+        content: "Prioritize findings by severity and assign review actions.",
       },
     ],
   }),
@@ -43,6 +46,8 @@ const types = [
 
 function FindingsPage() {
   const navigate = useNavigate();
+  const { activeProjectId } = useActiveProject();
+
   const [severity, setSeverity] = useState("all");
   const [type, setType] = useState("all");
   const [status, setStatus] = useState("all");
@@ -50,25 +55,41 @@ function FindingsPage() {
   const [reviewer, setReviewer] = useState("all");
   const [query, setQuery] = useState("");
 
-  const reviewers = Array.from(new Set(findings.map((f) => f.owner)));
+  const { data: findingsList, isLoading } = useFindings(activeProjectId, {
+    severity,
+    finding_type: type,
+    review_state: status,
+    category,
+  });
+
+  const allFindings = findingsList || [];
+  const reviewers = Array.from(
+    new Set(allFindings.map((f) => f.assigned_to).filter(Boolean) as string[])
+  );
 
   const rows = useMemo(
     () =>
-      findings.filter((f) => {
-        if (severity !== "all" && f.severity !== severity) return false;
-        if (type !== "all" && f.type !== type) return false;
-        if (status !== "all" && f.status !== status) return false;
-        if (category !== "all" && f.category !== category) return false;
-        if (reviewer !== "all" && f.owner !== reviewer) return false;
-        if (query && !`${f.id} ${f.requirement} ${f.requirementTitle}`.toLowerCase().includes(query.toLowerCase()))
+      allFindings.filter((f) => {
+        if (reviewer !== "all" && f.assigned_to !== reviewer) return false;
+        if (
+          query &&
+          !`${f.finding_code} ${f.requirement_title || ""}`.toLowerCase().includes(query.toLowerCase())
+        )
           return false;
         return true;
       }),
-    [severity, type, status, category, reviewer, query],
+    [allFindings, reviewer, query],
   );
 
+  const severityCounts = {
+    Critical: allFindings.filter((f) => f.severity === "Critical").length,
+    High: allFindings.filter((f) => f.severity === "High").length,
+    Medium: allFindings.filter((f) => f.severity === "Medium").length,
+    Low: allFindings.filter((f) => f.severity === "Low").length,
+  };
+
   const summary = [
-    { label: "Total", value: projectStats.findings, tone: "text-foreground" },
+    { label: "Total", value: allFindings.length, tone: "text-foreground" },
     { label: "Critical", value: severityCounts.Critical, tone: "text-critical" },
     { label: "High", value: severityCounts.High, tone: "text-warning" },
     { label: "Medium", value: severityCounts.Medium, tone: "text-primary" },
@@ -125,7 +146,7 @@ function FindingsPage() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All statuses</SelectItem>
-              {["Open", "Needs review", "Reviewed"].map((s) => (
+              {["Open", "Needs review", "Reviewed", "Approved", "Rejected"].map((s) => (
                 <SelectItem key={s} value={s}>
                   {s}
                 </SelectItem>
@@ -145,19 +166,21 @@ function FindingsPage() {
               ))}
             </SelectContent>
           </Select>
-          <Select value={reviewer} onValueChange={setReviewer}>
-            <SelectTrigger className="h-9 w-[160px]">
-              <SelectValue placeholder="Reviewer" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All reviewers</SelectItem>
-              {reviewers.map((r) => (
-                <SelectItem key={r} value={r}>
-                  {r}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          {reviewers.length > 0 && (
+            <Select value={reviewer} onValueChange={setReviewer}>
+              <SelectTrigger className="h-9 w-[160px]">
+                <SelectValue placeholder="Reviewer" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All reviewers</SelectItem>
+                {reviewers.map((r) => (
+                  <SelectItem key={r} value={r}>
+                    {r}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
           <div className="relative ml-auto w-full sm:w-56">
             <Search className="absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input
@@ -171,7 +194,11 @@ function FindingsPage() {
       </Panel>
 
       <Panel className="mt-4" bodyClassName="p-0">
-        {rows.length === 0 ? (
+        {isLoading ? (
+          <div className="flex items-center justify-center p-12">
+            <Loader2 className="size-6 animate-spin text-primary" />
+          </div>
+        ) : rows.length === 0 ? (
           <div className="p-6">
             <EmptyState
               title="No findings require your attention."
@@ -214,29 +241,33 @@ function FindingsPage() {
                   <tr
                     key={f.id}
                     onClick={() =>
-                      navigate({ to: "/requirements/$id", params: { id: f.requirement } })
+                      navigate({
+                        to: "/requirements/$id",
+                        params: { id: f.requirement_id || "req-001" },
+                      })
                     }
                     className="cursor-pointer border-b border-border/70 transition-colors last:border-0 hover:bg-accent/50"
                   >
                     <td className="px-5 py-3">
-                      <Mono className="text-foreground">{f.id}</Mono>
+                      <Mono className="text-foreground">{f.finding_code}</Mono>
                     </td>
-                    <td className="px-5 py-3">{f.type}</td>
+                    <td className="px-5 py-3">{f.finding_type}</td>
                     <td className="max-w-[340px] px-5 py-3">
-                      <Mono className="text-muted-foreground">{f.requirement}</Mono>
-                      <div className="truncate text-xs text-muted-foreground">
-                        {f.requirementTitle}
+                      <div className="font-medium text-foreground">
+                        {f.requirement_title || "Requirement"}
                       </div>
                     </td>
                     <td className="px-5 py-3">
                       <SeverityBadge severity={f.severity} />
                     </td>
-                    <td className="px-5 py-3 tabular text-muted-foreground">{f.sources} sources</td>
+                    <td className="px-5 py-3 tabular text-muted-foreground">{f.sources_count} sources</td>
                     <td className="px-5 py-3">
-                      <ReviewBadge state={f.status} />
+                      <ReviewBadge state={f.review_state} />
                     </td>
-                    <td className="px-5 py-3 text-muted-foreground">{f.owner}</td>
-                    <td className="px-5 py-3 text-muted-foreground">{f.updated}</td>
+                    <td className="px-5 py-3 text-muted-foreground">{f.assigned_to || "Unassigned"}</td>
+                    <td className="px-5 py-3 text-muted-foreground">
+                      {new Date(f.updated_at).toLocaleDateString()}
+                    </td>
                   </tr>
                 ))}
               </tbody>

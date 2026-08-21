@@ -1,6 +1,6 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
-import { ArrowUpDown, Search, SlidersHorizontal } from "lucide-react";
+import { ArrowUpDown, Search, SlidersHorizontal, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -12,18 +12,22 @@ import {
 } from "@/components/ui/select";
 import { PageHeader, Panel, EmptyState } from "@/components/primitives";
 import { CoverageBadge, Mono, ReviewBadge } from "@/components/status";
-import { categories, documents, requirements } from "@/lib/mock-data";
+import { useActiveProject } from "@/hooks/use-active-project";
+import { useRequirements } from "@/hooks/use-requirements";
+import { useDocuments } from "@/hooks/use-documents";
+import { useProjectStats } from "@/hooks/use-projects";
+import { categories } from "@/lib/mock-data";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/requirements/")({
   head: () => ({
     meta: [
-      { title: "Requirements — TraceAudit" },
+      { title: "Requirements Matrix — TraceAudit" },
       {
         name: "description",
-        content: "Review extracted requirements and their evidence coverage.",
+        content: "Traceability matrix for technical requirements and evidence.",
       },
-      { property: "og:title", content: "Requirements — TraceAudit" },
+      { property: "og:title", content: "Requirements Matrix — TraceAudit" },
       {
         property: "og:description",
         content: "Filter requirements by coverage status, category and review state.",
@@ -37,6 +41,8 @@ const tabs = ["All", "Supported", "Partial", "Missing", "Conflict", "Needs revie
 
 function RequirementsPage() {
   const navigate = useNavigate();
+  const { activeProjectId } = useActiveProject();
+
   const [tab, setTab] = useState<(typeof tabs)[number]>("All");
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState("all");
@@ -44,20 +50,32 @@ function RequirementsPage() {
   const [doc, setDoc] = useState("all");
   const [sortAsc, setSortAsc] = useState(true);
 
+  const { data: requirementsList, isLoading } = useRequirements(activeProjectId, {
+    category,
+    severity,
+    status: tab === "Needs review" ? undefined : tab,
+    review: tab === "Needs review" ? "needs_review" : undefined,
+  });
+
+  const { data: documentsList } = useDocuments(activeProjectId);
+  const { data: stats } = useProjectStats(activeProjectId);
+
   const rows = useMemo(() => {
-    const filtered = requirements.filter((r) => {
-      if (tab === "Needs review" && r.review !== "Needs review") return false;
-      if (tab !== "All" && tab !== "Needs review" && r.status !== tab) return false;
+    const list = requirementsList || [];
+    const filtered = list.filter((r) => {
+      if (tab === "Needs review" && r.review_state !== "Needs review") return false;
+      if (tab !== "All" && tab !== "Needs review" && r.coverage_status !== tab) return false;
       if (category !== "all" && r.category !== category) return false;
       if (severity !== "all" && r.severity !== severity) return false;
-      if (doc !== "all" && r.sourceDocument !== doc) return false;
-      if (query && !`${r.id} ${r.title}`.toLowerCase().includes(query.toLowerCase())) return false;
+      if (doc !== "all" && r.source_document !== doc) return false;
+      if (query && !`${r.req_code} ${r.title}`.toLowerCase().includes(query.toLowerCase()))
+        return false;
       return true;
     });
     return [...filtered].sort((a, b) =>
-      sortAsc ? a.id.localeCompare(b.id) : b.id.localeCompare(a.id),
+      sortAsc ? a.req_code.localeCompare(b.req_code) : b.req_code.localeCompare(a.req_code),
     );
-  }, [tab, query, category, severity, doc, sortAsc]);
+  }, [requirementsList, tab, query, category, severity, doc, sortAsc]);
 
   return (
     <div className="mx-auto max-w-[1400px]">
@@ -137,9 +155,9 @@ function RequirementsPage() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All source documents</SelectItem>
-              {documents.map((d) => (
-                <SelectItem key={d.id} value={d.name}>
-                  {d.name}
+              {(documentsList || []).map((d) => (
+                <SelectItem key={d.id} value={d.original_filename}>
+                  {d.original_filename}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -150,13 +168,17 @@ function RequirementsPage() {
             Sort by ID
           </Button>
           <span className="ml-auto self-center text-xs text-muted-foreground">
-            {rows.length} of {requirements.length} shown · 347 analyzed in full dataset
+            {rows.length} shown
           </span>
         </div>
       </Panel>
 
       <Panel className="mt-4" bodyClassName="p-0">
-        {rows.length === 0 ? (
+        {isLoading ? (
+          <div className="flex items-center justify-center p-12">
+            <Loader2 className="size-6 animate-spin text-primary" />
+          </div>
+        ) : rows.length === 0 ? (
           <div className="p-6">
             <EmptyState
               title="No requirements match these filters."
@@ -200,19 +222,19 @@ function RequirementsPage() {
                     className="cursor-pointer border-b border-border/70 transition-colors last:border-0 hover:bg-accent/50"
                   >
                     <td className="px-5 py-3">
-                      <Mono className="text-foreground">{r.id}</Mono>
+                      <Mono className="text-foreground">{r.req_code}</Mono>
                     </td>
                     <td className="max-w-[420px] px-5 py-3 font-medium">{r.title}</td>
                     <td className="px-5 py-3 text-muted-foreground">{r.category}</td>
                     <td className="px-5 py-3 tabular text-muted-foreground">
-                      {r.sources} sources
+                      {r.sources_count} sources
                     </td>
                     <td className="px-5 py-3">
-                      <CoverageBadge status={r.status} />
+                      <CoverageBadge status={r.coverage_status} />
                     </td>
-                    <td className="px-5 py-3 tabular">{r.confidence}%</td>
+                    <td className="px-5 py-3 tabular">{Math.round(r.confidence)}%</td>
                     <td className="px-5 py-3">
-                      <ReviewBadge state={r.review} />
+                      <ReviewBadge state={r.review_state} />
                     </td>
                   </tr>
                 ))}
@@ -220,17 +242,6 @@ function RequirementsPage() {
             </table>
           </div>
         )}
-        <div className="flex items-center justify-between border-t border-border px-5 py-3 text-xs text-muted-foreground">
-          <span>Page 1 of 29</span>
-          <div className="flex gap-2">
-            <Button variant="outline" size="sm" disabled>
-              Previous
-            </Button>
-            <Button variant="outline" size="sm">
-              Next
-            </Button>
-          </div>
-        </div>
       </Panel>
     </div>
   );

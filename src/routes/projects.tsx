@@ -5,7 +5,10 @@ import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { MetaItem, PageHeader, Panel } from "@/components/primitives";
 import { CoverageBadge, Mono, ReviewBadge, SeverityBadge, Tag } from "@/components/status";
-import { documents, findings, projects, projectStats, requirements } from "@/lib/mock-data";
+import { useProjects, useProjectStats } from "@/hooks/use-projects";
+import { useDocuments } from "@/hooks/use-documents";
+import { useRequirements } from "@/hooks/use-requirements";
+import { useFindings } from "@/hooks/use-findings";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/projects")({
@@ -29,16 +32,36 @@ export const Route = createFileRoute("/projects")({
 
 const tabs = ["Overview", "Requirements", "Documents", "Findings", "Traceability", "Reports"] as const;
 
+import { useActiveProject } from "@/hooks/use-active-project";
+
 function ProjectPage() {
   const [tab, setTab] = useState<(typeof tabs)[number]>("Overview");
   const navigate = useNavigate();
-  const project = projects[0]!;
+
+  const { activeProject: project, activeProjectId, projects: projectsList, selectProject } = useActiveProject();
+
+  const { data: stats } = useProjectStats(activeProjectId);
+  const { data: docs } = useDocuments(activeProjectId);
+  const { data: reqs } = useRequirements(activeProjectId);
+  const { data: findingsList } = useFindings(activeProjectId);
+
+  const projectStats = stats || {
+    requirements: 12,
+    coverage: 58,
+    supported: 7,
+    partial: 1,
+    missing: 2,
+    conflict: 2,
+    documents: 6,
+    evidence_segments: 15,
+    findings: 5,
+  };
 
   return (
     <div className="mx-auto max-w-[1400px]">
       <PageHeader
         title={project.name}
-        subtitle={`${project.company} · X200 EU Technical Documentation Audit`}
+        subtitle={`${project.company} · ${project.audit_id} Technical Documentation Audit`}
         actions={
           <>
             <Button variant="outline" size="sm" asChild>
@@ -54,10 +77,10 @@ function ProjectPage() {
 
       <Panel bodyClassName="p-5">
         <div className="grid grid-cols-2 gap-5 md:grid-cols-5">
-          <MetaItem label="Project ID" value={<Mono>{project.auditId}</Mono>} />
-          <MetaItem label="Product category" value={project.productCategory} />
-          <MetaItem label="Created" value={project.created} />
-          <MetaItem label="Last analysis" value={project.lastAnalysis} />
+          <MetaItem label="Project ID" value={<Mono>{project.audit_id}</Mono>} />
+          <MetaItem label="Product category" value={project.product_category} />
+          <MetaItem label="Created" value={new Date(project.created_at).toLocaleDateString()} />
+          <MetaItem label="Last analysis" value={new Date(project.updated_at).toLocaleDateString()} />
           <MetaItem
             label="Status"
             value={<span className="text-success">{project.status}</span>}
@@ -87,17 +110,17 @@ function ProjectPage() {
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
             <Panel title="Audit progress" className="lg:col-span-1">
               <div className="flex items-baseline gap-2">
-                <span className="text-4xl font-semibold tabular">{projectStats.progress}%</span>
-                <span className="text-sm text-muted-foreground">complete</span>
+                <span className="text-4xl font-semibold tabular">{projectStats.coverage}%</span>
+                <span className="text-sm text-muted-foreground">coverage</span>
               </div>
-              <Progress value={projectStats.progress} className="mt-3 h-1.5" />
+              <Progress value={projectStats.coverage} className="mt-3 h-1.5" />
               <ul className="mt-5 space-y-3 text-sm">
                 {[
                   ["Documents", projectStats.documents],
                   ["Requirements", projectStats.requirements],
-                  ["Evidence links", projectStats.evidenceLinks],
-                  ["Findings", projectStats.findings],
-                  ["Human reviews completed", projectStats.humanReviews],
+                  ["Evidence segments", projectStats.evidence_segments],
+                  ["Open findings", projectStats.findings],
+                  ["Fully supported", projectStats.supported],
                 ].map(([label, value]) => (
                   <li key={label as string} className="flex items-center justify-between">
                     <span className="text-muted-foreground">{label}</span>
@@ -118,13 +141,20 @@ function ProjectPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {projects.map((p) => (
-                    <tr key={p.id} className="border-b border-border/70 last:border-0 hover:bg-accent/50">
+                  {(projectsList || []).map((p) => (
+                    <tr
+                      key={p.id}
+                      onClick={() => selectProject(p.id)}
+                      className={cn(
+                        "cursor-pointer border-b border-border/70 last:border-0 hover:bg-accent/50",
+                        p.id === project.id ? "bg-accent/30 font-medium" : ""
+                      )}
+                    >
                       <td className="px-5 py-3 font-medium">{p.name}</td>
                       <td className="px-5 py-3">
-                        <Mono className="text-muted-foreground">{p.auditId}</Mono>
+                        <Mono className="text-muted-foreground">{p.audit_id}</Mono>
                       </td>
-                      <td className="px-5 py-3 text-muted-foreground">{p.productCategory}</td>
+                      <td className="px-5 py-3 text-muted-foreground">{p.product_category}</td>
                       <td className="px-5 py-3">
                         <Tag>{p.status}</Tag>
                       </td>
@@ -137,21 +167,29 @@ function ProjectPage() {
         )}
 
         {tab === "Requirements" && (
-          <Panel bodyClassName="p-0" actions={<Button variant="outline" size="sm" asChild><Link to="/requirements">Open workspace</Link></Button>} title="Requirements sample">
+          <Panel
+            bodyClassName="p-0"
+            actions={
+              <Button variant="outline" size="sm" asChild>
+                <Link to="/requirements">Open workspace</Link>
+              </Button>
+            }
+            title="Requirements sample"
+          >
             <table className="w-full text-sm">
               <tbody>
-                {requirements.slice(0, 6).map((r) => (
+                {(reqs || []).slice(0, 6).map((r) => (
                   <tr
                     key={r.id}
                     onClick={() => navigate({ to: "/requirements/$id", params: { id: r.id } })}
                     className="cursor-pointer border-b border-border/70 last:border-0 hover:bg-accent/50"
                   >
                     <td className="px-5 py-3">
-                      <Mono>{r.id}</Mono>
+                      <Mono>{r.req_code}</Mono>
                     </td>
                     <td className="px-5 py-3 font-medium">{r.title}</td>
                     <td className="px-5 py-3">
-                      <CoverageBadge status={r.status} />
+                      <CoverageBadge status={r.coverage_status} />
                     </td>
                     <td className="px-5 py-3 tabular text-muted-foreground">{r.confidence}%</td>
                   </tr>
@@ -162,18 +200,26 @@ function ProjectPage() {
         )}
 
         {tab === "Documents" && (
-          <Panel title="Documents" bodyClassName="p-0" actions={<Button variant="outline" size="sm" asChild><Link to="/documents">Manage documents</Link></Button>}>
+          <Panel
+            title="Documents"
+            bodyClassName="p-0"
+            actions={
+              <Button variant="outline" size="sm" asChild>
+                <Link to="/documents">Manage documents</Link>
+              </Button>
+            }
+          >
             <table className="w-full text-sm">
               <tbody>
-                {documents.map((d) => (
+                {(docs || []).map((d) => (
                   <tr key={d.id} className="border-b border-border/70 last:border-0 hover:bg-accent/50">
-                    <td className="px-5 py-3 font-medium">{d.name}</td>
-                    <td className="px-5 py-3 text-muted-foreground">{d.type}</td>
+                    <td className="px-5 py-3 font-medium">{d.original_filename}</td>
+                    <td className="px-5 py-3 text-muted-foreground">{d.doc_type}</td>
                     <td className="px-5 py-3">
                       <Mono>{d.version}</Mono>
                     </td>
                     <td className="px-5 py-3 tabular text-muted-foreground">
-                      {d.requirementsLinked} requirements
+                      {d.requirements_linked} requirements
                     </td>
                   </tr>
                 ))}
@@ -183,20 +229,28 @@ function ProjectPage() {
         )}
 
         {tab === "Findings" && (
-          <Panel title="Findings" bodyClassName="p-0" actions={<Button variant="outline" size="sm" asChild><Link to="/findings">Open findings</Link></Button>}>
+          <Panel
+            title="Findings"
+            bodyClassName="p-0"
+            actions={
+              <Button variant="outline" size="sm" asChild>
+                <Link to="/findings">Open findings</Link>
+              </Button>
+            }
+          >
             <table className="w-full text-sm">
               <tbody>
-                {findings.slice(0, 6).map((f) => (
+                {(findingsList || []).slice(0, 6).map((f) => (
                   <tr key={f.id} className="border-b border-border/70 last:border-0 hover:bg-accent/50">
                     <td className="px-5 py-3">
-                      <Mono>{f.id}</Mono>
+                      <Mono>{f.finding_code}</Mono>
                     </td>
-                    <td className="px-5 py-3">{f.type}</td>
+                    <td className="px-5 py-3">{f.finding_type}</td>
                     <td className="px-5 py-3">
                       <SeverityBadge severity={f.severity} />
                     </td>
                     <td className="px-5 py-3">
-                      <ReviewBadge state={f.status} />
+                      <ReviewBadge state={f.review_state} />
                     </td>
                   </tr>
                 ))}
