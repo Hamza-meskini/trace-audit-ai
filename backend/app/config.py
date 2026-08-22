@@ -40,6 +40,16 @@ class Settings(BaseSettings):
     # CORS
     CORS_ORIGINS: list[str] = ["http://localhost:5173", "http://localhost:3000", "http://localhost:8080"]
 
+    # OpenRouter Multi-Model Fallback Settings (https://openrouter.ai/)
+    OPENROUTER_API_KEY: str = ""
+    OPENROUTER_MODEL: str = "deepseek/deepseek-r1:free"
+    OPENROUTER_FALLBACK_MODELS: list[str] = [
+        "deepseek/deepseek-r1:free",
+        "meta-llama/llama-3.3-70b-instruct:free",
+        "openai/gpt-oss-20b:free",
+        "openrouter/free",
+    ]
+
     model_config = {
         "env_file": (
             str(Path(__file__).resolve().parent.parent / ".env"),
@@ -62,9 +72,20 @@ class Settings(BaseSettings):
     @property
     def effective_openai_api_key(self) -> str:
         """Return OpenAI API key if present and starts with sk-."""
-        if self.OPENAI_API_KEY and self.OPENAI_API_KEY.startswith("sk-"):
+        if self.OPENAI_API_KEY and self.OPENAI_API_KEY.startswith("sk-") and not self.OPENAI_API_KEY.startswith("sk-or-"):
             return self.OPENAI_API_KEY
         return os.environ.get("OPENAI_API_KEY", "")
+
+    @property
+    def effective_openrouter_api_key(self) -> str:
+        """Return OpenRouter API key from OPENROUTER_API_KEY or OPENAI_API_KEY if prefixed with sk-or-."""
+        key = self.OPENROUTER_API_KEY
+        if not key and self.OPENAI_API_KEY and self.OPENAI_API_KEY.startswith("sk-or-"):
+            key = self.OPENAI_API_KEY
+        if not key:
+            key = os.environ.get("OPENROUTER_API_KEY", "")
+        return key
+
 
 
 settings = Settings()
