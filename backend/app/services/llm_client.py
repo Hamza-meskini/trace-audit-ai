@@ -8,6 +8,7 @@ Supports Thinking via thinkingConfig (https://ai.google.dev/gemini-api/docs/thin
 """
 
 import json
+import asyncio
 import logging
 from typing import Type, TypeVar, Optional, Any
 import httpx
@@ -103,27 +104,35 @@ async def call_gemini_generate_content(
             "parts": [{"text": system_instruction}]
         }
 
-    try:
-        async with httpx.AsyncClient(timeout=timeout) as client:
-            resp = await client.post(url, json=payload)
-            if resp.status_code != 200:
-                logger.error(f"Gemini API error [{resp.status_code}]: {resp.text}")
-                return None
+    for attempt in range(3):
+        try:
+            async with httpx.AsyncClient(timeout=timeout) as client:
+                resp = await client.post(url, json=payload)
+                if resp.status_code == 503 or resp.status_code == 429:
+                    logger.warning(f"Gemini API rate/capacity [{resp.status_code}]. Retrying (attempt {attempt+1}/3)...")
+                    await asyncio.sleep(1.5 * (attempt + 1))
+                    continue
+                if resp.status_code != 200:
+                    logger.error(f"Gemini API error [{resp.status_code}]: {resp.text}")
+                    return None
 
-            data = resp.json()
-            candidates = data.get("candidates", [])
-            if not candidates:
-                logger.warning("No candidates returned from Gemini.")
-                return None
+                data = resp.json()
+                candidates = data.get("candidates", [])
+                if not candidates:
+                    logger.warning("No candidates returned from Gemini.")
+                    return None
 
-            parts = candidates[0].get("content", {}).get("parts", [])
-            if not parts:
-                return None
+                parts = candidates[0].get("content", {}).get("parts", [])
+                if not parts:
+                    return None
 
-            return parts[0].get("text", "")
-    except Exception as ex:
-        logger.error(f"Exception calling Gemini API ({clean_model}): {ex}")
-        return None
+                return parts[0].get("text", "")
+        except Exception as ex:
+            if attempt == 2:
+                logger.error(f"Exception calling Gemini API ({clean_model}): {ex}")
+                return None
+            await asyncio.sleep(1.0)
+    return None
 
 
 async def call_openai_chat_completions(
@@ -181,12 +190,14 @@ async def generate_structured(
 
     if is_gemini and settings.effective_gemini_api_key:
         schema = response_model.model_json_schema()
+        # Embed schema instruction into prompt to avoid Gemini API $defs/$ref errors
+        prompt_with_schema = f"{prompt}\n\nRespond ONLY with valid JSON strictly conforming to this schema:\n{json.dumps(schema)}"
         raw_response = await call_gemini_generate_content(
-            prompt=prompt,
+            prompt=prompt_with_schema,
             model=active_model,
             system_instruction=system_instruction,
             json_mode=True,
-            response_schema=schema,
+            response_schema=None,
             thinking_level=thinking_level,
         )
     elif settings.effective_openai_api_key:

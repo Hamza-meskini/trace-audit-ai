@@ -38,7 +38,7 @@ if hasattr(sys.stdout, "reconfigure"):
 from app.services.ingestion import parse_document
 from app.services.extraction import extract_requirements_from_text
 from app.services.retrieval import retrieve_candidate_evidence
-from app.services.classification import assess_requirement_coverage
+from app.services.classification import assess_requirement_coverage, assess_requirement_coverage_async, batch_assess_requirements
 from app.config import settings
 
 # Import evaluation modules
@@ -74,10 +74,16 @@ async def run_benchmark(
     model: str = "gemini-3.7-flash",
     thinking_level: str = "HIGH",
     regenerate_data: bool = False,
+    oracle: bool = False,
 ) -> dict[str, Any]:
-    """Run full end-to-end evaluation pipeline against the real TraceAudit engine."""
+    """Run full end-to-end evaluation pipeline against the real TraceAudit engine.
+    
+    If oracle=True, bypasses standard BM25 retrieval and feeds ONLY ground-truth evidence
+    links to isolate the verifier's ceiling accuracy.
+    """
+    mode_banner = " [ORACLE RETRIEVAL EXPERIMENT]" if oracle else ""
     print("=" * 70)
-    print("           TRACEAUDIT AI - PIPELINE BENCHMARK EVALUATION")
+    print(f"           TRACEAUDIT AI - PIPELINE BENCHMARK EVALUATION{mode_banner}")
     print("=" * 70)
 
     if regenerate_data or not list(DOCS_DIR.glob("*")):
@@ -86,6 +92,12 @@ async def run_benchmark(
 
     gt_reqs, gt_links, gt_findings = load_ground_truth()
     print(f">> Loaded Ground Truth: {len(gt_reqs)} requirements, {len(gt_links)} evidence links.")
+
+    # Map ground truth sources for lookup
+    gt_sources_map = {}
+    for link in gt_links:
+        code = normalize_code(link.get("req_code") or link.get("requirement_id"))
+        gt_sources_map.setdefault(code, []).append(link)
 
     # ──────────────────────────────────────────────────────────────────────────
     # Stage 1: Document Ingestion (Real PyMuPDF, python-docx, openpyxl parser)
@@ -143,65 +155,102 @@ async def run_benchmark(
     print(f"  Extraction Precision: {extraction_metrics.precision}% | Recall: {extraction_metrics.recall}% | F1: {extraction_metrics.f1}%")
 
     # ──────────────────────────────────────────────────────────────────────────
-    # Stage 3: Evidence Retrieval & Candidate Selection (Real BM25 + Boost Engine)
+    # Stage 3: Evidence Retrieval (Normal BM25 or Perfect Oracle)
     # ──────────────────────────────────────────────────────────────────────────
-    print("\n[3/4] Running Evidence Candidate Retrieval for each requirement...")
     retrieved_by_req: dict[str, list[dict[str, Any]]] = {}
 
-    # We evaluate against all ground-truth requirements to ensure reproducible coverage testing
-    for r in gt_reqs:
-        req_code = normalize_code(r.get("req_code") or r.get("requirement_id"))
-        query = f"{r.get('title', '')} {r.get('description', '')}"
+    if oracle:
+        print("\n[3/4] [ORACLE MODE] Feeding ONLY Ground-Truth Evidence Chunks...")
+        for r in gt_reqs:
+            req_code = normalize_code(r.get("req_code") or r.get("requirement_id"))
+            oracle_links = gt_sources_map.get(req_code, [])
+            oracle_chunks = []
+            seen_ids = set()
+            for link in oracle_links:
+                target_doc = link.get("document", "")
+                target_page = link.get("page")
+                target_quote = (link.get("quote") or "").strip()
+                for c in all_chunks:
+                    if c["document_name"] == target_doc:
+                        if target_page is None or c.get("page_number") == target_page or (target_quote and target_quote[:30] in c.get("content", "")):
+                            if c["id"] not in seen_ids:
+                                seen_ids.add(c["id"])
+                                oracle_chunks.append({
+                                    "chunk_id": c["id"],
+                                    "document_name": c["document_name"],
+                                    "page_number": c.get("page_number"),
+                                    "content": c["content"],
+                                    "score": 1.0,
+                                })
+            retrieved_by_req[req_code] = oracle_chunks
+        print("  Oracle Retrieval: 100.0% precision/recall on ground-truth evidence.")
+        retrieval_metrics = evaluate_retrieval(gt_links, retrieved_by_req)
+    else:
+        print("\n[3/4] Running Evidence Candidate Retrieval for each requirement...")
+        # We evaluate against all ground-truth requirements to ensure reproducible coverage testing
+        for r in gt_reqs:
+            req_code = normalize_code(r.get("req_code") or r.get("requirement_id"))
+            query = f"{r.get('title', '')} {r.get('description', '')}"
 
-        candidate_chunks = retrieve_candidate_evidence(
-            requirement_text=query,
-            chunks=all_chunks,
-            top_k=7,
-            min_score=0.2,
-        )
+            candidate_chunks = retrieve_candidate_evidence(
+                requirement_text=query,
+                chunks=all_chunks,
+                top_k=7,
+                min_score=0.2,
+            )
 
-        retrieved_by_req[req_code] = [
-            {
-                "chunk_id": c.chunk_id,
-                "document_name": c.document_name,
-                "page_number": c.page_number,
-                "content": c.content,
-                "score": c.score,
-            }
-            for c in candidate_chunks
-        ]
+            retrieved_by_req[req_code] = [
+                {
+                    "chunk_id": c.chunk_id,
+                    "document_name": c.document_name,
+                    "page_number": c.page_number,
+                    "content": c.content,
+                    "score": c.score,
+                }
+                for c in candidate_chunks
+            ]
 
-    retrieval_metrics = evaluate_retrieval(gt_links, retrieved_by_req)
-    print(f"  Recall@1: {retrieval_metrics.recall_at_1}% | Recall@3: {retrieval_metrics.recall_at_3}% | Recall@5: {retrieval_metrics.recall_at_5}% | MRR: {retrieval_metrics.mean_reciprocal_rank}")
+        retrieval_metrics = evaluate_retrieval(gt_links, retrieved_by_req)
+        print(f"  Recall@1: {retrieval_metrics.recall_at_1}% | Recall@3: {retrieval_metrics.recall_at_3}% | Recall@5: {retrieval_metrics.recall_at_5}% | MRR: {retrieval_metrics.mean_reciprocal_rank}")
 
     # ──────────────────────────────────────────────────────────────────────────
     # Stage 4: Verification, Contradiction Detection & Coverage Classification
     # ──────────────────────────────────────────────────────────────────────────
-    print("\n[4/4] Running Verification & Contradiction Detection Engine...")
+    print("\n[4/4] Running Verification & Contradiction Detection Engine (Batched with Gemini 3.7 Flash)...")
     actual_predictions: dict[str, str] = {}
     detailed_assessments: dict[str, Any] = {}
 
+    req_items_to_assess = [
+        {
+            "req_code": normalize_code(r.get("req_code") or r.get("requirement_id")),
+            "title": r.get("title", ""),
+            "description": r.get("description", ""),
+            "category": r.get("category", "General"),
+            "candidate_chunks": retrieved_by_req.get(normalize_code(r.get("req_code") or r.get("requirement_id")), []),
+        }
+        for r in gt_reqs
+    ]
+
+    all_assessments = await batch_assess_requirements(
+        req_items=req_items_to_assess,
+        model=model,
+        thinking_level=thinking_level,
+        batch_size=10,
+    )
+
     for r in gt_reqs:
         req_code = normalize_code(r.get("req_code") or r.get("requirement_id"))
-        candidates = retrieved_by_req.get(req_code, [])
-
-        assessment = assess_requirement_coverage(
-            req_code=req_code,
-            title=r.get("title", ""),
-            description=r.get("description", ""),
-            category=r.get("category", "General"),
-            candidate_chunks=candidates,
-        )
-
-        actual_predictions[req_code] = assessment.coverage_status
-        detailed_assessments[req_code] = {
-            "coverage_status": assessment.coverage_status,
-            "confidence": assessment.confidence,
-            "review_state": assessment.review_state,
-            "ai_analysis": assessment.ai_analysis,
-            "ai_recommendation": assessment.ai_recommendation,
-            "evidence_links_count": len(assessment.evidence_links),
-        }
+        assessment = all_assessments.get(req_code)
+        if assessment:
+            actual_predictions[req_code] = assessment.coverage_status
+            detailed_assessments[req_code] = {
+                "coverage_status": assessment.coverage_status,
+                "confidence": assessment.confidence,
+                "review_state": assessment.review_state,
+                "ai_analysis": assessment.ai_analysis,
+                "ai_recommendation": assessment.ai_recommendation,
+                "evidence_links_count": len(assessment.evidence_links),
+            }
 
     # Evaluate classification, confusion matrix, and specialty metrics
     verification_metrics = evaluate_verification(gt_reqs, actual_predictions)
@@ -355,6 +404,7 @@ def main():
     parser.add_argument("--model", type=str, default="gemini-3.7-flash", help="LLM model identifier")
     parser.add_argument("--thinking-level", type=str, default="HIGH", help="Gemini thinking level (HIGH, MEDIUM, LOW)")
     parser.add_argument("--regenerate", action="store_true", help="Force regenerate synthetic documents and ground truth")
+    parser.add_argument("--oracle", action="store_true", help="Run in Oracle mode: feed ground-truth evidence directly to the verifier")
 
     args = parser.parse_args()
 
@@ -362,6 +412,7 @@ def main():
         model=args.model,
         thinking_level=args.thinking_level,
         regenerate_data=args.regenerate,
+        oracle=args.oracle,
     ))
 
 

@@ -1,6 +1,6 @@
 {
   "metadata": {
-    "timestamp": "2026-08-22T13:36:26.466926+00:00",
+    "timestamp": "2026-08-22T21:48:26.059921+00:00",
     "model": "gemini-3.7-flash",
     "thinking_level": "HIGH",
     "dataset_name": "Automotive Battery Control Unit (BCU-800V)",
@@ -415,7 +415,7 @@
         "confidence": 92.0,
         "review_state": "Needs review",
         "ai_analysis": "Direct parameter discrepancy identified between High Voltage Pack Nominal Operating Range and 03_OEM_Supplier_Datasheet.pdf. Specification mandates operation up to 800 V DC, but 03_OEM_Supplier_Datasheet.pdf restricts maximum rated operation to 750 V DC.",
-        "ai_recommendation": "Review the conflicting documentation with engineering and confirm the verified operating bounds before sign-off.",
+        "ai_recommendation": "Review contradictory documentation with engineering stakeholders.",
         "evidence_links_count": 7
       }
     },
@@ -431,8 +431,8 @@
         "confidence": 95.0,
         "review_state": "Reviewed",
         "ai_analysis": "Measured value of 0.5 % satisfies required upper limit of \u2264 0.5 %.",
-        "ai_recommendation": "No immediate action required. Retain the current evidence set for the technical compliance file.",
-        "evidence_links_count": 5
+        "ai_recommendation": "No action needed.",
+        "evidence_links_count": 0
       }
     },
     {
@@ -444,10 +444,10 @@
       "is_correct": false,
       "assessment": {
         "coverage_status": "Partial",
-        "confidence": 75.0,
+        "confidence": 90.0,
         "review_state": "Needs review",
-        "ai_analysis": "Evidence provides supporting description, but technical parameters cannot be deterministically proven compliant without additional engineering review.",
-        "ai_recommendation": "Extend qualification testing to cover remaining parameter bounds or attach completed test records.",
+        "ai_analysis": "Evidence indicates partial verification with remaining activities pending: '0 A setting only; multi-point curve characterization incomplete'.",
+        "ai_recommendation": "Review validation bounds.",
         "evidence_links_count": 5
       }
     },
@@ -463,8 +463,8 @@
         "confidence": 95.0,
         "review_state": "Reviewed",
         "ai_analysis": "Evidence range (11898 to 2 CAN) fully covers required bounds (11898 to 2 CAN).",
-        "ai_recommendation": "No immediate action required. Retain the current evidence set for the technical compliance file.",
-        "evidence_links_count": 5
+        "ai_recommendation": "No action needed.",
+        "evidence_links_count": 0
       }
     },
     {
@@ -479,8 +479,8 @@
         "confidence": 95.0,
         "review_state": "Reviewed",
         "ai_analysis": "Measured value of 150 uA satisfies required upper limit of \u2264 150 uA.",
-        "ai_recommendation": "No immediate action required. Retain the current evidence set for the technical compliance file.",
-        "evidence_links_count": 5
+        "ai_recommendation": "No action needed.",
+        "evidence_links_count": 0
       }
     },
     {
@@ -495,8 +495,8 @@
         "confidence": 95.0,
         "review_state": "Reviewed",
         "ai_analysis": "Evidence range (2 to 4.5 V cell) fully covers required bounds (2 to 4.5 V cell).",
-        "ai_recommendation": "No immediate action required. Retain the current evidence set for the technical compliance file.",
-        "evidence_links_count": 5
+        "ai_recommendation": "No action needed.",
+        "evidence_links_count": 0
       }
     },
     {
@@ -511,8 +511,8 @@
         "confidence": 95.0,
         "review_state": "Reviewed",
         "ai_analysis": "Measured timing latency of 10 ms satisfies the required upper limit of \u2264 10 ms.",
-        "ai_recommendation": "No immediate action required. Retain the current evidence set for the technical compliance file.",
-        "evidence_links_count": 5
+        "ai_recommendation": "No action needed.",
+        "evidence_links_count": 0
       }
     },
     {
@@ -527,8 +527,8 @@
         "confidence": 95.0,
         "review_state": "Reviewed",
         "ai_analysis": "Ingress protection test confirmed compliance with IP67 (zero ingress recorded).",
-        "ai_recommendation": "No immediate action required. Retain the current evidence set for the technical compliance file.",
-        "evidence_links_count": 5
+        "ai_recommendation": "No action needed.",
+        "evidence_links_count": 0
       }
     },
     {
@@ -543,8 +543,8 @@
         "confidence": 95.0,
         "review_state": "Reviewed",
         "ai_analysis": "Measured timing latency of 142 ms satisfies the required upper limit of \u2264 200 ms.",
-        "ai_recommendation": "No immediate action required. Retain the current evidence set for the technical compliance file.",
-        "evidence_links_count": 5
+        "ai_recommendation": "No action needed.",
+        "evidence_links_count": 0
       }
     },
     {
@@ -556,10 +556,10 @@
       "is_correct": false,
       "assessment": {
         "coverage_status": "Partial",
-        "confidence": 75.0,
+        "confidence": 90.0,
         "review_state": "Needs review",
-        "ai_analysis": "Evidence provides supporting description, but technical parameters cannot be deterministically proven compliant without additional engineering review.",
-        "ai_recommendation": "Extend qualification testing to cover remaining parameter bounds or attach completed test records.",
+        "ai_analysis": "Evidence indicates partial verification with remaining activities pending: 'physical burst validation fixture pending'.",
+        "ai_recommendation": "Review validation bounds.",
         "evidence_links_count": 5
       }
     },
@@ -575,8 +575,8 @@
         "confidence": 95.0,
         "review_state": "Reviewed",
         "ai_analysis": "Tested points (-40 to 85 \u00b0C) fully span required range (-40 to 85 \u00b0C).",
-        "ai_recommendation": "No immediate action required. Retain the current evidence set for the technical compliance file.",
-        "evidence_links_count": 5
+        "ai_recommendation": "No action needed.",
+        "evidence_links_count": 0
       }
     },
     {
@@ -591,7 +591,7 @@
         "confidence": 90.0,
         "review_state": "Needs review",
         "ai_analysis": "Test verification records indicate qualification testing is currently in progress or partially completed.",
-        "ai_recommendation": "Schedule testing or review in-progress validation records.",
+        "ai_recommendation": "Schedule testing or review validation records.",
         "evidence_links_count": 0
       }
     },
@@ -607,8 +607,8 @@
         "confidence": 95.0,
         "review_state": "Reviewed",
         "ai_analysis": "Measured value of 300 mbar satisfies required upper limit of \u2264 300 mbar.",
-        "ai_recommendation": "No immediate action required. Retain the current evidence set for the technical compliance file.",
-        "evidence_links_count": 5
+        "ai_recommendation": "No action needed.",
+        "evidence_links_count": 0
       }
     },
     {
@@ -623,7 +623,7 @@
         "confidence": 90.0,
         "review_state": "Needs review",
         "ai_analysis": "Test verification records indicate qualification testing is currently in progress or partially completed.",
-        "ai_recommendation": "Schedule testing or review in-progress validation records.",
+        "ai_recommendation": "Schedule testing or review validation records.",
         "evidence_links_count": 0
       }
     },
@@ -639,8 +639,8 @@
         "confidence": 95.0,
         "review_state": "Reviewed",
         "ai_analysis": "Evidence range (100 to 500 A with) fully covers required bounds (100 to 500 A with).",
-        "ai_recommendation": "No immediate action required. Retain the current evidence set for the technical compliance file.",
-        "evidence_links_count": 5
+        "ai_recommendation": "No action needed.",
+        "evidence_links_count": 0
       }
     },
     {
@@ -655,7 +655,7 @@
         "confidence": 90.0,
         "review_state": "Needs review",
         "ai_analysis": "Test verification records indicate qualification testing is currently in progress or partially completed.",
-        "ai_recommendation": "Schedule testing or review in-progress validation records.",
+        "ai_recommendation": "Schedule testing or review validation records.",
         "evidence_links_count": 0
       }
     },
@@ -671,7 +671,7 @@
         "confidence": 95.0,
         "review_state": "Open",
         "ai_analysis": "Official compliance matrix record confirms qualification testing has not been performed and required evidence is missing.",
-        "ai_recommendation": "Schedule testing or review in-progress validation records.",
+        "ai_recommendation": "Schedule testing or review validation records.",
         "evidence_links_count": 0
       }
     },
@@ -684,10 +684,10 @@
       "is_correct": false,
       "assessment": {
         "coverage_status": "Partial",
-        "confidence": 75.0,
+        "confidence": 90.0,
         "review_state": "Needs review",
-        "ai_analysis": "Evidence provides supporting description, but technical parameters cannot be deterministically proven compliant without additional engineering review.",
-        "ai_recommendation": "Extend qualification testing to cover remaining parameter bounds or attach completed test records.",
+        "ai_analysis": "Evidence indicates partial verification with remaining activities pending: 'physical burst validation fixture pending'.",
+        "ai_recommendation": "Review validation bounds.",
         "evidence_links_count": 5
       }
     },
@@ -703,7 +703,7 @@
         "confidence": 95.0,
         "review_state": "Open",
         "ai_analysis": "Official compliance matrix record confirms qualification testing has not been performed and required evidence is missing.",
-        "ai_recommendation": "Schedule testing or review in-progress validation records.",
+        "ai_recommendation": "Schedule testing or review validation records.",
         "evidence_links_count": 0
       }
     },
@@ -719,7 +719,7 @@
         "confidence": 95.0,
         "review_state": "Open",
         "ai_analysis": "Official compliance matrix record confirms qualification testing has not been performed and required evidence is missing.",
-        "ai_recommendation": "Schedule testing or review in-progress validation records.",
+        "ai_recommendation": "Schedule testing or review validation records.",
         "evidence_links_count": 0
       }
     },
@@ -735,7 +735,7 @@
         "confidence": 95.0,
         "review_state": "Open",
         "ai_analysis": "Official compliance matrix record confirms qualification testing has not been performed and required evidence is missing.",
-        "ai_recommendation": "Schedule testing or review in-progress validation records.",
+        "ai_recommendation": "Schedule testing or review validation records.",
         "evidence_links_count": 0
       }
     },
@@ -751,7 +751,7 @@
         "confidence": 95.0,
         "review_state": "Open",
         "ai_analysis": "Official compliance matrix record confirms qualification testing has not been performed and required evidence is missing.",
-        "ai_recommendation": "Schedule testing or review in-progress validation records.",
+        "ai_recommendation": "Schedule testing or review validation records.",
         "evidence_links_count": 0
       }
     },
@@ -767,7 +767,7 @@
         "confidence": 95.0,
         "review_state": "Open",
         "ai_analysis": "Official compliance matrix record confirms qualification testing has not been performed and required evidence is missing.",
-        "ai_recommendation": "Schedule testing or review in-progress validation records.",
+        "ai_recommendation": "Schedule testing or review validation records.",
         "evidence_links_count": 0
       }
     },
@@ -783,7 +783,7 @@
         "confidence": 92.0,
         "review_state": "Needs review",
         "ai_analysis": "Direct parameter discrepancy identified between Upper Limit Traction Pack Voltage Rating and 03_OEM_Supplier_Datasheet.pdf. Specification mandates operation up to 800 V DC, but 03_OEM_Supplier_Datasheet.pdf restricts maximum rated operation to 750 V DC.",
-        "ai_recommendation": "Review the conflicting documentation with engineering and confirm the verified operating bounds before sign-off.",
+        "ai_recommendation": "Review contradictory documentation with engineering stakeholders.",
         "evidence_links_count": 7
       }
     },
@@ -796,10 +796,10 @@
       "is_correct": false,
       "assessment": {
         "coverage_status": "Partial",
-        "confidence": 75.0,
+        "confidence": 90.0,
         "review_state": "Needs review",
-        "ai_analysis": "Evidence provides supporting description, but technical parameters cannot be deterministically proven compliant without additional engineering review.",
-        "ai_recommendation": "Extend qualification testing to cover remaining parameter bounds or attach completed test records.",
+        "ai_analysis": "Evidence indicates partial verification with remaining activities pending: 'Remainder of 500h test in progress'.",
+        "ai_recommendation": "Review validation bounds.",
         "evidence_links_count": 5
       }
     },
@@ -815,7 +815,7 @@
         "confidence": 92.0,
         "review_state": "Needs review",
         "ai_analysis": "Discrepancy in access control / authentication requirements across documentation. Specification requires compliance while 02_System_Architecture_Spec.pdf states 'no login'.",
-        "ai_recommendation": "Review the conflicting documentation with engineering and confirm the verified operating bounds before sign-off.",
+        "ai_recommendation": "Review contradictory documentation with engineering stakeholders.",
         "evidence_links_count": 7
       }
     },
@@ -831,7 +831,7 @@
         "confidence": 92.0,
         "review_state": "Needs review",
         "ai_analysis": "Discrepancy in isolation / grounding architecture between specification and technical documentation. Specification requires compliance while 07_Compliance_Verification_Matrix.xlsx states 'non-isolated'.",
-        "ai_recommendation": "Review the conflicting documentation with engineering and confirm the verified operating bounds before sign-off.",
+        "ai_recommendation": "Review contradictory documentation with engineering stakeholders.",
         "evidence_links_count": 7
       }
     },
@@ -844,10 +844,10 @@
       "is_correct": false,
       "assessment": {
         "coverage_status": "Partial",
-        "confidence": 75.0,
+        "confidence": 90.0,
         "review_state": "Needs review",
-        "ai_analysis": "Evidence provides supporting description, but technical parameters cannot be deterministically proven compliant without additional engineering review.",
-        "ai_recommendation": "Extend qualification testing to cover remaining parameter bounds or attach completed test records.",
+        "ai_analysis": "Evidence indicates partial verification with remaining activities pending: '0 A setting only; multi-point curve characterization incomplete'.",
+        "ai_recommendation": "Review validation bounds.",
         "evidence_links_count": 5
       }
     },
@@ -863,7 +863,7 @@
         "confidence": 90.0,
         "review_state": "Needs review",
         "ai_analysis": "Test verification records indicate qualification testing is currently in progress or partially completed.",
-        "ai_recommendation": "Schedule testing or review in-progress validation records.",
+        "ai_recommendation": "Schedule testing or review validation records.",
         "evidence_links_count": 0
       }
     },
@@ -879,7 +879,7 @@
         "confidence": 90.0,
         "review_state": "Needs review",
         "ai_analysis": "Test verification records indicate qualification testing is currently in progress or partially completed.",
-        "ai_recommendation": "Schedule testing or review in-progress validation records.",
+        "ai_recommendation": "Schedule testing or review validation records.",
         "evidence_links_count": 0
       }
     }

@@ -40,7 +40,14 @@ class Settings(BaseSettings):
     # CORS
     CORS_ORIGINS: list[str] = ["http://localhost:5173", "http://localhost:3000", "http://localhost:8080"]
 
-    model_config = {"env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
+    model_config = {
+        "env_file": (
+            str(Path(__file__).resolve().parent.parent / ".env"),
+            ".env",
+        ),
+        "env_file_encoding": "utf-8",
+        "extra": "ignore",
+    }
 
     @property
     def effective_gemini_api_key(self) -> str:
