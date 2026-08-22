@@ -1,12 +1,11 @@
-"""Cross-document contradiction detection service.
+"""Cross-document contradiction detection service using structured claims and SI units."""
 
-Identifies potential inconsistencies across specifications, supplier datasheets,
-test reports, and user manuals for the same requirement.
-"""
-
+import re
 from typing import Optional
 from dataclasses import dataclass
-from app.services.verification import extract_numeric_ranges
+from app.schemas.contract import RequirementContract, RANGE_REGEX
+from app.schemas.claim import EvidenceClaim, extract_all_evidence_claims
+from app.services.units import are_units_compatible, convert_value, normalize_unit_str
 
 
 @dataclass
@@ -22,7 +21,7 @@ class ContradictionFinding:
 
 SEMANTIC_CONFLICT_PAIRS = [
     (
-        ["credential", "authentication", "login", "password", "authorized", "restricted"],
+        ["credential", "authentication", "login", "password", "authorized", "restricted", "seed-key"],
         ["no login", "no authentication", "unauthenticated", "no password", "open access", "no login required"],
         ["diagnostic", "port", "service", "access", "uds", "security", "calibration", "flashing", "service port"],
         "Discrepancy in access control / authentication requirements across documentation.",
@@ -36,117 +35,115 @@ SEMANTIC_CONFLICT_PAIRS = [
 ]
 
 
-def normalize_unit(unit_str: str) -> str:
-    if not unit_str:
-        return ""
-    u = unit_str.strip().lower()
-    if "°" in u or "c" in u:
-        return "°c"
-    if "mv" in u:
-        return "mv"
-    if "kv" in u:
-        return "kv"
-    if "v" in u:
-        return "v"
-    if "ma" in u:
-        return "ma"
-    if "a" in u:
-        return "a"
-    if "h" in u:
-        return "h"
-    if "ms" in u:
-        return "ms"
-    if "us" in u or "µs" in u:
-        return "us"
-    if "j" in u:
-        return "j"
-    return u
+def detect_contract_contradiction(
+    contract: RequirementContract,
+    claims: list[EvidenceClaim],
+) -> Optional[ContradictionFinding]:
+    """Detect if any supplier datasheet or component document directly limits/contradicts the contract bounds."""
+    for claim in claims:
+        # Only compare against non-specification documents (supplier datasheets, external specs, architecture specs)
+        if any(k in claim.document_name.lower() for k in ["srs", "product_requirements"]):
+            continue
+
+        # 1. Numeric Range upper/lower limit restriction (e.g. Spec 400-800V vs Datasheet 400-750V max, or Temp +85C vs +70C)
+        if contract.requirement_type in ("numeric_range", "threshold") and contract.max_value is not None:
+            if claim.claim_type == "numeric_range" and claim.max_value is not None:
+                if are_units_compatible(claim.unit, contract.unit):
+                    c_claim_max = convert_value(claim.max_value, claim.unit, contract.unit)
+                    if c_claim_max is not None and c_claim_max < contract.max_value - 0.5:
+                        contract_terms = [w.lower() for w in re.findall(r"\w+", f"{contract.req_code} {contract.title}") if len(w) > 3 and w.lower() not in ["operating", "temperature", "voltage", "ambient", "system", "continuous"]]
+                        claim_param = (claim.parameter or "").lower()
+                        if not contract_terms or any(t in claim.quote.lower() for t in contract_terms) or any(t in claim_param for t in contract_terms):
+                            is_datasheet = any(k in claim.document_name.lower() for k in ["datasheet", "ds-", "oem", "supplier", "component", "spec"])
+                            if is_datasheet:
+                                highlight = f"{claim.max_value:g} {claim.unit or ''}".strip()
+                                desc = (
+                                    f"Direct parameter discrepancy identified between {contract.title} and {claim.document_name}. "
+                                    f"Specification mandates operation up to {contract.max_value:g} {contract.unit or ''}, but {claim.document_name} restricts maximum rated operation to {c_claim_max:g} {contract.unit or ''}."
+                                )
+                                return ContradictionFinding(
+                                    has_conflict=True,
+                                    source_a_doc="Product Specification",
+                                    source_a_quote=contract.raw_text[:200],
+                                    source_b_doc=claim.document_name,
+                                    source_b_quote=claim.quote,
+                                    highlight=highlight,
+                                    description=desc,
+                                )
+
+        # 2. Semantic discrepancy against contract
+        for set_a, set_b, topics, explanation in SEMANTIC_CONFLICT_PAIRS:
+            # Check if contract matches set_a and claim matches set_b
+            if any(t in contract.raw_text.lower() for t in topics) and any(t in claim.quote.lower() for t in topics):
+                a_matches = any(kw in contract.raw_text.lower() for kw in set_a)
+                b_matches = any(kw in claim.quote.lower() for kw in set_b)
+                if a_matches and b_matches:
+                    neg_kw = next((kw for kw in set_b if kw in claim.quote.lower()), None)
+                    return ContradictionFinding(
+                        has_conflict=True,
+                        source_a_doc="Product Specification",
+                        source_a_quote=contract.raw_text[:200],
+                        source_b_doc=claim.document_name,
+                        source_b_quote=claim.quote,
+                        highlight=neg_kw,
+                        description=f"{explanation} Specification requires compliance while {claim.document_name} states '{neg_kw}'.",
+                    )
+
+    return None
 
 
 def detect_cross_document_contradiction(
     evidence_items: list[dict],
+    contract: Optional[RequirementContract] = None,
 ) -> Optional[ContradictionFinding]:
-    """Compare evidence chunks from different documents to identify value or semantic contradictions."""
-    if len(evidence_items) < 2:
+    """Compare evidence chunks and requirement contract to identify value or semantic contradictions."""
+    claims = extract_all_evidence_claims(evidence_items, contract)
+
+    # 1. Check against requirement contract first
+    if contract:
+        contract_finding = detect_contract_contradiction(contract, claims)
+        if contract_finding:
+            return contract_finding
+
+    # 2. Compare semantic contradiction pairs across documents (topic-gated)
+    if len(claims) < 2:
         return None
 
-    # 1. Check numeric ranges from different sources (e.g. 18–32 V in spec vs 18–30 V in supplier datasheet)
-    for i in range(len(evidence_items)):
-        for j in range(i + 1, len(evidence_items)):
-            item_a = evidence_items[i]
-            item_b = evidence_items[j]
+    for i in range(len(claims)):
+        for j in range(i + 1, len(claims)):
+            claim_a = claims[i]
+            claim_b = claims[j]
 
-            # Only compare if from different documents
-            if item_a.get("document_name") == item_b.get("document_name"):
+            if claim_a.document_name == claim_b.document_name:
                 continue
 
-            text_a = item_a.get("quote", "")
-            text_b = item_b.get("quote", "")
-
-            ranges_a = extract_numeric_ranges(text_a)
-            ranges_b = extract_numeric_ranges(text_b)
-
-            if ranges_a and ranges_b:
-                for ra in ranges_a:
-                    for rb in ranges_b:
-                        ua = normalize_unit(ra.unit)
-                        ub = normalize_unit(rb.unit)
-                        # Only compare if both have valid, matching physical measurement units
-                        if ua and ub and ua == ub:
-                            if abs(ra.max_val - rb.max_val) > 0.5:
-                                doc_a_lower = item_a.get("document_name", "").lower()
-                                doc_b_lower = item_b.get("document_name", "").lower()
-                                is_datasheet_or_spec = any(k in doc_a_lower or k in doc_b_lower for k in ["datasheet", "spec", "manual", "srs", "ds-"])
-                                if is_datasheet_or_spec:
-                                    highlight = f"{rb.max_val:g} {rb.unit}".strip()
-                                    desc = (
-                                        f"The available evidence indicates a potential discrepancy between {item_a.get('document_name')} and {item_b.get('document_name')}. "
-                                        f"One document specifies {ra.raw_str}, while the other specifies {rb.raw_str}."
-                                    )
-                                    return ContradictionFinding(
-                                        has_conflict=True,
-                                        source_a_doc=item_a.get("document_name", "Doc A"),
-                                        source_a_quote=text_a,
-                                        source_b_doc=item_b.get("document_name", "Doc B"),
-                                        source_b_quote=text_b,
-                                        highlight=highlight,
-                                        description=desc,
-                                    )
-
-            # 2. Check semantic conflicts (e.g., requires authentication vs no login required)
+            # Compare semantic pairs (e.g. access control, isolation vs shared ground)
             for set_a, set_b, topics, explanation in SEMANTIC_CONFLICT_PAIRS:
-                # Require topical overlap in both items
-                topic_match = any(t in text_a.lower() for t in topics) and any(t in text_b.lower() for t in topics)
+                topic_match = any(t in claim_a.quote.lower() for t in topics) and any(t in claim_b.quote.lower() for t in topics)
                 if not topic_match:
                     continue
 
-                a_matches_pos = any(kw in text_a.lower() for kw in set_a)
-                b_matches_neg = any(kw in text_b.lower() for kw in set_b)
-                if a_matches_pos and b_matches_neg:
-                    # Find matching negative keyword for highlight
-                    neg_kw = next((kw for kw in set_b if kw in text_b.lower()), None)
+                if any(kw in claim_a.quote.lower() for kw in set_a) and any(kw in claim_b.quote.lower() for kw in set_b):
+                    neg_kw = next((kw for kw in set_b if kw in claim_b.quote.lower()), None)
                     return ContradictionFinding(
                         has_conflict=True,
-                        source_a_doc=item_a.get("document_name", "Doc A"),
-                        source_a_quote=text_a,
-                        source_b_doc=item_b.get("document_name", "Doc B"),
-                        source_b_quote=text_b,
+                        source_a_doc=claim_a.document_name,
+                        source_a_quote=claim_a.quote,
+                        source_b_doc=claim_b.document_name,
+                        source_b_quote=claim_b.quote,
                         highlight=neg_kw,
-                        description=f"{explanation} One document describes access requiring credentials while another states '{neg_kw}'.",
+                        description=f"{explanation} One document requires credentials while {claim_b.document_name} states '{neg_kw}'.",
                     )
-                # Check vice versa
-                a_matches_neg = any(kw in text_a.lower() for kw in set_b)
-                b_matches_pos = any(kw in text_b.lower() for kw in set_a)
-                if a_matches_neg and b_matches_pos:
-                    neg_kw = next((kw for kw in set_b if kw in text_a.lower()), None)
+                if any(kw in claim_b.quote.lower() for kw in set_a) and any(kw in claim_a.quote.lower() for kw in set_b):
+                    neg_kw = next((kw for kw in set_b if kw in claim_a.quote.lower()), None)
                     return ContradictionFinding(
                         has_conflict=True,
-                        source_a_doc=item_b.get("document_name", "Doc B"),
-                        source_a_quote=text_b,
-                        source_b_doc=item_a.get("document_name", "Doc A"),
-                        source_b_quote=text_a,
+                        source_a_doc=claim_b.document_name,
+                        source_a_quote=claim_b.quote,
+                        source_b_doc=claim_a.document_name,
+                        source_b_quote=claim_a.quote,
                         highlight=neg_kw,
-                        description=f"{explanation} One document describes access requiring credentials while another states '{neg_kw}'.",
+                        description=f"{explanation} One document requires credentials while {claim_a.document_name} states '{neg_kw}'.",
                     )
 
     return None
