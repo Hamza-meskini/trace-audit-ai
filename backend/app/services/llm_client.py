@@ -23,10 +23,36 @@ T = TypeVar("T", bound=BaseModel)
 GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models"
 
 
-def _clean_json_text(text: str) -> str:
-    """Strip markdown code blocks if the model wrapped the JSON output in ```json ... ```."""
-    cleaned = text.strip()
-    if cleaned.startswith("```"):
+def _clean_json_text(text: Any) -> str:
+    """Extract and clean JSON text from raw string or Databricks/OpenAI multi-part response."""
+    if text is None:
+        return ""
+    if isinstance(text, list):
+        parts = []
+        for item in text:
+            if isinstance(item, dict):
+                if item.get("type") == "text" and "text" in item:
+                    parts.append(item["text"])
+                elif "content" in item:
+                    parts.append(str(item["content"]))
+                elif "text" in item:
+                    parts.append(str(item["text"]))
+            elif isinstance(item, str):
+                parts.append(item)
+        cleaned = "\n".join(parts).strip() if parts else str(text)
+    elif isinstance(text, dict):
+        if "text" in text:
+            cleaned = str(text["text"]).strip()
+        elif "content" in text:
+            cleaned = str(text["content"]).strip()
+        else:
+            cleaned = json.dumps(text)
+    else:
+        cleaned = str(text).strip()
+
+    if "```json" in cleaned:
+        cleaned = cleaned.split("```json", 1)[1].split("```", 1)[0].strip()
+    elif cleaned.startswith("```"):
         lines = cleaned.splitlines()
         if lines[0].startswith("```"):
             lines = lines[1:]
@@ -174,9 +200,15 @@ async def call_databricks_chat_completions(
             resp = await client.post(url, json=payload, headers=headers)
             if resp.status_code != 200:
                 logger.error(f"Databricks API error [{resp.status_code}] for model {model}: {resp.text}")
-                return None
             data = resp.json()
-            return data["choices"][0]["message"]["content"]
+            choices = data.get("choices", [])
+            if not choices:
+                return None
+            content = choices[0].get("message", {}).get("content")
+            if isinstance(content, list):
+                parts = [p.get("text", "") for p in content if isinstance(p, dict) and p.get("type") == "text"]
+                return "\n".join(parts) if parts else str(content)
+            return content
     except Exception as ex:
         logger.error(f"Exception calling Databricks Model Serving ({model}): {ex}")
         return None
