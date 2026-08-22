@@ -37,8 +37,15 @@ class Settings(BaseSettings):
     # ChromaDB
     CHROMA_PERSIST_DIR: str = "./chroma_data"
 
-    # CORS
-    CORS_ORIGINS: list[str] = ["http://localhost:5173", "http://localhost:3000", "http://localhost:8080"]
+    # Databricks AI Gateway Settings (MLflow Model Serving)
+    DATABRICKS_TOKEN: str = ""
+    DATABRICKS_BASE_URL: str = "https://dbc-4973b3f3-18e4.cloud.databricks.com/ai-gateway/mlflow/v1"
+    DATABRICKS_MODEL: str = "system.ai.qwen35-122b-a10b"
+    DATABRICKS_FALLBACK_MODELS: list[str] = [
+        "system.ai.qwen35-122b-a10b",
+        "system.ai.meta-llama-3-3-70b-instruct",
+        "system.ai.gpt-oss-120b",
+    ]
 
     model_config = {
         "env_file": (
@@ -66,6 +73,10 @@ class Settings(BaseSettings):
             return self.OPENAI_API_KEY
         return os.environ.get("OPENAI_API_KEY", "")
 
+    @property
+    def effective_databricks_token(self) -> str:
+        """Return Databricks token from DATABRICKS_TOKEN or environment."""
+        return self.DATABRICKS_TOKEN or os.environ.get("DATABRICKS_TOKEN", "")
 
 
 settings = Settings()
@@ -80,6 +91,22 @@ SUPPORTED_MODELS = [
         "default_thinking": "HIGH",
         "description": "Recommended. Ultra-fast, highly accurate extraction with High Thinking reasoning enabled.",
         "is_default": True,
+    },
+    {
+        "id": "system.ai.qwen35-122b-a10b",
+        "name": "Databricks Qwen 3.5 122B",
+        "provider": "databricks",
+        "thinking_supported": False,
+        "description": "Databricks 122B parameter technical reasoning model for dense verification.",
+        "is_default": False,
+    },
+    {
+        "id": "system.ai.meta-llama-3-3-70b-instruct",
+        "name": "Databricks Llama 3.3 70B",
+        "provider": "databricks",
+        "thinking_supported": False,
+        "description": "Databricks Meta Llama 3.3 70B model for strict compliance matrix auditing.",
+        "is_default": False,
     },
     {
         "id": "gemini-3.1-pro-preview",

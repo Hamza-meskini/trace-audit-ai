@@ -135,6 +135,53 @@ async def call_gemini_generate_content(
     return None
 
 
+async def call_databricks_chat_completions(
+    prompt: str,
+    model: str = "system.ai.qwen35-122b-a10b",
+    system_instruction: Optional[str] = None,
+    json_mode: bool = False,
+    timeout: float = 90.0,
+) -> Optional[str]:
+    """Call Databricks Model Serving AI Gateway via OpenAI-compatible endpoint."""
+    token = settings.effective_databricks_token
+    if not token:
+        return None
+
+    base_url = settings.DATABRICKS_BASE_URL.rstrip("/")
+    url = f"{base_url}/chat/completions"
+
+    messages = []
+    if system_instruction:
+        messages.append({"role": "system", "content": system_instruction})
+    messages.append({"role": "user", "content": prompt})
+
+    payload: dict[str, Any] = {
+        "model": model,
+        "messages": messages,
+        "temperature": 0.1,
+        "max_tokens": 4096,
+    }
+    if json_mode:
+        payload["response_format"] = {"type": "json_object"}
+
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json",
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            resp = await client.post(url, json=payload, headers=headers)
+            if resp.status_code != 200:
+                logger.error(f"Databricks API error [{resp.status_code}] for model {model}: {resp.text}")
+                return None
+            data = resp.json()
+            return data["choices"][0]["message"]["content"]
+    except Exception as ex:
+        logger.error(f"Exception calling Databricks Model Serving ({model}): {ex}")
+        return None
+
+
 async def call_openai_chat_completions(
     prompt: str,
     model: str = "gpt-4o-mini",
@@ -182,15 +229,16 @@ async def generate_structured(
     system_instruction: Optional[str] = None,
     thinking_level: Optional[str] = None,
 ) -> Optional[T]:
-    """Generate structured output validated against a Pydantic schema using Gemini or OpenAI."""
+    """Generate structured output validated against a Pydantic schema using Gemini or Databricks AI Gateway."""
     active_model = model or settings.LLM_MODEL
-    is_gemini = "gemini" in active_model.lower() or not active_model.startswith("gpt-")
+    is_gemini = "gemini" in active_model.lower()
 
     raw_response: Optional[str] = None
 
     schema = response_model.model_json_schema()
     prompt_with_schema = f"{prompt}\n\nRespond ONLY with valid JSON strictly conforming to this schema:\n{json.dumps(schema)}"
 
+    # 1. Primary: Google Gemini
     if is_gemini and settings.effective_gemini_api_key:
         raw_response = await call_gemini_generate_content(
             prompt=prompt_with_schema,
@@ -200,7 +248,23 @@ async def generate_structured(
             response_schema=None,
             thinking_level=thinking_level,
         )
-    elif settings.effective_openai_api_key:
+
+    # 2. Fallback: Databricks Model Serving AI Gateway
+    if not raw_response and settings.effective_databricks_token:
+        models_to_try = [settings.DATABRICKS_MODEL] + [m for m in settings.DATABRICKS_FALLBACK_MODELS if m != settings.DATABRICKS_MODEL]
+        for db_model in models_to_try:
+            logger.info(f"Cascading to Databricks AI Gateway model: {db_model}")
+            raw_response = await call_databricks_chat_completions(
+                prompt=prompt_with_schema,
+                model=db_model,
+                system_instruction=system_instruction,
+                json_mode=True,
+            )
+            if raw_response:
+                break
+
+    # 3. Fallback: OpenAI
+    if not raw_response and settings.effective_openai_api_key:
         raw_response = await call_openai_chat_completions(
             prompt=prompt_with_schema,
             model=active_model if active_model.startswith("gpt-") else "gpt-4o-mini",
@@ -226,19 +290,38 @@ async def generate_text(
     system_instruction: Optional[str] = None,
     thinking_level: Optional[str] = None,
 ) -> Optional[str]:
-    """Generate free-form text response with thinking enabled."""
+    """Generate free-form text response with thinking enabled and Databricks fallback."""
     active_model = model or settings.LLM_MODEL
-    is_gemini = "gemini" in active_model.lower() or not active_model.startswith("gpt-")
+    is_gemini = "gemini" in active_model.lower()
 
+    # 1. Primary: Gemini
     if is_gemini and settings.effective_gemini_api_key:
-        return await call_gemini_generate_content(
+        res = await call_gemini_generate_content(
             prompt=prompt,
             model=active_model,
             system_instruction=system_instruction,
             json_mode=False,
             thinking_level=thinking_level,
         )
-    elif settings.effective_openai_api_key:
+        if res:
+            return res
+
+    # 2. Fallback: Databricks Model Serving
+    if settings.effective_databricks_token:
+        models_to_try = [settings.DATABRICKS_MODEL] + [m for m in settings.DATABRICKS_FALLBACK_MODELS if m != settings.DATABRICKS_MODEL]
+        for db_model in models_to_try:
+            logger.info(f"Cascading to Databricks AI Gateway model: {db_model}")
+            res = await call_databricks_chat_completions(
+                prompt=prompt,
+                model=db_model,
+                system_instruction=system_instruction,
+                json_mode=False,
+            )
+            if res:
+                return res
+
+    # 3. Fallback: OpenAI
+    if settings.effective_openai_api_key:
         return await call_openai_chat_completions(
             prompt=prompt,
             model=active_model if active_model.startswith("gpt-") else "gpt-4o-mini",
