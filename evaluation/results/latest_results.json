@@ -1,6 +1,6 @@
 {
   "metadata": {
-    "timestamp": "2026-08-22T22:28:22.753011+00:00",
+    "timestamp": "2026-08-22T22:34:43.699123+00:00",
     "model": "gemini-3.7-flash",
     "thinking_level": "HIGH",
     "dataset_name": "Automotive Battery Control Unit (BCU-800V)",
@@ -17,10 +17,10 @@
   },
   "extraction": {
     "total_ground_truth": 30,
-    "total_extracted": 30,
-    "precision": 100.0,
+    "total_extracted": 31,
+    "precision": 96.77,
     "recall": 100.0,
-    "f1": 100.0,
+    "f1": 98.36,
     "matched_count": 30,
     "unmatched_count": 0
   },
@@ -33,15 +33,15 @@
   },
   "verification": {
     "total_evaluated": 30,
-    "accuracy": 86.67,
-    "macro_precision": 89.58,
-    "macro_recall": 88.12,
-    "macro_f1": 87.41,
-    "weighted_f1": 86.27,
+    "accuracy": 70.0,
+    "macro_precision": 73.75,
+    "macro_recall": 69.55,
+    "macro_f1": 71.13,
+    "weighted_f1": 70.8,
     "confusion_matrix": {
       "Supported": {
-        "Supported": 9,
-        "Partial": 0,
+        "Supported": 7,
+        "Partial": 2,
         "Missing": 0,
         "Conflict": 1
       },
@@ -53,63 +53,63 @@
       },
       "Missing": {
         "Supported": 0,
-        "Partial": 0,
-        "Missing": 7,
+        "Partial": 1,
+        "Missing": 6,
         "Conflict": 0
       },
       "Conflict": {
         "Supported": 0,
-        "Partial": 0,
+        "Partial": 2,
         "Missing": 0,
-        "Conflict": 5
+        "Conflict": 3
       }
     },
     "per_class": {
       "Supported": {
-        "precision": 75.0,
-        "recall": 90.0,
-        "f1": 81.82,
+        "precision": 70.0,
+        "recall": 70.0,
+        "f1": 70.0,
         "support": 10,
-        "true_positives": 9,
+        "true_positives": 7,
         "false_positives": 3,
-        "false_negatives": 1
+        "false_negatives": 3
       },
       "Partial": {
-        "precision": 100.0,
+        "precision": 50.0,
         "recall": 62.5,
-        "f1": 76.92,
+        "f1": 55.56,
         "support": 8,
         "true_positives": 5,
-        "false_positives": 0,
+        "false_positives": 5,
         "false_negatives": 3
       },
       "Missing": {
         "precision": 100.0,
-        "recall": 100.0,
-        "f1": 100.0,
+        "recall": 85.71,
+        "f1": 92.31,
         "support": 7,
-        "true_positives": 7,
+        "true_positives": 6,
         "false_positives": 0,
-        "false_negatives": 0
+        "false_negatives": 1
       },
       "Conflict": {
-        "precision": 83.33,
-        "recall": 100.0,
-        "f1": 90.91,
+        "precision": 75.0,
+        "recall": 60.0,
+        "f1": 66.67,
         "support": 5,
-        "true_positives": 5,
+        "true_positives": 3,
         "false_positives": 1,
-        "false_negatives": 0
+        "false_negatives": 2
       }
     }
   },
   "specialty": {
-    "conflict_precision": 83.33,
-    "conflict_recall": 100.0,
-    "conflict_f1": 90.91,
+    "conflict_precision": 75.0,
+    "conflict_recall": 60.0,
+    "conflict_f1": 66.67,
     "missing_precision": 100.0,
-    "missing_recall": 100.0,
-    "missing_f1": 100.0,
+    "missing_recall": 85.71,
+    "missing_f1": 92.31,
     "unsupported_claim_rate": 0.0,
     "total_missing_in_gt": 7,
     "unsupported_claims_count": 0
@@ -143,6 +143,68 @@
           "document": "02_System_Architecture_Spec.pdf",
           "page": 1,
           "content_preview": "VOLT-DRIVE AUTOMOTIVE \u00b7 SYSTEM ARCHITECTURE SPECIFICATION\nBCU-800V System Architecture & Interface Design\nDocument Ref: "
+        }
+      ]
+    },
+    {
+      "requirement_id": "REQ-BCU-003",
+      "requirement_title": "Galvanic High-Voltage Isolation Barrier",
+      "category": "Safety",
+      "expected_status": "Supported",
+      "actual_status": "Partial",
+      "error_type": "verification_error",
+      "explanation": "Verification rules classified requirement as 'Partial', but ground truth expects 'Supported'.",
+      "expected_evidence": [
+        {
+          "requirement_id": "REQ-BCU-003",
+          "req_code": "REQ-BCU-003",
+          "document": "04_Battery_Management_Test_Report.pdf",
+          "page": 3,
+          "relationship": "supports",
+          "quote": "Dielectric withstand test: 2,500 V AC applied for 60.0 s, measured leakage current 0.28 mA, verdict PASS."
+        }
+      ],
+      "retrieved_evidence": [
+        {
+          "document": "01_Product_Requirements_SRS.docx",
+          "page": null,
+          "content_preview": "REQ-BCU-003: Galvanic High-Voltage Isolation Barrier\nSeverity: Critical | Category: Safety\nThe galvanic isolation barrie"
+        },
+        {
+          "document": "04_Battery_Management_Test_Report.pdf",
+          "page": 3,
+          "content_preview": "APEX CERTIFICATION LABS | Report TR-BMS-2026-8801 | Page 3 of 3\n3. Dielectric Isolation, Pre-Charge & Telemetry Verifica"
+        }
+      ]
+    },
+    {
+      "requirement_id": "REQ-BCU-010",
+      "requirement_title": "Solid-State Pyro-Fuse Trigger Circuit Latency",
+      "category": "Safety",
+      "expected_status": "Supported",
+      "actual_status": "Partial",
+      "error_type": "verification_error",
+      "explanation": "Verification rules classified requirement as 'Partial', but ground truth expects 'Supported'.",
+      "expected_evidence": [
+        {
+          "requirement_id": "REQ-BCU-010",
+          "req_code": "REQ-BCU-010",
+          "document": "06_Thermal_Runaway_Safety_Report.pdf",
+          "page": 2,
+          "relationship": "supports",
+          "quote": "Hardware short-circuit analog comparator triggered pyro-switch in 2.8 microseconds."
+        }
+      ],
+      "retrieved_evidence": [
+        {
+          "document": "01_Product_Requirements_SRS.docx",
+          "page": null,
+          "content_preview": "REQ-BCU-010: Solid-State Pyro-Fuse Trigger Circuit Latency\nSeverity: Critical | Category: Safety\nIn hard short-circuit c"
+        },
+        {
+          "document": "06_Thermal_Runaway_Safety_Report.pdf",
+          "page": 1,
+          "content_preview": "TUV RHEINLAND \u00b7 FUNCTIONAL SAFETY VALIDATION REPORT\nSAFETY REPORT: TR-SAF-2026-902\nProduct: BCU-800V Safe State & Pyro-S"
         }
       ]
     },
@@ -238,6 +300,106 @@
           "content_preview": "APEX CERTIFICATION LABS | Report TR-BMS-2026-8801 | Page 3 of 3\n3. Dielectric Isolation, Pre-Charge & Telemetry Verifica"
         }
       ]
+    },
+    {
+      "requirement_id": "REQ-BCU-018",
+      "requirement_title": "High Voltage Interlock Loop (HVIL) Fast Disconnect Latency",
+      "category": "Safety",
+      "expected_status": "Missing",
+      "actual_status": "Partial",
+      "error_type": "verification_error",
+      "explanation": "Verification rules classified requirement as 'Partial', but ground truth expects 'Missing'.",
+      "expected_evidence": [],
+      "retrieved_evidence": [
+        {
+          "document": "01_Product_Requirements_SRS.docx",
+          "page": null,
+          "content_preview": "REQ-BCU-018: High Voltage Interlock Loop (HVIL) Fast Disconnect Latency\nSeverity: Critical | Category: Safety\nAny break "
+        },
+        {
+          "document": "06_Thermal_Runaway_Safety_Report.pdf",
+          "page": 1,
+          "content_preview": "TUV RHEINLAND \u00b7 FUNCTIONAL SAFETY VALIDATION REPORT\nSAFETY REPORT: TR-SAF-2026-902\nProduct: BCU-800V Safe State & Pyro-S"
+        }
+      ]
+    },
+    {
+      "requirement_id": "REQ-BCU-025",
+      "requirement_title": "Maximum Ambient Operating Thermal Limit",
+      "category": "Environmental",
+      "expected_status": "Conflict",
+      "actual_status": "Partial",
+      "error_type": "conflict_detection_error",
+      "explanation": "Cross-document contradiction was not detected; system returned 'Partial' instead of 'Conflict'.",
+      "expected_evidence": [
+        {
+          "requirement_id": "REQ-BCU-025",
+          "req_code": "REQ-BCU-025",
+          "document": "01_Product_Requirements_SRS.docx",
+          "page": null,
+          "relationship": "specification",
+          "quote": "The equipment shall maintain full functional performance across an ambient operating temperature range of -40.0 \u00b0C to +85.0 \u00b0C."
+        },
+        {
+          "requirement_id": "REQ-BCU-025",
+          "req_code": "REQ-BCU-025",
+          "document": "03_OEM_Supplier_Datasheet.pdf",
+          "page": 1,
+          "relationship": "contradicts",
+          "quote": "Operating Ambient Temperature: -10.0 \u00b0C to +70.0 \u00b0C. Operation above +70\u00b0C causes thermal shutdown."
+        }
+      ],
+      "retrieved_evidence": [
+        {
+          "document": "01_Product_Requirements_SRS.docx",
+          "page": null,
+          "content_preview": "REQ-BCU-025: Maximum Ambient Operating Thermal Limit\nSeverity: High | Category: Environmental\nThe power electronics stag"
+        },
+        {
+          "document": "03_OEM_Supplier_Datasheet.pdf",
+          "page": 1,
+          "content_preview": "NEXUS POWER SEMICONDUCTOR \u00b7 OEM ASIC COMPONENT DATASHEET\nNX-BMS-800 Multi-Cell Monitoring & Balancing Front-End\nComponen"
+        }
+      ]
+    },
+    {
+      "requirement_id": "REQ-BCU-028",
+      "requirement_title": "Active Cell Balancing Discharge Current",
+      "category": "Electrical",
+      "expected_status": "Conflict",
+      "actual_status": "Partial",
+      "error_type": "conflict_detection_error",
+      "explanation": "Cross-document contradiction was not detected; system returned 'Partial' instead of 'Conflict'.",
+      "expected_evidence": [
+        {
+          "requirement_id": "REQ-BCU-028",
+          "req_code": "REQ-BCU-028",
+          "document": "01_Product_Requirements_SRS.docx",
+          "page": null,
+          "relationship": "specification",
+          "quote": "Cell balancing circuit operates between 150 mA and 200.0 mA discharge current."
+        },
+        {
+          "requirement_id": "REQ-BCU-028",
+          "req_code": "REQ-BCU-028",
+          "document": "03_OEM_Supplier_Datasheet.pdf",
+          "page": 1,
+          "relationship": "contradicts",
+          "quote": "Integrated balancing switch operates between 50 mA and 100.0 mA maximum continuous dissipation."
+        }
+      ],
+      "retrieved_evidence": [
+        {
+          "document": "01_Product_Requirements_SRS.docx",
+          "page": null,
+          "content_preview": "REQ-BCU-028: Active Cell Balancing Discharge Current\nSeverity: Medium | Category: Electrical\nActive cell balancing circu"
+        },
+        {
+          "document": "07_Compliance_Verification_Matrix.xlsx",
+          "page": null,
+          "content_preview": "Requirement ID: REQ-BCU-028; Requirement Title: Cell Balancing Current; Target Value / Unit: 200.0 mA; Test Report Ref: "
+        }
+      ]
     }
   ],
   "per_requirement_results": [
@@ -278,14 +440,14 @@
       "req_code": "REQ-BCU-003",
       "title": "Galvanic High-Voltage Isolation Barrier",
       "expected_status": "Supported",
-      "actual_status": "Supported",
-      "is_correct": true,
+      "actual_status": "Partial",
+      "is_correct": false,
       "assessment": {
-        "coverage_status": "Supported",
-        "confidence": 95.0,
-        "review_state": "Reviewed",
-        "ai_analysis": "Test report shows dielectric withstand test of 2,500 V AC applied for 60.0 s with measured leakage current 0.28 mA (<1.0 mA limit), satisfying all conditions.",
-        "ai_recommendation": "Retain evidence.",
+        "coverage_status": "Partial",
+        "confidence": 90.0,
+        "review_state": "Needs review",
+        "ai_analysis": "Evidence indicates partial verification with remaining activities pending: '0 A setting only; multi-point curve characterization incomplete'.",
+        "ai_recommendation": "Review validation bounds.",
         "evidence_links_count": 5
       }
     },
@@ -390,14 +552,14 @@
       "req_code": "REQ-BCU-010",
       "title": "Solid-State Pyro-Fuse Trigger Circuit Latency",
       "expected_status": "Supported",
-      "actual_status": "Supported",
-      "is_correct": true,
+      "actual_status": "Partial",
+      "is_correct": false,
       "assessment": {
-        "coverage_status": "Supported",
-        "confidence": 95.0,
-        "review_state": "Reviewed",
-        "ai_analysis": "Test report indicates hardware short-circuit analog comparator triggered pyro-switch in 2.8 microseconds, which is <= 5.0 microseconds required.",
-        "ai_recommendation": "Retain evidence.",
+        "coverage_status": "Partial",
+        "confidence": 90.0,
+        "review_state": "Needs review",
+        "ai_analysis": "Evidence indicates partial verification with remaining activities pending: 'physical burst validation fixture pending'.",
+        "ai_recommendation": "Review validation bounds.",
         "evidence_links_count": 5
       }
     },
@@ -518,13 +680,13 @@
       "req_code": "REQ-BCU-018",
       "title": "High Voltage Interlock Loop (HVIL) Fast Disconnect Latency",
       "expected_status": "Missing",
-      "actual_status": "Missing",
-      "is_correct": true,
+      "actual_status": "Partial",
+      "is_correct": false,
       "assessment": {
-        "coverage_status": "Missing",
+        "coverage_status": "Partial",
         "confidence": 90.0,
-        "review_state": "Open",
-        "ai_analysis": "No retrieved excerpt contains verification data for HVIL fast disconnect latency; the compliance matrix entry pertains to REQ-BCU-010, not REQ-BCU-018.",
+        "review_state": "Needs review",
+        "ai_analysis": "Evidence indicates partial verification with remaining activities pending: 'physical burst validation fixture pending'.",
         "ai_recommendation": "Review validation bounds.",
         "evidence_links_count": 5
       }
@@ -630,13 +792,13 @@
       "req_code": "REQ-BCU-025",
       "title": "Maximum Ambient Operating Thermal Limit",
       "expected_status": "Conflict",
-      "actual_status": "Conflict",
-      "is_correct": true,
+      "actual_status": "Partial",
+      "is_correct": false,
       "assessment": {
-        "coverage_status": "Conflict",
-        "confidence": 95.0,
+        "coverage_status": "Partial",
+        "confidence": 90.0,
         "review_state": "Needs review",
-        "ai_analysis": "Supplier datasheet limits operating ambient temperature to -10.0 \u00b0C to +70.0 \u00b0C, with operation above +70\u00b0C causing thermal shutdown, contradicting the required +85.0 \u00b0C limit.",
+        "ai_analysis": "Evidence indicates partial verification with remaining activities pending: 'Remainder of 500h test in progress'.",
         "ai_recommendation": "Review validation bounds.",
         "evidence_links_count": 5
       }
@@ -678,13 +840,13 @@
       "req_code": "REQ-BCU-028",
       "title": "Active Cell Balancing Discharge Current",
       "expected_status": "Conflict",
-      "actual_status": "Conflict",
-      "is_correct": true,
+      "actual_status": "Partial",
+      "is_correct": false,
       "assessment": {
-        "coverage_status": "Conflict",
-        "confidence": 95.0,
+        "coverage_status": "Partial",
+        "confidence": 90.0,
         "review_state": "Needs review",
-        "ai_analysis": "Supplier datasheet specifies cell balancing current range of 50 mA to 100.0 mA max, which is below the required 200.0 mA per channel.",
+        "ai_analysis": "Evidence indicates partial verification with remaining activities pending: '0 A setting only; multi-point curve characterization incomplete'.",
         "ai_recommendation": "Review validation bounds.",
         "evidence_links_count": 5
       }

@@ -135,52 +135,6 @@ async def call_gemini_generate_content(
     return None
 
 
-async def call_openrouter_chat_completions(
-    prompt: str,
-    model: str = "deepseek/deepseek-r1:free",
-    system_instruction: Optional[str] = None,
-    json_mode: bool = False,
-    timeout: float = 60.0,
-) -> Optional[str]:
-    """Call OpenRouter chat completions API via REST supporting free-tier models."""
-    api_key = settings.effective_openrouter_api_key
-    if not api_key:
-        return None
-
-    url = "https://openrouter.ai/api/v1/chat/completions"
-    messages = []
-    if system_instruction:
-        messages.append({"role": "system", "content": system_instruction})
-    messages.append({"role": "user", "content": prompt})
-
-    payload: dict[str, Any] = {
-        "model": model,
-        "messages": messages,
-        "temperature": 0.1,
-    }
-    if json_mode:
-        payload["response_format"] = {"type": "json_object"}
-
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/json",
-        "HTTP-Referer": "https://github.com/Hamza-meskini/trace-audit-ai",
-        "X-Title": "TraceAudit AI",
-    }
-
-    try:
-        async with httpx.AsyncClient(timeout=timeout) as client:
-            resp = await client.post(url, json=payload, headers=headers)
-            if resp.status_code != 200:
-                logger.error(f"OpenRouter API error [{resp.status_code}] for model {model}: {resp.text}")
-                return None
-            data = resp.json()
-            return data["choices"][0]["message"]["content"]
-    except Exception as ex:
-        logger.error(f"Exception calling OpenRouter API ({model}): {ex}")
-        return None
-
-
 async def call_openai_chat_completions(
     prompt: str,
     model: str = "gpt-4o-mini",
@@ -228,13 +182,7 @@ async def generate_structured(
     system_instruction: Optional[str] = None,
     thinking_level: Optional[str] = None,
 ) -> Optional[T]:
-    """Generate structured output with automatic multi-model fallback cascade.
-    
-    Cascade order:
-    1. Primary Gemini (e.g. gemini-3.7-flash with Thinking)
-    2. OpenRouter free fallback models (e.g. deepseek/deepseek-r1:free, meta-llama/llama-3.3-70b-instruct:free, openrouter/free)
-    3. OpenAI (gpt-4o-mini)
-    """
+    """Generate structured output validated against a Pydantic schema using Gemini or OpenAI."""
     active_model = model or settings.LLM_MODEL
     is_gemini = "gemini" in active_model.lower() or not active_model.startswith("gpt-")
 
@@ -243,7 +191,6 @@ async def generate_structured(
     schema = response_model.model_json_schema()
     prompt_with_schema = f"{prompt}\n\nRespond ONLY with valid JSON strictly conforming to this schema:\n{json.dumps(schema)}"
 
-    # 1. Try Gemini
     if is_gemini and settings.effective_gemini_api_key:
         raw_response = await call_gemini_generate_content(
             prompt=prompt_with_schema,
@@ -253,23 +200,7 @@ async def generate_structured(
             response_schema=None,
             thinking_level=thinking_level,
         )
-
-    # 2. Fallback to OpenRouter free models if Gemini failed or is rate-limited
-    if not raw_response and settings.effective_openrouter_api_key:
-        candidate_models = [settings.OPENROUTER_MODEL] + [m for m in settings.OPENROUTER_FALLBACK_MODELS if m != settings.OPENROUTER_MODEL]
-        for candidate in candidate_models:
-            logger.info(f"Cascading to OpenRouter fallback model: {candidate}")
-            raw_response = await call_openrouter_chat_completions(
-                prompt=prompt_with_schema,
-                model=candidate,
-                system_instruction=system_instruction,
-                json_mode=True,
-            )
-            if raw_response:
-                break
-
-    # 3. Fallback to OpenAI
-    if not raw_response and settings.effective_openai_api_key:
+    elif settings.effective_openai_api_key:
         raw_response = await call_openai_chat_completions(
             prompt=prompt_with_schema,
             model=active_model if active_model.startswith("gpt-") else "gpt-4o-mini",
@@ -295,38 +226,19 @@ async def generate_text(
     system_instruction: Optional[str] = None,
     thinking_level: Optional[str] = None,
 ) -> Optional[str]:
-    """Generate free-form text response with automatic multi-model fallback cascade."""
+    """Generate free-form text response with thinking enabled."""
     active_model = model or settings.LLM_MODEL
     is_gemini = "gemini" in active_model.lower() or not active_model.startswith("gpt-")
 
-    # 1. Try Gemini
     if is_gemini and settings.effective_gemini_api_key:
-        res = await call_gemini_generate_content(
+        return await call_gemini_generate_content(
             prompt=prompt,
             model=active_model,
             system_instruction=system_instruction,
             json_mode=False,
             thinking_level=thinking_level,
         )
-        if res:
-            return res
-
-    # 2. Fallback to OpenRouter free models
-    if settings.effective_openrouter_api_key:
-        candidate_models = [settings.OPENROUTER_MODEL] + [m for m in settings.OPENROUTER_FALLBACK_MODELS if m != settings.OPENROUTER_MODEL]
-        for candidate in candidate_models:
-            logger.info(f"Cascading to OpenRouter fallback model: {candidate}")
-            res = await call_openrouter_chat_completions(
-                prompt=prompt,
-                model=candidate,
-                system_instruction=system_instruction,
-                json_mode=False,
-            )
-            if res:
-                return res
-
-    # 3. Fallback to OpenAI
-    if settings.effective_openai_api_key:
+    elif settings.effective_openai_api_key:
         return await call_openai_chat_completions(
             prompt=prompt,
             model=active_model if active_model.startswith("gpt-") else "gpt-4o-mini",
