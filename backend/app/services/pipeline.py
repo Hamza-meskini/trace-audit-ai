@@ -19,7 +19,7 @@ from app.models.requirement import Requirement, RequirementEvidence
 from app.models.finding import Finding
 from app.services.ingestion import parse_document
 from app.services.extraction import extract_requirements_from_text
-from app.services.retrieval import retrieve_candidate_evidence
+from app.services.retrieval import retrieve_candidate_evidence_hybrid, precompute_chunk_embeddings
 from app.services.classification import batch_assess_requirements
 
 logger = logging.getLogger("traceaudit.pipeline")
@@ -171,7 +171,12 @@ async def run_audit_pipeline(
         delete(Finding).where(Finding.project_id == project_id)
     )
 
-    # 4a. Retrieve candidate evidence per requirement
+    # 4a. Pre-compute semantic embeddings for all evidence chunks (single batch call)
+    # This avoids redundant API calls when retrieving evidence for each requirement.
+    chunk_embeddings = await precompute_chunk_embeddings(all_chunks_for_retrieval)
+    logger.info(f"Pre-computed embeddings for {len(all_chunks_for_retrieval)} chunks")
+
+    # 4b. Retrieve candidate evidence per requirement (hybrid BM25 + semantic)
     req_items = []
     for req in requirements:
         # Clear existing evidence links for this requirement
@@ -179,10 +184,11 @@ async def run_audit_pipeline(
             delete(RequirementEvidence).where(RequirementEvidence.requirement_id == req.id)
         )
 
-        # Retrieve top candidate evidence chunks
-        retrieved = retrieve_candidate_evidence(
+        # Hybrid retrieval: BM25 + Gemini text-embedding-005 cosine similarity
+        retrieved = await retrieve_candidate_evidence_hybrid(
             f"{req.title} {req.description or ''}",
             all_chunks_for_retrieval,
+            chunk_embeddings=chunk_embeddings,
             top_k=4,
         )
 
