@@ -53,31 +53,8 @@ def validate_semantic(
                     observed_value=c.quote[:150],
                 )
 
-    # Check for simulation vs physical burst test gap (REQ-BCU-013)
-    if "simulation" in req_text or "burst" in req_text or "venting" in req_text or "calculation" in req_text:
-        for c in non_spec_claims:
-            if "simulation" in c.quote.lower() and ("pending" in c.quote.lower() or "fixture pending" in c.quote.lower()):
-                return ValidationOutcome(
-                    status="PARTIAL",
-                    confidence=90.0,
-                    reason="Computational simulation completed, but physical burst verification test remains pending.",
-                    expected_value="Physical burst test verification",
-                    observed_value="Simulation only; physical burst pending",
-                )
-
-    # Check for acoustic leakage impedance characterization (REQ-BCU-029)
-    if "acoustic" in req_text or "leakage" in req_text:
-        for c in non_spec_claims:
-            if "calibration requires" in c.quote.lower() or "installation test" in c.quote.lower():
-                return ValidationOutcome(
-                    status="PARTIAL",
-                    confidence=88.0,
-                    reason="Acoustic sensor baseline characterized, but final dB threshold calibration requires vehicle pack installation test.",
-                    expected_value="Calibrated acoustic leakage threshold in vehicle pack",
-                    observed_value="Laboratory characterization only",
-                )
-
     # Conservative default for unproven semantic evidence: UNKNOWN
+    # This escalates to the LLM verification reasoner for domain-agnostic reasoning
     return ValidationOutcome(
         status="UNKNOWN",
         confidence=75.0,

@@ -146,25 +146,56 @@ def fallback_extract_requirements(text_content: str, doc_name: str = "") -> list
 
 # ── LLM-Powered Extraction ───────────────────────────────────────────────────
 
+# Chunk size for splitting large documents before sending to the LLM.
+# Each chunk is sent as a separate extraction call; results are deduplicated.
+EXTRACTION_CHUNK_SIZE = 8000
+EXTRACTION_CHUNK_OVERLAP = 500
+
+
+def _split_text_into_chunks(text: str, chunk_size: int = EXTRACTION_CHUNK_SIZE, overlap: int = EXTRACTION_CHUNK_OVERLAP) -> list[str]:
+    """Split document text into overlapping windows for iterative extraction."""
+    if len(text) <= chunk_size:
+        return [text]
+
+    chunks = []
+    start = 0
+    while start < len(text):
+        end = start + chunk_size
+        chunks.append(text[start:end])
+        start = end - overlap  # Overlap to avoid splitting a requirement across chunk boundaries
+    return chunks
+
+
 async def extract_requirements_from_text(
     text: str,
     doc_name: str = "",
     model: Optional[str] = None,
     thinking_level: Optional[str] = None,
 ) -> list[ExtractedRequirement]:
-    """Extract structured requirements from document text using Gemini (with Thinking enabled) or Databricks/OpenAI."""
+    """Extract structured requirements from document text using Gemini (with Thinking enabled) or Databricks/OpenAI.
+
+    For large documents, the text is split into overlapping chunks and each chunk
+    is processed independently. Results are deduplicated by requirement code to
+    avoid duplicates from the overlap regions.
+    """
     active_model = model or settings.LLM_MODEL
     has_keys = bool(settings.effective_gemini_api_key or settings.effective_databricks_token or settings.effective_openai_api_key)
 
     if not has_keys:
         return fallback_extract_requirements(text, doc_name)
 
-    prompt = f"""You are an engineering requirements auditor for manufacturing and industrial hardware/software.
+    text_chunks = _split_text_into_chunks(text)
+    all_requirements: list[ExtractedRequirement] = []
+    seen_codes: set[str] = set()
+
+    for chunk_idx, chunk_text in enumerate(text_chunks):
+        chunk_label = f"(Section {chunk_idx + 1}/{len(text_chunks)})" if len(text_chunks) > 1 else ""
+        prompt = f"""You are an engineering requirements auditor for manufacturing and industrial hardware/software.
 Extract all technical requirements, design constraints, performance criteria, and testable specifications from the following document excerpt.
 
-Document: {doc_name}
+Document: {doc_name} {chunk_label}
 Text:
-{text[:9000]}
+{chunk_text}
 
 For each requirement, provide:
 - req_code (e.g. REQ-001, or existing ID if present in text)
@@ -174,17 +205,30 @@ For each requirement, provide:
 - severity (Critical, High, Medium, Low)
 - parameters (numeric values, min/max limits, units like V, °C, kV, IP rating, MTBF hours)
 """
-    system_instruction = "You extract structured engineering requirements accurately with precise numeric parameters."
+        system_instruction = "You extract structured engineering requirements accurately with precise numeric parameters."
 
-    result: Optional[ExtractionResult] = await generate_structured(
-        prompt=prompt,
-        response_model=ExtractionResult,
-        model=active_model,
-        system_instruction=system_instruction,
-        thinking_level=thinking_level or settings.GEMINI_THINKING_LEVEL,
-    )
+        try:
+            result: Optional[ExtractionResult] = await generate_structured(
+                prompt=prompt,
+                response_model=ExtractionResult,
+                model=active_model,
+                system_instruction=system_instruction,
+                thinking_level=thinking_level or settings.GEMINI_THINKING_LEVEL,
+            )
 
-    if result and result.requirements:
-        return result.requirements
+            if result and result.requirements:
+                for req in result.requirements:
+                    # Deduplicate by req_code across overlapping chunks
+                    if req.req_code not in seen_codes:
+                        seen_codes.add(req.req_code)
+                        all_requirements.append(req)
+        except Exception as ex:
+            import logging
+            logging.getLogger("traceaudit.extraction").warning(
+                f"LLM extraction failed for chunk {chunk_idx + 1}/{len(text_chunks)} of {doc_name}: {ex}"
+            )
+
+    if all_requirements:
+        return all_requirements
 
     return fallback_extract_requirements(text, doc_name)
