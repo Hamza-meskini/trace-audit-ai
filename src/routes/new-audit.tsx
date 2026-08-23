@@ -1,6 +1,6 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useState, useRef } from "react";
-import { Brain, Check, Loader2, Sparkles, UploadCloud, Zap } from "lucide-react";
+import { Brain, Check, FileText, Loader2, Sparkles, UploadCloud, Zap } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -36,6 +36,7 @@ const steps = ["Project", "Requirements", "Evidence", "Review & Model"];
 
 function WizardPage() {
   const [step, setStep] = useState(0);
+  const [dragging, setDragging] = useState(false);
   const [running, setRunning] = useState(false);
   const [projectName, setProjectName] = useState("X200 EU Technical Documentation Audit");
   const [productName, setProductName] = useState("Industrial Controller X200");
@@ -241,35 +242,71 @@ function WizardPage() {
         )}
 
         {step === 2 && (
-          <ul className="space-y-2 text-sm">
-            {[
-              "Technical specifications",
-              "Test reports",
-              "Risk assessments",
-              "Supplier documents",
-              "Other evidence",
-            ].map((t) => (
-              <li
-                key={t}
-                className="flex items-center justify-between rounded-lg border border-border px-4 py-3"
-              >
-                <div>
-                  <div className="font-medium">{t}</div>
-                  <div className="text-xs text-muted-foreground">
-                    PDF, DOCX, XLSX evidence files
-                  </div>
+          <div className="space-y-4">
+            <div
+              onDragOver={(e) => {
+                e.preventDefault();
+                setDragging(true);
+              }}
+              onDragLeave={() => setDragging(false)}
+              onDrop={(e) => {
+                e.preventDefault();
+                setDragging(false);
+                handleFileUpload(e.dataTransfer.files);
+              }}
+              onClick={() => fileInputRef.current?.click()}
+              className={cn(
+                "cursor-pointer rounded-xl border-2 border-dashed p-8 text-center transition-all",
+                dragging
+                  ? "border-primary bg-primary/10 scale-[1.01]"
+                  : "border-border/80 bg-surface/50 hover:border-primary/70 hover:bg-surface"
+              )}
+            >
+              <div className="mx-auto flex size-12 items-center justify-center rounded-full bg-primary/10 text-primary">
+                <UploadCloud className="size-6" />
+              </div>
+              <p className="mt-3 text-sm font-semibold text-foreground">
+                Drop all evidence documents here, or click to browse
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Select and upload all files at once (PDF, DOCX, XLSX, CSV)
+              </p>
+              <p className="mt-0.5 text-[11px] text-muted-foreground/80">
+                Supports Test Reports, Supplier Datasheets, Compliance Matrices, Architecture Specs & Safety Logs
+              </p>
+              <Button variant="outline" size="sm" className="mt-4 pointer-events-none">
+                <UploadCloud className="mr-1.5 size-4" />
+                Select Multiple Files
+              </Button>
+            </div>
+
+            {/* List of uploaded documents */}
+            {documentsList && documentsList.length > 0 && (
+              <div className="rounded-lg border border-border bg-card p-4">
+                <div className="flex items-center justify-between border-b border-border/80 pb-2.5">
+                  <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                    Uploaded Technical Files ({documentsList.length})
+                  </span>
+                  <span className="text-xs text-success flex items-center gap-1 font-medium">
+                    <Check className="size-3.5" /> Ready for Audit
+                  </span>
                 </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => fileInputRef.current?.click()}
-                >
-                  <UploadCloud className="size-4" />
-                  Upload
-                </Button>
-              </li>
-            ))}
-          </ul>
+                <ul className="mt-2 divide-y divide-border/60">
+                  {documentsList.map((doc) => (
+                    <li key={doc.id} className="flex items-center justify-between py-2 text-xs">
+                      <div className="flex items-center gap-2 truncate pr-4">
+                        <FileText className="size-4 shrink-0 text-muted-foreground" />
+                        <span className="font-medium text-foreground truncate">{doc.original_filename}</span>
+                      </div>
+                      <span className="shrink-0 rounded-full border border-border bg-surface px-2.5 py-0.5 text-[10px] font-mono text-muted-foreground">
+                        {doc.doc_type || "Technical documentation"}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
         )}
 
         {step === 3 && (
