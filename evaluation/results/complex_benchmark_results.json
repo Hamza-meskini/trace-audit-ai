@@ -1,8 +1,8 @@
 {
   "benchmark_name": "TraceAudit AI 100-Requirement Complex Automotive Benchmark",
-  "timestamp": "2026-08-23 17:05:50",
+  "timestamp": "2026-08-23 18:15:49",
   "total_requirements": 100,
-  "runtime_seconds": 2972.07,
+  "runtime_seconds": 1043.86,
   "extraction_metrics": {
     "precision": 100.0,
     "recall": 100.0,
@@ -10,34 +10,34 @@
     "total_extracted": 100
   },
   "retrieval_metrics": {
-    "recall_at_1": 0.0,
-    "recall_at_3": 99.0,
+    "recall_at_1": 100.0,
+    "recall_at_3": 100.0,
     "recall_at_5": 100.0,
-    "mean_reciprocal_rank": 0.4958
+    "mean_reciprocal_rank": 1.0
   },
   "verification_metrics": {
-    "accuracy": 73.0,
-    "macro_precision": 59.98,
-    "macro_recall": 73.0,
-    "macro_f1": 65.44,
+    "accuracy": 81.0,
+    "macro_precision": 85.52,
+    "macro_recall": 81.0,
+    "macro_f1": 80.44,
     "per_class": {
       "SUPPORTED": {
-        "precision": 69.23,
+        "precision": 60.0,
         "recall": 90.0,
-        "f1": 78.26,
+        "f1": 72.0,
         "support": 20,
         "true_positives": 18,
-        "false_positives": 8,
+        "false_positives": 12,
         "false_negatives": 2
       },
       "PARTIAL": {
-        "precision": 58.06,
-        "recall": 90.0,
-        "f1": 70.59,
+        "precision": 85.0,
+        "recall": 85.0,
+        "f1": 85.0,
         "support": 20,
-        "true_positives": 18,
-        "false_positives": 13,
-        "false_negatives": 2
+        "true_positives": 17,
+        "false_positives": 3,
+        "false_negatives": 3
       },
       "CONFLICT": {
         "precision": 82.61,
@@ -49,22 +49,22 @@
         "false_negatives": 1
       },
       "MISSING": {
-        "precision": 90.0,
+        "precision": 100.0,
         "recall": 90.0,
-        "f1": 90.0,
+        "f1": 94.74,
         "support": 20,
         "true_positives": 18,
-        "false_positives": 2,
+        "false_positives": 0,
         "false_negatives": 2
       },
       "UNKNOWN": {
-        "precision": 0.0,
-        "recall": 0.0,
-        "f1": 0.0,
+        "precision": 100.0,
+        "recall": 45.0,
+        "f1": 62.07,
         "support": 20,
-        "true_positives": 0,
+        "true_positives": 9,
         "false_positives": 0,
-        "false_negatives": 20
+        "false_negatives": 11
       }
     },
     "confusion_matrix": {
@@ -76,8 +76,8 @@
         "UNKNOWN": 0
       },
       "PARTIAL": {
-        "SUPPORTED": 1,
-        "PARTIAL": 18,
+        "SUPPORTED": 2,
+        "PARTIAL": 17,
         "CONFLICT": 1,
         "MISSING": 0,
         "UNKNOWN": 0
@@ -97,23 +97,23 @@
         "UNKNOWN": 0
       },
       "UNKNOWN": {
-        "SUPPORTED": 5,
-        "PARTIAL": 13,
+        "SUPPORTED": 8,
+        "PARTIAL": 3,
         "CONFLICT": 0,
-        "MISSING": 2,
-        "UNKNOWN": 0
+        "MISSING": 0,
+        "UNKNOWN": 9
       }
     }
   },
   "specialty_metrics": {
     "conflict_f1": 88.37,
-    "missing_f1": 90.0,
-    "partial_f1": 70.59,
+    "missing_f1": 94.74,
+    "partial_f1": 85.0,
     "unsupported_claim_rate": 5.0,
-    "condition_accuracy": 77.33,
-    "numerical_range_accuracy": 73.0
+    "condition_accuracy": 82.56,
+    "numerical_range_accuracy": 81.0
   },
-  "failures_count": 27,
+  "failures_count": 19,
   "failures": [
     {
       "requirement_id": "REQ-AUT-002",
@@ -125,8 +125,8 @@
       "failure_category": "numerical_reasoning_failure",
       "reason": "Direct parameter discrepancy identified between HV Pack Operating Voltage Range and 03_BMS_Cell_Supervisory_ASIC_Datasheet.pdf. Specification mandates operation up to 800 V DC, but 03_BMS_Cell_Supervisory_ASIC_Datasheet.pdf restricts maximum rated operation to 7 V DC.",
       "retrieved_evidence": [
-        "REQ-AUT-002: HV Pack Operating Voltage Range\nMandatory Clause: The BCU shall maintain continuous mon",
-        "REQ-AUT-033: AC Input Voltage Operating Range & Frequency Tolerance\nMandatory Clause: The OBC shall "
+        "Requirement ID: REQ-AUT-002; Title: HV Pack Operating Voltage Range; Category: High-Voltage Battery;",
+        "BMS-ASIC-8800 16-Channel Battery Monitoring IC Datasheet\nSemiconductor Component Specification & Abs"
       ],
       "ground_truth_note": "Pack operating envelope validated from 380 V to 820 V DC (fully covers required 400 V to 800 V)."
     },
@@ -138,10 +138,10 @@
       "expected_status": "UNKNOWN",
       "predicted_status": "PARTIAL",
       "failure_category": "numerical_reasoning_failure",
-      "reason": "The acoustic gas venting detection sensor baseline is characterized in a bench chamber, but acoustic signature discrimination in the vehicle enclosure cannot be confirmed without pack-level calibration.",
+      "reason": "Bench\u2011level acoustic sensor baseline characterized, but vehicle\u2011level vent\u2011signature detection within 50\u202fms not demonstrated; evidence incomplete.",
       "retrieved_evidence": [
-        "REQ-AUT-009: Acoustic Gas Venting Detection Sensor Baseline\nMandatory Clause: The battery enclosure ",
-        "Requirement ID: REQ-AUT-009; Title: Acoustic Gas Venting Detection Sensor Baseline; Category: High-V"
+        "Requirement ID: REQ-AUT-009; Title: Acoustic Gas Venting Detection Sensor Baseline; Category: High-V",
+        "Thermal Management & Fluid Dynamics Validation Report\nEmpirical Chiller Testing, PTC Response, and T"
       ],
       "ground_truth_note": "Acoustic baseline characterized in bench test, but vehicle pack calibration remains unproven."
     },
@@ -155,10 +155,25 @@
       "failure_category": "source_authority_failure",
       "reason": "Measured value of 5 ms satisfies required upper limit of \u2264 5 ms.",
       "retrieved_evidence": [
-        "REQ-AUT-010: HV Interlock Loop (HVIL) Pulse Width Modulation Diagnostic\nMandatory Clause: The HVIL c",
-        "Requirement ID: REQ-AUT-010; Title: HV Interlock Loop (HVIL) Pulse Width Modulation Diagnostic; Cate"
+        "Requirement ID: REQ-AUT-010; Title: HV Interlock Loop (HVIL) Pulse Width Modulation Diagnostic; Cate",
+        "System Architecture & Interface Specification (v3.1)\nSystem Level High-Voltage, Networking, and Diag"
       ],
       "ground_truth_note": "Architecture specification describes design intention only; empirical diagnostic test proof is absent."
+    },
+    {
+      "requirement_id": "REQ-AUT-011",
+      "title": "Inverter Phase Overcurrent Hardware Shutdown",
+      "category": "Traction Inverter",
+      "difficulty": "Hard",
+      "expected_status": "SUPPORTED",
+      "predicted_status": "CONFLICT",
+      "failure_category": "numerical_reasoning_failure",
+      "reason": "Measured value of 5e+06 \u00b5s exceeds required maximum limit of \u2264 1.5 \u00b5s.",
+      "retrieved_evidence": [
+        "Requirement ID: REQ-AUT-011; Title: Inverter Phase Overcurrent Hardware Shutdown; Category: Traction",
+        "BMS & Inverter Functional Safety Validation Test Report\nHIL & Dynamometer Empirical Verification per"
+      ],
+      "ground_truth_note": "Inverter phase overcurrent at 680 A peak triggered DESAT gate shutdown in 1.1 \u00b5s (<= 1.5 \u00b5s required)."
     },
     {
       "requirement_id": "REQ-AUT-018",
@@ -170,40 +185,25 @@
       "failure_category": "numerical_reasoning_failure",
       "reason": "Measured value of 0.082 K/W exceeds required maximum limit of \u2264 0.045 K/W.",
       "retrieved_evidence": [
-        "REQ-AUT-018: Inverter Coolant Flow Rate vs Thermal Resistance\nMandatory Clause: At coolant flow rate",
-        "Requirement ID: REQ-AUT-018; Title: Inverter Coolant Flow Rate vs Thermal Resistance; Category: Trac"
+        "Requirement ID: REQ-AUT-018; Title: Inverter Coolant Flow Rate vs Thermal Resistance; Category: Trac",
+        "PWR-MOD-1200 Dual IGBT & DC-DC Power Stage Datasheet\nPower Semiconductor Electrical Characteristics\n"
       ],
       "ground_truth_note": "Thermal bench awaiting flow meter calibration."
     },
     {
-      "requirement_id": "REQ-AUT-019",
-      "title": "Space Vector PWM Harmonic Distortion (THD)",
-      "category": "Traction Inverter",
-      "difficulty": "Very Hard",
-      "expected_status": "UNKNOWN",
-      "predicted_status": "PARTIAL",
-      "failure_category": "numerical_reasoning_failure",
-      "reason": "The space vector PWM harmonic distortion is simulated to be 2.4%, which is within the specified limit, but the verification status is marked as REVIEW REQUIRED.",
+      "requirement_id": "REQ-AUT-024",
+      "title": "12V Output Voltage Ripple and Noise",
+      "category": "Power Distribution",
+      "difficulty": "Hard",
+      "expected_status": "PARTIAL",
+      "predicted_status": "SUPPORTED",
+      "failure_category": "partial_compliance_failure",
+      "reason": "Tested points (-40 to 85 \u00b0C) fully span required range (-40 to 85 \u00b0C).",
       "retrieved_evidence": [
-        "REQ-AUT-019: Space Vector PWM Harmonic Distortion (THD)\nMandatory Clause: Under rated 150 kW load, t",
-        "Requirement ID: REQ-AUT-019; Title: Space Vector PWM Harmonic Distortion (THD); Category: Traction I"
+        "Requirement ID: REQ-AUT-024; Title: 12V Output Voltage Ripple and Noise; Category: Power Distributio",
+        "DC-DC Converter Electrical & Efficiency Test Report\nGalvanic Isolation Hipot, Step Load Dynamics, an"
       ],
-      "ground_truth_note": "Simulation calculation only (THD 2.4%); physical dynamometer test required."
-    },
-    {
-      "requirement_id": "REQ-AUT-020",
-      "title": "Field Oriented Control (FOC) Flux Weakening Stability",
-      "category": "Traction Inverter",
-      "difficulty": "Difficult",
-      "expected_status": "UNKNOWN",
-      "predicted_status": "PARTIAL",
-      "failure_category": "llm_reasoning_failure",
-      "reason": "The field-oriented control flux weakening stability is described in the system architecture and interface specification, but the verification status is marked as REVIEW REQUIRED.",
-      "retrieved_evidence": [
-        "REQ-AUT-020: Field Oriented Control (FOC) Flux Weakening Stability\nMandatory Clause: The inverter FO",
-        "Requirement ID: REQ-AUT-020; Title: Field Oriented Control (FOC) Flux Weakening Stability; Category:"
-      ],
-      "ground_truth_note": "Architecture description only; empirical vector control test records absent."
+      "ground_truth_note": "Ripple 68 mVpp measured at room temp; thermal extreme chamber measurements pending."
     },
     {
       "requirement_id": "REQ-AUT-029",
@@ -211,29 +211,14 @@
       "category": "Power Distribution",
       "difficulty": "Very Hard",
       "expected_status": "UNKNOWN",
-      "predicted_status": "PARTIAL",
-      "failure_category": "numerical_reasoning_failure",
-      "reason": "The conducted voltage transients suppression is simulated to limit the pulse 2a peak to 16.2 V, but the verification status is marked as REVIEW REQUIRED.",
+      "predicted_status": "SUPPORTED",
+      "failure_category": "source_authority_failure",
+      "reason": "Empirical test report shows clamping TVS diode limits pulse 2a peak to 16.2 V, which is within the required limit of 18.0 V.",
       "retrieved_evidence": [
-        "REQ-AUT-029: Conducted Voltage Transients Suppression (ISO 7637-2)\nMandatory Clause: The DC-DC conve",
-        "Requirement ID: REQ-AUT-029; Title: Conducted Voltage Transients Suppression (ISO 7637-2); Category:"
+        "Requirement ID: REQ-AUT-029; Title: Conducted Voltage Transients Suppression (ISO 7637-2); Category:",
+        "Electrical Transient & Supply Voltage Overvoltage Test Report\nPulse Transients per ISO 7637-2 and Ju"
       ],
       "ground_truth_note": "SPICE circuit simulation only; physical transient generator test required."
-    },
-    {
-      "requirement_id": "REQ-AUT-030",
-      "title": "Pre-Charge Sequence Soft-Start Inrush Current",
-      "category": "Power Distribution",
-      "difficulty": "Difficult",
-      "expected_status": "UNKNOWN",
-      "predicted_status": "PARTIAL",
-      "failure_category": "numerical_reasoning_failure",
-      "reason": "The retrieved technical evidence excerpts provide some information about the pre-charge sequence soft-start inrush current, but the verification status is marked as REVIEW REQUIRED, indicating that the requirement is not fully supported.",
-      "retrieved_evidence": [
-        "REQ-AUT-030: Pre-Charge Sequence Soft-Start Inrush Current\nMandatory Clause: During startup pre-char",
-        "Requirement ID: REQ-AUT-030; Title: Pre-Charge Sequence Soft-Start Inrush Current; Category: Power D"
-      ],
-      "ground_truth_note": "Architecture calculation document only."
     },
     {
       "requirement_id": "REQ-AUT-033",
@@ -245,25 +230,10 @@
       "failure_category": "numerical_reasoning_failure",
       "reason": "Direct parameter discrepancy identified between AC Input Voltage Operating Range & Frequency Tolerance and 03_BMS_Cell_Supervisory_ASIC_Datasheet.pdf. Specification mandates operation up to 265 V AC, but 03_BMS_Cell_Supervisory_ASIC_Datasheet.pdf restricts maximum rated operation to 7 V AC.",
       "retrieved_evidence": [
-        "REQ-AUT-033: AC Input Voltage Operating Range & Frequency Tolerance\nMandatory Clause: The OBC shall ",
-        "Requirement ID: REQ-AUT-033; Title: AC Input Voltage Operating Range & Frequency Tolerance; Category"
+        "Requirement ID: REQ-AUT-033; Title: AC Input Voltage Operating Range & Frequency Tolerance; Category",
+        "On-Board Charger (OBC) AC Grid & Thermal Test Report\n11 kW Power Factor, Control Pilot PWM, Earth Le"
       ],
       "ground_truth_note": "Tested at 230 V / 50 Hz and 120 V / 60 Hz; low-line and frequency extremes pending."
-    },
-    {
-      "requirement_id": "REQ-AUT-039",
-      "title": "Grid Surge Transient Protection (IEC 61000-4-5)",
-      "category": "Charging Systems",
-      "difficulty": "Very Hard",
-      "expected_status": "UNKNOWN",
-      "predicted_status": "MISSING",
-      "failure_category": "numerical_reasoning_failure",
-      "reason": "The retrieved technical evidence excerpts do not provide sufficient information to determine compliance with the Grid Surge Transient Protection (IEC 61000-4-5) requirement.",
-      "retrieved_evidence": [
-        "REQ-AUT-039: Grid Surge Transient Protection (IEC 61000-4-5)\nMandatory Clause: The AC input stage sh",
-        "Requirement ID: REQ-AUT-039; Title: Grid Surge Transient Protection (IEC 61000-4-5); Category: Charg"
-      ],
-      "ground_truth_note": "LTspice simulation only; physical surge generator test required."
     },
     {
       "requirement_id": "REQ-AUT-040",
@@ -275,8 +245,8 @@
       "failure_category": "source_authority_failure",
       "reason": "Evidence range (15118 to 20 TLS Handshake) fully covers required bounds (15118 to 20 TLS Handshake).",
       "retrieved_evidence": [
-        "REQ-AUT-040: Smart Grid ISO 15118-20 TLS Handshake Timing\nMandatory Clause: The OBC HomePlug GreenPH",
-        "Requirement ID: REQ-AUT-040; Title: Smart Grid ISO 15118-20 TLS Handshake Timing; Category: Charging"
+        "Requirement ID: REQ-AUT-040; Title: Smart Grid ISO 15118-20 TLS Handshake Timing; Category: Charging",
+        "System Architecture & Interface Specification (v3.1)\nSystem Level High-Voltage, Networking, and Diag"
       ],
       "ground_truth_note": "Architecture definition only."
     },
@@ -286,44 +256,14 @@
       "category": "Thermal Management",
       "difficulty": "Very Hard",
       "expected_status": "UNKNOWN",
-      "predicted_status": "PARTIAL",
-      "failure_category": "numerical_reasoning_failure",
-      "reason": "The retrieved technical evidence excerpts provide some information about the Cabin Thermal Comfort Model (PMV/PPD) requirement, but the verification status is marked as REVIEW REQUIRED, indicating that the requirement is not fully supported.",
+      "predicted_status": "SUPPORTED",
+      "failure_category": "source_authority_failure",
+      "reason": "Empirical test report shows PMV of +0.2 under simulated 22\u00b0C ambient, which is within the required range of \u00b10.5.",
       "retrieved_evidence": [
-        "REQ-AUT-049: Cabin Thermal Comfort Model (PMV/PPD)\nMandatory Clause: The climate control algorithm s",
-        "Requirement ID: REQ-AUT-049; Title: Cabin Thermal Comfort Model (PMV/PPD); Category: Thermal Managem"
+        "Requirement ID: REQ-AUT-049; Title: Cabin Thermal Comfort Model (PMV/PPD); Category: Thermal Managem",
+        "Thermal Management & Fluid Dynamics Validation Report\nEmpirical Chiller Testing, PTC Response, and T"
       ],
       "ground_truth_note": "CFD modeling calculation only; in-vehicle test mandatory."
-    },
-    {
-      "requirement_id": "REQ-AUT-050",
-      "title": "Electric Water Pump Dry-Run Protection Response",
-      "category": "Thermal Management",
-      "difficulty": "Difficult",
-      "expected_status": "UNKNOWN",
-      "predicted_status": "MISSING",
-      "failure_category": "numerical_reasoning_failure",
-      "reason": "The retrieved technical evidence excerpts do not provide sufficient information to determine compliance with the Electric Water Pump Dry-Run Protection Response requirement.",
-      "retrieved_evidence": [
-        "REQ-AUT-050: Electric Water Pump Dry-Run Protection Response\nMandatory Clause: If coolant flow is lo",
-        "Requirement ID: REQ-AUT-050; Title: Electric Water Pump Dry-Run Protection Response; Category: Therm"
-      ],
-      "ground_truth_note": "Architecture documentation only."
-    },
-    {
-      "requirement_id": "REQ-AUT-052",
-      "title": "CAN Bus-Off Recovery State Machine Timing",
-      "category": "In-Vehicle Networking",
-      "difficulty": "Difficult",
-      "expected_status": "SUPPORTED",
-      "predicted_status": "CONFLICT",
-      "failure_category": "numerical_reasoning_failure",
-      "reason": "Measured value of 110 ms exceeds required maximum limit of \u2264 100 ms.",
-      "retrieved_evidence": [
-        "REQ-AUT-052: CAN Bus-Off Recovery State Machine Timing\nMandatory Clause: Following a bus-off conditi",
-        "Requirement ID: REQ-AUT-052; Title: CAN Bus-Off Recovery State Machine Timing; Category: In-Vehicle "
-      ],
-      "ground_truth_note": "Node resumed transmission in 94.6 ms (within 90 to 110 ms window)."
     },
     {
       "requirement_id": "REQ-AUT-059",
@@ -333,10 +273,10 @@
       "expected_status": "UNKNOWN",
       "predicted_status": "PARTIAL",
       "failure_category": "numerical_reasoning_failure",
-      "reason": "Network simulation predicts clock drift synchronization within 420 ns, but does not explicitly verify the jitter requirement of < 1.0 \u00b5s.",
+      "reason": "Network simulation predicts clock drift synchronization within 420 ns, but it is not clear if this meets the requirement of < 1.0 \u00b5s jitter.",
       "retrieved_evidence": [
-        "REQ-AUT-059: gPTP (IEEE 802.1AS) Time Synchronization Jitter\nMandatory Clause: The Ethernet audio-vi",
-        "Requirement ID: REQ-AUT-059; Title: gPTP (IEEE 802.1AS) Time Synchronization Jitter; Category: In-Ve"
+        "Requirement ID: REQ-AUT-059; Title: gPTP (IEEE 802.1AS) Time Synchronization Jitter; Category: In-Ve",
+        "Automotive 100Base-T1 Physical Layer & SOME/IP Test Report\nSignal Quality, BER, and Network Traffic "
       ],
       "ground_truth_note": "Simulation calculation only (420 ns drift); physical test required."
     },
@@ -348,10 +288,10 @@
       "expected_status": "UNKNOWN",
       "predicted_status": "SUPPORTED",
       "failure_category": "source_authority_failure",
-      "reason": "Static socket buffer allocation tables in AUTOSAR BswM configuration support up to 8 concurrent TCP stream connections without dynamic memory allocation.",
+      "reason": "Architecture specification defines static socket buffer allocation tables, which supports up to 8 concurrent TCP stream connections without heap memory fragmentation.",
       "retrieved_evidence": [
-        "REQ-AUT-060: TCP/IP Stack Socket Resource Allocation\nMandatory Clause: The embedded TCP/IP stack sha",
-        "Requirement ID: REQ-AUT-060; Title: TCP/IP Stack Socket Resource Allocation; Category: In-Vehicle Ne"
+        "Requirement ID: REQ-AUT-060; Title: TCP/IP Stack Socket Resource Allocation; Category: In-Vehicle Ne",
+        "System Architecture & Interface Specification (v3.1)\nSystem Level High-Voltage, Networking, and Diag"
       ],
       "ground_truth_note": "Architectural configuration documentation only."
     },
@@ -363,10 +303,10 @@
       "expected_status": "UNKNOWN",
       "predicted_status": "SUPPORTED",
       "failure_category": "source_authority_failure",
-      "reason": "NVRAM endurance calculation model estimates 125,000 cycles based on Flash memory manufacturer cell fatigue curve, exceeding the required 100,000 cycles.",
+      "reason": "NVRAM endurance calculation model estimates 125,000 cycles, which exceeds the required 100,000 DTC write cycles.",
       "retrieved_evidence": [
-        "REQ-AUT-069: Non-Volatile Memory (NVRAM) Wear-Leveling Endurance\nMandatory Clause: The NVRAM storage",
-        "Requirement ID: REQ-AUT-069; Title: Non-Volatile Memory (NVRAM) Wear-Leveling Endurance; Category: D"
+        "Requirement ID: REQ-AUT-069; Title: Non-Volatile Memory (NVRAM) Wear-Leveling Endurance; Category: D",
+        "Thermal Management & Fluid Dynamics Validation Report\nEmpirical Chiller Testing, PTC Response, and T"
       ],
       "ground_truth_note": "Theoretical calculation model only."
     },
@@ -376,12 +316,12 @@
       "category": "Diagnostics & Bootloader",
       "difficulty": "Difficult",
       "expected_status": "UNKNOWN",
-      "predicted_status": "PARTIAL",
-      "failure_category": "llm_reasoning_failure",
-      "reason": "Negative response code handling tables for diagnostic stack are specified, but the response time within P2_server time is not explicitly verified.",
+      "predicted_status": "SUPPORTED",
+      "failure_category": "source_authority_failure",
+      "reason": "Diagnostic fault code protocol architecture handles NRC 0x12 (subFunctionNotSupported) and NRC 0x22 (conditionsNotCorrect).",
       "retrieved_evidence": [
-        "REQ-AUT-070: Diagnostic Response On Sub-Function Not Supported (NRC 0x12)\nMandatory Clause: When an ",
-        "Requirement ID: REQ-AUT-070; Title: Diagnostic Response On Sub-Function Not Supported (NRC 0x12); Ca"
+        "Requirement ID: REQ-AUT-070; Title: Diagnostic Response On Sub-Function Not Supported (NRC 0x12); Ca",
+        "System Architecture & Interface Specification (v3.1)\nSystem Level High-Voltage, Networking, and Diag"
       ],
       "ground_truth_note": "Architecture specification only."
     },
@@ -395,8 +335,8 @@
       "failure_category": "numerical_reasoning_failure",
       "reason": "Measured timing latency of 0.0285 ms satisfies the required upper limit of \u2264 50 ms.",
       "retrieved_evidence": [
-        "REQ-AUT-078: Hardware Built-In Self-Test (BIST) Startup Execution Time\nMandatory Clause: Upon power-",
-        "Requirement ID: REQ-AUT-078; Title: Hardware Built-In Self-Test (BIST) Startup Execution Time; Categ"
+        "Requirement ID: REQ-AUT-078; Title: Hardware Built-In Self-Test (BIST) Startup Execution Time; Categ",
+        "Requirement ID: REQ-AUT-030; Title: Pre-Charge Sequence Soft-Start Inrush Current; Category: Power D"
       ],
       "ground_truth_note": "BIST startup profiling pending."
     },
@@ -408,57 +348,12 @@
       "expected_status": "UNKNOWN",
       "predicted_status": "SUPPORTED",
       "failure_category": "source_authority_failure",
-      "reason": "FMEDA quantitative calculation report indicates theoretical SPFM of 99.4% and LFM of 91.2%, meeting the required metrics.",
+      "reason": "FMEDA quantitative calculation report (08_BMS_Functional_Safety_Validation_Report.pdf) indicates that the safety architecture achieves Single-Point Fault Metric (SPFM) of 99.4% and Latent Fault Metric (LFM) of 91.2%, which meets the requirement.",
       "retrieved_evidence": [
-        "REQ-AUT-079: Diagnostic Coverage (DC) for ASIL-D ISO 26262 Compliance\nMandatory Clause: The safety a",
-        "Requirement ID: REQ-AUT-079; Title: Diagnostic Coverage (DC) for ASIL-D ISO 26262 Compliance; Catego"
+        "Requirement ID: REQ-AUT-079; Title: Diagnostic Coverage (DC) for ASIL-D ISO 26262 Compliance; Catego",
+        "BMS & Inverter Functional Safety Validation Test Report\nHIL & Dynamometer Empirical Verification per"
       ],
       "ground_truth_note": "FMEDA theoretical calculation report only; physical fault injection required."
-    },
-    {
-      "requirement_id": "REQ-AUT-080",
-      "title": "Clock Monitor Oscillator Frequency Drift Detection",
-      "category": "Functional Safety",
-      "difficulty": "Difficult",
-      "expected_status": "UNKNOWN",
-      "predicted_status": "PARTIAL",
-      "failure_category": "numerical_reasoning_failure",
-      "reason": "Clock supervisor hardware architecture and backup oscillator configuration are defined, but the clock drift detection and PLL switchover latency are not explicitly verified.",
-      "retrieved_evidence": [
-        "REQ-AUT-080: Clock Monitor Oscillator Frequency Drift Detection\nMandatory Clause: The internal clock",
-        "Requirement ID: REQ-AUT-080; Title: Clock Monitor Oscillator Frequency Drift Detection; Category: Fu"
-      ],
-      "ground_truth_note": "Architecture documentation only."
-    },
-    {
-      "requirement_id": "REQ-AUT-089",
-      "title": "Threat Analysis and Risk Assessment (TARA) Residual Risk Score",
-      "category": "Cybersecurity",
-      "difficulty": "Very Hard",
-      "expected_status": "UNKNOWN",
-      "predicted_status": "PARTIAL",
-      "failure_category": "numerical_reasoning_failure",
-      "reason": "TARA analysis report evaluates 42 threat vectors, but it is unclear if all identified threat scenarios have residual risk rating reduced to CAL-2 or lower.",
-      "retrieved_evidence": [
-        "REQ-AUT-089: Threat Analysis and Risk Assessment (TARA) Residual Risk Score\nMandatory Clause: Per IS",
-        "Requirement ID: REQ-AUT-089; Title: Threat Analysis and Risk Assessment (TARA) Residual Risk Score; "
-      ],
-      "ground_truth_note": "Analytical TARA assessment document only."
-    },
-    {
-      "requirement_id": "REQ-AUT-090",
-      "title": "Secure Logging of Security Events (SecEvent)",
-      "category": "Cybersecurity",
-      "difficulty": "Difficult",
-      "expected_status": "UNKNOWN",
-      "predicted_status": "PARTIAL",
-      "failure_category": "llm_reasoning_failure",
-      "reason": "Secure logging event format and flash partition layout are described, but it is unclear if the log memory partition is tamper-evident.",
-      "retrieved_evidence": [
-        "REQ-AUT-090: Secure Logging of Security Events (SecEvent)\nMandatory Clause: The cybersecurity audit ",
-        "Requirement ID: REQ-AUT-090; Title: Secure Logging of Security Events (SecEvent); Category: Cybersec"
-      ],
-      "ground_truth_note": "Architecture specification only."
     },
     {
       "requirement_id": "REQ-AUT-094",
@@ -470,8 +365,8 @@
       "failure_category": "partial_compliance_failure",
       "reason": "Tested points (-40 to 85 \u00b0C) fully span required range (-40 to 85 \u00b0C).",
       "retrieved_evidence": [
-        "REQ-AUT-094: Thermal Shock Cycling With Fast Transition (-40\u00b0C to +85\u00b0C)\nMandatory Clause: The unit ",
-        "Requirement ID: REQ-AUT-094; Title: Thermal Shock Cycling With Fast Transition (-40\u00b0C to +85\u00b0C); Cat"
+        "Requirement ID: REQ-AUT-094; Title: Thermal Shock Cycling With Fast Transition (-40\u00b0C to +85\u00b0C); Cat",
+        "Environmental Thermal Chamber Validation Test Report\nClimatic, Thermal Shock, and Temperature Sensor"
       ],
       "ground_truth_note": "250 of 500 cycles completed with zero defects; remaining 250 in progress."
     },
@@ -485,8 +380,8 @@
       "failure_category": "contradiction_detection_failure",
       "reason": "Ingress protection test confirmed compliance with IP67 (zero ingress recorded).",
       "retrieved_evidence": [
-        "REQ-AUT-095: IP Ingress Protection Enclosure Rating\nMandatory Clause: The ECU housing and electrical",
-        "Requirement ID: REQ-AUT-095; Title: IP Ingress Protection Enclosure Rating; Category: Environmental "
+        "Requirement ID: REQ-AUT-095; Title: IP Ingress Protection Enclosure Rating; Category: Environmental ",
+        "Mechanical Dynamics & Enclosure IP Validation Test Report\nVibration Shaker Endurance and Water Ingre"
       ],
       "ground_truth_note": "Water ingress of 4.2 mL observed during 1m submersion test; rated as IP65 only instead of IP67."
     },
@@ -498,27 +393,12 @@
       "expected_status": "UNKNOWN",
       "predicted_status": "PARTIAL",
       "failure_category": "numerical_reasoning_failure",
-      "reason": "Conformal coating moisture permeation model calculates insulation resistance, but it is unclear if the ECU operates without insulation breakdown under the specified conditions.",
+      "reason": "Theoretical simulation (Excerpt #1) provides a moisture permeation model, but empirical test reports are required for full verification.",
       "retrieved_evidence": [
-        "REQ-AUT-099: Damp Heat Steady State Cyclic Humidity (ISO 16750-4)\nMandatory Clause: The ECU shall op",
-        "Requirement ID: REQ-AUT-099; Title: Damp Heat Steady State Cyclic Humidity (ISO 16750-4); Category: "
+        "Requirement ID: REQ-AUT-099; Title: Damp Heat Steady State Cyclic Humidity (ISO 16750-4); Category: ",
+        "Environmental Thermal Chamber Validation Test Report\nClimatic, Thermal Shock, and Temperature Sensor"
       ],
       "ground_truth_note": "Conformal coating moisture permeation calculation model only."
-    },
-    {
-      "requirement_id": "REQ-AUT-100",
-      "title": "Mechanical Shock Half-Sine Pulse Profile",
-      "category": "Environmental & EMC",
-      "difficulty": "Difficult",
-      "expected_status": "UNKNOWN",
-      "predicted_status": "PARTIAL",
-      "failure_category": "llm_reasoning_failure",
-      "reason": "Mechanical shock test parameters are specified, but there is no direct evidence of the ECU surviving the specified half-sine mechanical shock pulses.",
-      "retrieved_evidence": [
-        "REQ-AUT-100: Mechanical Shock Half-Sine Pulse Profile\nMandatory Clause: The ECU shall survive 30 g h",
-        "Requirement ID: REQ-AUT-100; Title: Mechanical Shock Half-Sine Pulse Profile; Category: Environmenta"
-      ],
-      "ground_truth_note": "Architecture test fixture specification only."
     }
   ],
   "predictions": {
@@ -526,7 +406,7 @@
       "expected": "SUPPORTED",
       "predicted": "SUPPORTED",
       "confidence": 95.0,
-      "reason": "Test report and compliance matrix confirm that the BMS detects cell overvoltage and commands HV contactor opening within the specified limits."
+      "reason": "Empirical test injected 4.255\u202fV for 100\u202fms and triggered contactor trip in 14.2\u202fms, satisfying voltage threshold, duration, and <20\u202fms trip time."
     },
     "REQ-AUT-002": {
       "expected": "SUPPORTED",
@@ -538,7 +418,7 @@
       "expected": "PARTIAL",
       "predicted": "PARTIAL",
       "confidence": 80.0,
-      "reason": "While the system requirements specification and compliance matrix indicate that the cell operating temperature range is -40.0\u00b0C to +85.0\u00b0C, the environmental thermal shock report only verifies the range from -20.0\u00b0C to +70.0\u00b0C."
+      "reason": "Temperature measurement verified from -20\u202f\u00b0C to +70\u202f\u00b0C with \u00b10.6\u202f\u00b0C accuracy; low\u2011temp (-40\u202f\u00b0C) and high\u2011temp (+85\u202f\u00b0C) points remain untested."
     },
     "REQ-AUT-004": {
       "expected": "PARTIAL",
@@ -573,8 +453,8 @@
     "REQ-AUT-009": {
       "expected": "UNKNOWN",
       "predicted": "PARTIAL",
-      "confidence": 70.0,
-      "reason": "The acoustic gas venting detection sensor baseline is characterized in a bench chamber, but acoustic signature discrimination in the vehicle enclosure cannot be confirmed without pack-level calibration."
+      "confidence": 75.0,
+      "reason": "Bench\u2011level acoustic sensor baseline characterized, but vehicle\u2011level vent\u2011signature detection within 50\u202fms not demonstrated; evidence incomplete."
     },
     "REQ-AUT-010": {
       "expected": "UNKNOWN",
@@ -584,15 +464,15 @@
     },
     "REQ-AUT-011": {
       "expected": "SUPPORTED",
-      "predicted": "SUPPORTED",
+      "predicted": "CONFLICT",
       "confidence": 90.0,
-      "reason": "The inverter phase overcurrent hardware shutdown is verified through a short-circuit test with DESAT protection, and the gate driver disables all SiC power switches within the specified latency."
+      "reason": "Measured value of 5e+06 \u00b5s exceeds required maximum limit of \u2264 1.5 \u00b5s."
     },
     "REQ-AUT-012": {
       "expected": "SUPPORTED",
       "predicted": "SUPPORTED",
       "confidence": 95.0,
-      "reason": "The DC-link capacitor voltage discharge time is verified through an active discharge test, and the voltage decays from 800 V to 42.5 V in 3.4 seconds, which is less than the specified 5.0 seconds."
+      "reason": "Active discharge test showed DC\u2011link voltage dropping from 800\u202fV to 42.5\u202fV in 3.4\u202fs, meeting the <5\u202fs requirement."
     },
     "REQ-AUT-013": {
       "expected": "PARTIAL",
@@ -603,8 +483,8 @@
     "REQ-AUT-014": {
       "expected": "PARTIAL",
       "predicted": "PARTIAL",
-      "confidence": 90.0,
-      "reason": "Test verification records indicate qualification testing is currently in progress or partially completed."
+      "confidence": 80.0,
+      "reason": "Resolver tracking error measured at +25\u202f\u00b0C up to 15\u202f000\u202frpm (\u00b10.14\u00b0) meets spec, but high\u2011temperature (+105\u202f\u00b0C) and full\u2011speed (20\u202f000\u202frpm) conditions are pending."
     },
     "REQ-AUT-015": {
       "expected": "CONFLICT",
@@ -632,39 +512,39 @@
     },
     "REQ-AUT-019": {
       "expected": "UNKNOWN",
-      "predicted": "PARTIAL",
-      "confidence": 75.0,
-      "reason": "The space vector PWM harmonic distortion is simulated to be 2.4%, which is within the specified limit, but the verification status is marked as REVIEW REQUIRED."
+      "predicted": "UNKNOWN",
+      "confidence": 70.0,
+      "reason": "Only a MATLAB/Simulink simulation predicts 2.4\u202f% THD; no empirical measurement provided, so requirement cannot be confirmed."
     },
     "REQ-AUT-020": {
       "expected": "UNKNOWN",
-      "predicted": "PARTIAL",
+      "predicted": "UNKNOWN",
       "confidence": 70.0,
-      "reason": "The field-oriented control flux weakening stability is described in the system architecture and interface specification, but the verification status is marked as REVIEW REQUIRED."
+      "reason": "Evidence consists solely of architecture description and design intent; no empirical validation of flux\u2011weakening stability is present."
     },
     "REQ-AUT-021": {
       "expected": "SUPPORTED",
       "predicted": "SUPPORTED",
-      "confidence": 90.0,
-      "reason": "The HV-to-LV DC-DC output voltage regulation is verified through a transient step load test, and the output voltage recovers within the specified time and tolerance."
+      "confidence": 95.0,
+      "reason": "Step\u2011load test produced 13.84\u202fV output (within 13.80\u202f\u00b1\u202f0.15\u202fV) and recovered in 320\u202f\u00b5s, satisfying voltage regulation and response\u2011time criteria."
     },
     "REQ-AUT-022": {
       "expected": "SUPPORTED",
       "predicted": "SUPPORTED",
       "confidence": 95.0,
-      "reason": "The DC-DC converter dielectric withstand isolation is verified through a hipot test, and the leakage current is within the specified limit."
+      "reason": "Hipot test applied 3000\u202fV\u202fAC rms for 60\u202fs with measured leakage 0.38\u202fmA (<1\u202fmA), meeting the dielectric withstand requirement."
     },
     "REQ-AUT-023": {
       "expected": "PARTIAL",
       "predicted": "PARTIAL",
-      "confidence": 90.0,
-      "reason": "Test verification records indicate qualification testing is currently in progress or partially completed."
+      "confidence": 80.0,
+      "reason": "Efficiency measured at 1000\u202fW (95.2\u202f%) and 2000\u202fW (94.8\u202f%) exceeds 94\u202f%; however, 300\u202fW and 3000\u202fW points are not yet measured."
     },
     "REQ-AUT-024": {
       "expected": "PARTIAL",
-      "predicted": "PARTIAL",
-      "confidence": 90.0,
-      "reason": "Test verification records indicate qualification testing is currently in progress or partially completed."
+      "predicted": "SUPPORTED",
+      "confidence": 95.0,
+      "reason": "Tested points (-40 to 85 \u00b0C) fully span required range (-40 to 85 \u00b0C)."
     },
     "REQ-AUT-025": {
       "expected": "CONFLICT",
@@ -692,27 +572,27 @@
     },
     "REQ-AUT-029": {
       "expected": "UNKNOWN",
-      "predicted": "PARTIAL",
-      "confidence": 65.0,
-      "reason": "The conducted voltage transients suppression is simulated to limit the pulse 2a peak to 16.2 V, but the verification status is marked as REVIEW REQUIRED."
+      "predicted": "SUPPORTED",
+      "confidence": 95.0,
+      "reason": "Empirical test report shows clamping TVS diode limits pulse 2a peak to 16.2 V, which is within the required limit of 18.0 V."
     },
     "REQ-AUT-030": {
       "expected": "UNKNOWN",
-      "predicted": "PARTIAL",
-      "confidence": 80.0,
-      "reason": "The retrieved technical evidence excerpts provide some information about the pre-charge sequence soft-start inrush current, but the verification status is marked as REVIEW REQUIRED, indicating that the requirement is not fully supported."
+      "predicted": "UNKNOWN",
+      "confidence": 50.0,
+      "reason": "Only theoretical simulation and architecture specification are provided, with no empirical test report."
     },
     "REQ-AUT-031": {
       "expected": "SUPPORTED",
       "predicted": "SUPPORTED",
-      "confidence": 95.0,
-      "reason": "Demonstrated value of 0.98 at satisfies required minimum threshold of \u2265 0.98 at."
+      "confidence": 98.0,
+      "reason": "Empirical test report shows grid test at 400 V AC 3-phase delivered 11.05 kW with measured power factor of 0.992, which meets the requirement."
     },
     "REQ-AUT-032": {
       "expected": "SUPPORTED",
       "predicted": "SUPPORTED",
-      "confidence": 95.0,
-      "reason": "The retrieved technical evidence excerpts provide clear evidence that the Control Pilot (CP) duty cycle detection tolerance requirement is met, with a maximum error of \u00b10.22% duty cycle, which is within the specified accuracy of \u00b10.5% duty cycle."
+      "confidence": 96.0,
+      "reason": "Empirical test report shows control pilot duty cycle sweep from 10.0% to 90.0% measured with maximum error of \u00b10.22% duty cycle, which meets the requirement."
     },
     "REQ-AUT-033": {
       "expected": "PARTIAL",
@@ -723,8 +603,8 @@
     "REQ-AUT-034": {
       "expected": "PARTIAL",
       "predicted": "PARTIAL",
-      "confidence": 70.0,
-      "reason": "The retrieved technical evidence excerpts provide some information about the V2L (Vehicle-to-Load) bidirectional output voltage and distortion, but the verification status is marked as IN PROGRESS, indicating that the requirement is not fully supported."
+      "confidence": 80.0,
+      "reason": "Empirical test report shows V2L evaluated with 1.8 kW resistive heater, but inductive load testing is pending."
     },
     "REQ-AUT-035": {
       "expected": "CONFLICT",
@@ -747,14 +627,14 @@
     "REQ-AUT-038": {
       "expected": "MISSING",
       "predicted": "MISSING",
-      "confidence": 95.0,
-      "reason": "Official compliance matrix record confirms qualification testing has not been performed and required evidence is missing."
+      "confidence": 20.0,
+      "reason": "No meaningful technical information is provided for this requirement."
     },
     "REQ-AUT-039": {
       "expected": "UNKNOWN",
-      "predicted": "MISSING",
-      "confidence": 50.0,
-      "reason": "The retrieved technical evidence excerpts do not provide sufficient information to determine compliance with the Grid Surge Transient Protection (IEC 61000-4-5) requirement."
+      "predicted": "UNKNOWN",
+      "confidence": 40.0,
+      "reason": "Only theoretical simulation is provided, with no empirical test report."
     },
     "REQ-AUT-040": {
       "expected": "UNKNOWN",
@@ -765,14 +645,14 @@
     "REQ-AUT-041": {
       "expected": "SUPPORTED",
       "predicted": "SUPPORTED",
-      "confidence": 90.0,
-      "reason": "The retrieved technical evidence excerpts provide clear evidence that the Battery Pack Coolant Chiller Temperature Regulation requirement is met, with the inlet coolant temperature stabilized at 25.4\u00b0C under 5.2 kW steady thermal dissipation."
+      "confidence": 92.0,
+      "reason": "Empirical test report shows thermal bench test with inlet coolant temperature stabilized at 25.4\u00b0C under 5.2 kW steady thermal dissipation, which meets the requirement."
     },
     "REQ-AUT-042": {
       "expected": "SUPPORTED",
       "predicted": "SUPPORTED",
-      "confidence": 95.0,
-      "reason": "The retrieved technical evidence excerpts provide clear evidence that the HV Electric AC Compressor Speed Control requirement is met, with the compressor speed sweep from 1000 rpm to 8500 rpm verified and a maximum observed speed error of 28 rpm."
+      "confidence": 90.0,
+      "reason": "Empirical test report shows compressor speed sweep from 1000 rpm to 8500 rpm verified, with maximum observed speed error of 28 rpm, which meets the requirement."
     },
     "REQ-AUT-043": {
       "expected": "PARTIAL",
@@ -783,8 +663,8 @@
     "REQ-AUT-044": {
       "expected": "PARTIAL",
       "predicted": "PARTIAL",
-      "confidence": 60.0,
-      "reason": "The retrieved technical evidence excerpts provide some information about the Electronic Expansion Valve (EXV) Positioning Steps requirement, but the verification status is marked as IN PROGRESS, indicating that the requirement is not fully supported."
+      "confidence": 70.0,
+      "reason": "Empirical test report shows EXV positioning verified at +25\u00b0C ambient across full 500 steps, but cold step validation at -30\u00b0C is scheduled for next test run."
     },
     "REQ-AUT-045": {
       "expected": "CONFLICT",
@@ -812,27 +692,27 @@
     },
     "REQ-AUT-049": {
       "expected": "UNKNOWN",
-      "predicted": "PARTIAL",
-      "confidence": 65.0,
-      "reason": "The retrieved technical evidence excerpts provide some information about the Cabin Thermal Comfort Model (PMV/PPD) requirement, but the verification status is marked as REVIEW REQUIRED, indicating that the requirement is not fully supported."
+      "predicted": "SUPPORTED",
+      "confidence": 95.0,
+      "reason": "Empirical test report shows PMV of +0.2 under simulated 22\u00b0C ambient, which is within the required range of \u00b10.5."
     },
     "REQ-AUT-050": {
       "expected": "UNKNOWN",
-      "predicted": "MISSING",
-      "confidence": 40.0,
-      "reason": "The retrieved technical evidence excerpts do not provide sufficient information to determine compliance with the Electric Water Pump Dry-Run Protection Response requirement."
+      "predicted": "UNKNOWN",
+      "confidence": 50.0,
+      "reason": "Only theoretical simulation and architecture specification are provided, which cannot satisfy physical/functional testing requirements."
     },
     "REQ-AUT-051": {
       "expected": "SUPPORTED",
       "predicted": "SUPPORTED",
-      "confidence": 98.0,
-      "reason": "The retrieved technical evidence excerpts provide clear evidence that the CAN-FD Dual Bitrate Transmission Rate requirement is met, with the oscilloscope bus timing analysis confirming 500.0 kbps arbitration and 5.00 Mbps data phase with 75.0% sample point."
+      "confidence": 100.0,
+      "reason": "Empirical test report confirms 500.0 kbps arbitration and 5.00 Mbps data phase with 75.0% sample point, which meets the requirement."
     },
     "REQ-AUT-052": {
       "expected": "SUPPORTED",
-      "predicted": "CONFLICT",
-      "confidence": 90.0,
-      "reason": "Measured value of 110 ms exceeds required maximum limit of \u2264 100 ms."
+      "predicted": "SUPPORTED",
+      "confidence": 95.0,
+      "reason": "Measured value of 0.000142 ms satisfies required upper limit of \u2264 100 ms."
     },
     "REQ-AUT-053": {
       "expected": "PARTIAL",
@@ -874,13 +754,13 @@
       "expected": "UNKNOWN",
       "predicted": "PARTIAL",
       "confidence": 80.0,
-      "reason": "Network simulation predicts clock drift synchronization within 420 ns, but does not explicitly verify the jitter requirement of < 1.0 \u00b5s."
+      "reason": "Network simulation predicts clock drift synchronization within 420 ns, but it is not clear if this meets the requirement of < 1.0 \u00b5s jitter."
     },
     "REQ-AUT-060": {
       "expected": "UNKNOWN",
       "predicted": "SUPPORTED",
-      "confidence": 95.0,
-      "reason": "Static socket buffer allocation tables in AUTOSAR BswM configuration support up to 8 concurrent TCP stream connections without dynamic memory allocation."
+      "confidence": 90.0,
+      "reason": "Architecture specification defines static socket buffer allocation tables, which supports up to 8 concurrent TCP stream connections without heap memory fragmentation."
     },
     "REQ-AUT-061": {
       "expected": "SUPPORTED",
@@ -897,14 +777,14 @@
     "REQ-AUT-063": {
       "expected": "PARTIAL",
       "predicted": "PARTIAL",
-      "confidence": 90.0,
-      "reason": "Test verification records indicate qualification testing is currently in progress or partially completed."
+      "confidence": 70.0,
+      "reason": "Level 0x01 Reprogramming security access is validated with ECDSA-256, but Level 0x03 Engineering calibration access security test is pending."
     },
     "REQ-AUT-064": {
       "expected": "PARTIAL",
       "predicted": "PARTIAL",
-      "confidence": 90.0,
-      "reason": "Test verification records indicate qualification testing is currently in progress or partially completed."
+      "confidence": 75.0,
+      "reason": "Corrupted image injected into Bank B and bootloader detected CRC mismatch, but golden image boot verification is scheduled."
     },
     "REQ-AUT-065": {
       "expected": "CONFLICT",
@@ -933,26 +813,26 @@
     "REQ-AUT-069": {
       "expected": "UNKNOWN",
       "predicted": "SUPPORTED",
-      "confidence": 90.0,
-      "reason": "NVRAM endurance calculation model estimates 125,000 cycles based on Flash memory manufacturer cell fatigue curve, exceeding the required 100,000 cycles."
+      "confidence": 85.0,
+      "reason": "NVRAM endurance calculation model estimates 125,000 cycles, which exceeds the required 100,000 DTC write cycles."
     },
     "REQ-AUT-070": {
       "expected": "UNKNOWN",
-      "predicted": "PARTIAL",
-      "confidence": 80.0,
-      "reason": "Negative response code handling tables for diagnostic stack are specified, but the response time within P2_server time is not explicitly verified."
+      "predicted": "SUPPORTED",
+      "confidence": 95.0,
+      "reason": "Diagnostic fault code protocol architecture handles NRC 0x12 (subFunctionNotSupported) and NRC 0x22 (conditionsNotCorrect)."
     },
     "REQ-AUT-071": {
       "expected": "SUPPORTED",
       "predicted": "SUPPORTED",
-      "confidence": 95.0,
-      "reason": "Watchdog timing verification: SPI challenge-response verified at 15.2 ms interval, and forced late response triggered hardware reset in 18.1 ms."
+      "confidence": 100.0,
+      "reason": "Watchdog timing verification shows SPI challenge-response at 15.2 ms interval, which is within the required range of 15.0 ms \u00b1 2.0 ms."
     },
     "REQ-AUT-072": {
       "expected": "SUPPORTED",
       "predicted": "SUPPORTED",
-      "confidence": 95.0,
-      "reason": "Brownout injection test: Vcore reduced to 2.94 V triggered PMIC hard RESET in 2.1 \u00b5s, meeting the required reaction time of < 5.0 \u00b5s."
+      "confidence": 100.0,
+      "reason": "Empirical test report (08_BMS_Functional_Safety_Validation_Report.pdf) shows that the power management IC asserts RESET and enters safe state in 2.1 \u00b5s when the MCU internal core voltage drops below 3.00 V DC, which meets the requirement."
     },
     "REQ-AUT-073": {
       "expected": "PARTIAL",
@@ -993,38 +873,38 @@
     "REQ-AUT-079": {
       "expected": "UNKNOWN",
       "predicted": "SUPPORTED",
-      "confidence": 90.0,
-      "reason": "FMEDA quantitative calculation report indicates theoretical SPFM of 99.4% and LFM of 91.2%, meeting the required metrics."
+      "confidence": 100.0,
+      "reason": "FMEDA quantitative calculation report (08_BMS_Functional_Safety_Validation_Report.pdf) indicates that the safety architecture achieves Single-Point Fault Metric (SPFM) of 99.4% and Latent Fault Metric (LFM) of 91.2%, which meets the requirement."
     },
     "REQ-AUT-080": {
       "expected": "UNKNOWN",
-      "predicted": "PARTIAL",
-      "confidence": 80.0,
-      "reason": "Clock supervisor hardware architecture and backup oscillator configuration are defined, but the clock drift detection and PLL switchover latency are not explicitly verified."
+      "predicted": "UNKNOWN",
+      "confidence": 0.0,
+      "reason": "Only theoretical simulation and architecture specification are provided, which cannot satisfy physical/functional testing requirements."
     },
     "REQ-AUT-081": {
       "expected": "SUPPORTED",
       "predicted": "SUPPORTED",
-      "confidence": 95.0,
-      "reason": "Secure boot benchmark: RSA-3072 signature verification completed in 112.4 ms with valid public key, meeting the required verification latency of < 150.0 ms."
+      "confidence": 100.0,
+      "reason": "Empirical test report (17_Cybersecurity_HSM_SecOC_Validation_Report.pdf) shows that the Hardware Security Module (HSM) verifies RSA-3072 firmware signature during secure boot in 112.4 ms, which meets the requirement."
     },
     "REQ-AUT-082": {
       "expected": "SUPPORTED",
       "predicted": "SUPPORTED",
-      "confidence": 95.0,
-      "reason": "SecOC hardware acceleration benchmark: measured AES-128 CMAC generation time was 28.5 \u00b5s per message, meeting the required calculation time of < 50.0 \u00b5s."
+      "confidence": 100.0,
+      "reason": "Empirical test report (17_Cybersecurity_HSM_SecOC_Validation_Report.pdf) shows that the HSM crypto engine generates AES-128 CMAC authentication tag for CAN-FD messages in 28.5 \u00b5s, which meets the requirement."
     },
     "REQ-AUT-083": {
       "expected": "PARTIAL",
       "predicted": "PARTIAL",
-      "confidence": 80.0,
-      "reason": "AES symmetric root keys verified inside HSM secure storage, but asymmetric ECC private key migration to secure keystore is pending."
+      "confidence": 50.0,
+      "reason": "Empirical test report (17_Cybersecurity_HSM_SecOC_Validation_Report.pdf) shows that AES symmetric root keys are verified inside HSM secure storage, but asymmetric ECC private key migration to secure keystore is pending."
     },
     "REQ-AUT-084": {
       "expected": "PARTIAL",
       "predicted": "PARTIAL",
-      "confidence": 75.0,
-      "reason": "IDS rate limiter evaluated on CAN 1 and CAN 2, but testing on CAN 3 and CAN 4 is pending."
+      "confidence": 50.0,
+      "reason": "Empirical test report (17_Cybersecurity_HSM_SecOC_Validation_Report.pdf) shows that IDS rate limiter is evaluated on CAN 1 and CAN 2, but testing on CAN 3 and CAN 4 is pending."
     },
     "REQ-AUT-085": {
       "expected": "CONFLICT",
@@ -1047,26 +927,26 @@
     "REQ-AUT-088": {
       "expected": "MISSING",
       "predicted": "MISSING",
-      "confidence": 95.0,
-      "reason": "Official compliance matrix record confirms qualification testing has not been performed and required evidence is missing."
+      "confidence": 0.0,
+      "reason": "No meaningful technical information is provided for this requirement, and the compliance matrix says NOT STARTED."
     },
     "REQ-AUT-089": {
       "expected": "UNKNOWN",
-      "predicted": "PARTIAL",
-      "confidence": 50.0,
-      "reason": "TARA analysis report evaluates 42 threat vectors, but it is unclear if all identified threat scenarios have residual risk rating reduced to CAL-2 or lower."
+      "predicted": "UNKNOWN",
+      "confidence": 0.0,
+      "reason": "Only theoretical simulation and calculation are provided, which cannot satisfy physical/functional testing requirements."
     },
     "REQ-AUT-090": {
       "expected": "UNKNOWN",
-      "predicted": "PARTIAL",
-      "confidence": 60.0,
-      "reason": "Secure logging event format and flash partition layout are described, but it is unclear if the log memory partition is tamper-evident."
+      "predicted": "UNKNOWN",
+      "confidence": 0.0,
+      "reason": "Only architecture specification is provided, which cannot satisfy physical/functional testing requirements."
     },
     "REQ-AUT-091": {
       "expected": "SUPPORTED",
       "predicted": "SUPPORTED",
-      "confidence": 95.0,
-      "reason": "Evidence range (150 to 2.5 GHz with) fully covers required bounds (150 to 2.5 GHz with)."
+      "confidence": 100.0,
+      "reason": "Empirical test reports (Excerpts #1 and #2) confirm that the ECU complies with CISPR 25 Class 4 radiated emissions limits from 150.0 kHz to 2.50 GHz with at least 6.0 dB margin."
     },
     "REQ-AUT-092": {
       "expected": "SUPPORTED",
@@ -1077,8 +957,8 @@
     "REQ-AUT-093": {
       "expected": "PARTIAL",
       "predicted": "PARTIAL",
-      "confidence": 85.0,
-      "reason": "Random vibration test completed on X-axis and Y-axis, but Z-axis vibration run is pending."
+      "confidence": 80.0,
+      "reason": "Empirical test reports (Excerpts #1 and #2) show that the random vibration test has been completed on X-axis and Y-axis, but the Z-axis vibration run is pending."
     },
     "REQ-AUT-094": {
       "expected": "PARTIAL",
@@ -1101,26 +981,26 @@
     "REQ-AUT-097": {
       "expected": "MISSING",
       "predicted": "MISSING",
-      "confidence": 95.0,
-      "reason": "Official compliance matrix record confirms qualification testing has not been performed and required evidence is missing."
+      "confidence": 0.0,
+      "reason": "No empirical test reports are available for the salt spray corrosion resistance test, and the verification status is NOT STARTED."
     },
     "REQ-AUT-098": {
       "expected": "MISSING",
       "predicted": "MISSING",
-      "confidence": 95.0,
-      "reason": "Official compliance matrix record confirms qualification testing has not been performed and required evidence is missing."
+      "confidence": 0.0,
+      "reason": "No empirical test reports are available for the high-temperature operating life reliability test, and the verification status is NOT STARTED."
     },
     "REQ-AUT-099": {
       "expected": "UNKNOWN",
       "predicted": "PARTIAL",
-      "confidence": 55.0,
-      "reason": "Conformal coating moisture permeation model calculates insulation resistance, but it is unclear if the ECU operates without insulation breakdown under the specified conditions."
+      "confidence": 70.0,
+      "reason": "Theoretical simulation (Excerpt #1) provides a moisture permeation model, but empirical test reports are required for full verification."
     },
     "REQ-AUT-100": {
       "expected": "UNKNOWN",
-      "predicted": "PARTIAL",
-      "confidence": 58.0,
-      "reason": "Mechanical shock test parameters are specified, but there is no direct evidence of the ECU surviving the specified half-sine mechanical shock pulses."
+      "predicted": "UNKNOWN",
+      "confidence": 0.0,
+      "reason": "Only theoretical simulation and architecture specification clauses are provided, without empirical test reports."
     }
   }
 }

@@ -64,7 +64,7 @@ export interface ApiRequirement {
   category: "Electrical" | "Safety" | "Environmental" | "Mechanical" | "Cybersecurity" | "Documentation" | string;
   source_document: string | null;
   sources_count: number;
-  coverage_status: "Supported" | "Partial" | "Missing" | "Conflict";
+  coverage_status: "Supported" | "Partial" | "Missing" | "Conflict" | "Unknown";
   confidence: number;
   review_state: "Reviewed" | "Needs review" | "Open" | "Approved" | "Rejected";
   severity: "Critical" | "High" | "Medium" | "Low";

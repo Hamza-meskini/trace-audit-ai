@@ -142,13 +142,26 @@ def _diversified_rerank(candidate_pool: list[RetrievedChunk], top_k: int) -> lis
     return selected[:top_k]
 
 
+def _filter_excluded(
+    chunks: list[dict[str, Any]],
+    exclude_doc_names: Optional[set[str]] = None,
+) -> list[dict[str, Any]]:
+    """Drop chunks belonging to excluded documents (e.g. specification self-reference)."""
+    if not exclude_doc_names:
+        return chunks
+    excluded = {name.lower() for name in exclude_doc_names}
+    return [c for c in chunks if c.get("document_name", "").lower() not in excluded]
+
+
 def retrieve_candidate_evidence(
     requirement_text: str,
     chunks: list[dict[str, Any]],
     top_k: int = 5,
     min_score: float = 0.3,
+    exclude_doc_names: Optional[set[str]] = None,
 ) -> list[RetrievedChunk]:
     """Synchronous BM25-only retrieval (backward-compatible API for non-async callers)."""
+    chunks = _filter_excluded(chunks, exclude_doc_names)
     candidate_pool = _bm25_retrieve(requirement_text, chunks, top_k=top_k * 3, min_score=min_score)
     return _diversified_rerank(candidate_pool, top_k)
 
@@ -159,6 +172,7 @@ async def retrieve_candidate_evidence_hybrid(
     chunk_embeddings: Optional[list[Optional[list[float]]]] = None,
     top_k: int = 5,
     min_score: float = 0.3,
+    exclude_doc_names: Optional[set[str]] = None,
 ) -> list[RetrievedChunk]:
     """Hybrid retrieval: BM25 + Gemini text-embedding-005 semantic similarity.
 
@@ -166,8 +180,22 @@ async def retrieve_candidate_evidence_hybrid(
     Pre-computed chunk_embeddings can be passed in to avoid redundant embedding calls
     across multiple requirements in the same audit run.
 
+    `exclude_doc_names` removes documents (typically the specification itself) from
+    the candidate pool so self-referential chunks don't crowd out true evidence.
+
     Score formula: α·BM25_normalized + (1-α)·cosine_similarity
     """
+    # Step 0: Map precomputed embeddings before document filtering
+    precomputed_map: dict[str, list[float]] = {}
+    if chunk_embeddings:
+        for i, emb in enumerate(chunk_embeddings):
+            if emb and i < len(chunks):
+                content = chunks[i].get("content", "")
+                if content:
+                    precomputed_map[content[:2048]] = emb
+
+    chunks = _filter_excluded(chunks, exclude_doc_names)
+
     # Step 1: BM25 retrieval (get a wider candidate pool)
     bm25_pool = _bm25_retrieve(requirement_text, chunks, top_k=top_k * 3, min_score=min_score * 0.5)
 
@@ -184,17 +212,7 @@ async def retrieve_candidate_evidence_hybrid(
         logger.info("Embedding unavailable for query; using pure BM25 retrieval")
         return _diversified_rerank(bm25_pool, top_k)
 
-    # Step 4: Get or lookup chunk embeddings for candidates in the pool
-    # Build a mapping from chunk content to pre-computed embedding
-    precomputed_map: dict[str, list[float]] = {}
-    if chunk_embeddings:
-        for i, emb in enumerate(chunk_embeddings):
-            if emb and i < len(chunks):
-                content = chunks[i].get("content", "")
-                if content:
-                    precomputed_map[content[:2048]] = emb
-
-    # Find candidates that need embedding
+    # Step 4: Lookup chunk embeddings for candidates in the pool
     needs_embedding: list[int] = []
     candidate_embeddings: list[Optional[list[float]]] = [None] * len(bm25_pool)
 

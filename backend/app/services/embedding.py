@@ -51,13 +51,42 @@ def compute_bm25_score(query_tokens: list[str], doc_tokens: list[str], avg_doc_l
 
 # ── Gemini Semantic Embeddings ───────────────────────────────────────────────
 
+import json
+from pathlib import Path
+
 GEMINI_EMBEDDING_MODEL = "gemini-embedding-001"
 GEMINI_EMBED_API_URL = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_EMBEDDING_MODEL}:embedContent"
 GEMINI_BATCH_EMBED_API_URL = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_EMBEDDING_MODEL}:batchEmbedContents"
 
-# In-memory embedding cache (keyed by content hash) to avoid redundant API calls
-# within the same audit run. Cleared between server restarts.
+# Persistent disk cache location to avoid re-computing embeddings on every run
+_CACHE_DIR = Path(__file__).resolve().parent.parent.parent / ".cache"
+_CACHE_FILE = _CACHE_DIR / "embeddings.json"
+
 _embedding_cache: dict[str, list[float]] = {}
+_cache_loaded: bool = False
+
+
+def _ensure_cache_loaded():
+    global _cache_loaded, _embedding_cache
+    if not _cache_loaded:
+        _cache_loaded = True
+        if _CACHE_FILE.exists():
+            try:
+                with open(_CACHE_FILE, "r", encoding="utf-8") as f:
+                    _embedding_cache.update(json.load(f))
+                logger.info(f"Loaded {len(_embedding_cache)} cached embeddings from disk.")
+            except Exception as ex:
+                logger.warning(f"Failed loading embedding cache from disk: {ex}")
+
+
+def _save_cache_to_disk():
+    try:
+        _CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        with open(_CACHE_FILE, "w", encoding="utf-8") as f:
+            json.dump(_embedding_cache, f)
+    except Exception as ex:
+        logger.warning(f"Failed saving embedding cache to disk: {ex}")
+
 
 # Maximum texts per batch call (Gemini allows up to 100)
 BATCH_SIZE = 64
@@ -81,11 +110,12 @@ async def embed_single(text: str, task_type: str = "RETRIEVAL_DOCUMENT") -> Opti
         task_type: One of RETRIEVAL_QUERY, RETRIEVAL_DOCUMENT, SEMANTIC_SIMILARITY, CLASSIFICATION.
 
     Returns:
-        768-dimensional embedding vector, or None if API is unavailable.
+        3072-dimensional embedding vector, or None if API is unavailable.
     """
     if not _has_embedding_key():
         return None
 
+    _ensure_cache_loaded()
     cache_key = _content_hash(text)
     if cache_key in _embedding_cache:
         return _embedding_cache[cache_key]
@@ -100,16 +130,17 @@ async def embed_single(text: str, task_type: str = "RETRIEVAL_DOCUMENT") -> Opti
     }
 
     try:
-        async with httpx.AsyncClient(timeout=15.0) as client:
+        async with httpx.AsyncClient(timeout=10.0) as client:
             resp = await client.post(url, json=payload)
-            resp.raise_for_status()
-            data = resp.json()
-            values = data.get("embedding", {}).get("values", [])
-            if values:
-                _embedding_cache[cache_key] = values
-                return values
+            if resp.status_code == 200:
+                data = resp.json()
+                values = data.get("embedding", {}).get("values", [])
+                if values:
+                    _embedding_cache[cache_key] = values
+                    _save_cache_to_disk()
+                    return values
     except Exception as ex:
-        logger.warning(f"Gemini embedding call failed: {ex}")
+        logger.debug(f"Gemini single embedding call failed: {ex}")
 
     return None
 
@@ -123,6 +154,7 @@ async def embed_batch(texts: list[str], task_type: str = "RETRIEVAL_DOCUMENT") -
     if not _has_embedding_key():
         return [None] * len(texts)
 
+    _ensure_cache_loaded()
     results: list[Optional[list[float]]] = [None] * len(texts)
     uncached_indices: list[int] = []
     uncached_texts: list[str] = []
@@ -179,8 +211,9 @@ async def embed_batch(texts: list[str], task_type: str = "RETRIEVAL_DOCUMENT") -
                             results[idx] = values
                             _embedding_cache[_content_hash(texts[idx])] = values
 
-                logger.info(f"Embedded batch of {len(batch_texts)} texts via Gemini {GEMINI_EMBEDDING_MODEL}")
-                break
+                    _save_cache_to_disk()
+                    logger.info(f"Embedded batch of {len(batch_texts)} texts via Gemini {GEMINI_EMBEDDING_MODEL}")
+                    break
             except Exception as ex:
                 if attempt == 3:
                     logger.warning(f"Gemini batch embedding call failed for batch starting at {batch_start}: {ex}")

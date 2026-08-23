@@ -61,11 +61,27 @@ DATASHEET_RESTRICTION_INDICATORS = [
 PASS_VERDICT_INDICATORS = ["verdict: pass", "result: pass", "status: pass", "all tests pass", "passed all"]
 
 
+def _infer_source_authority(doc_name: str, content: str) -> str:
+    """Classify evidence chunk source authority level."""
+    dn = doc_name.lower()
+    ct = content.lower()
+    if any(k in dn or k in ct for k in ("simul", "spice", "cfd", "matlab", "ltspice", "model predicts", "modeling", "theoretical")):
+        return "[SOURCE: THEORETICAL SIMULATION / CALCULATION - NON-EMPIRICAL]"
+    elif any(k in dn for k in ("arch", "interface", "arch_spec")) and not any(k in dn for k in ("test", "report", "lab")):
+        return "[SOURCE: ARCHITECTURE SPECIFICATION / DESIGN INTENTION]"
+    elif any(k in dn for k in ("datasheet", "ds-", "oem", "supplier")):
+        return "[SOURCE: COMPONENT DATASHEET - HARDWARE RATINGS]"
+    elif any(k in dn for k in ("matrix", "verification_matrix")):
+        return "[SOURCE: COMPLIANCE TRACKING MATRIX]"
+    else:
+        return "[SOURCE: EMPIRICAL TEST REPORT / LAB VALIDATION RECORD]"
+
+
 def build_verification_prompt(
     contract: RequirementContract,
     evidence_chunks: list[dict[str, Any]],
 ) -> tuple[str, str]:
-    """Construct a rigorous, structured compliance auditing prompt."""
+    """Construct a rigorous, structured compliance auditing prompt with source authority tags."""
     system_instruction = (
         "You are a formal compliance and quality assurance auditor for safety-critical hardware/software systems. "
         "Evaluate technical requirements against evidence excerpts with zero assumptions, strict condition checking, "
@@ -78,8 +94,9 @@ def build_verification_prompt(
         page = c.get("page_number")
         page_str = f", Page {page}" if page else ""
         content = (c.get("content") or c.get("quote") or "").strip()
+        auth_tag = _infer_source_authority(doc_name, content)
         formatted_evidence.append(
-            f"--- [Evidence Excerpt #{i}: {doc_name}{page_str}] ---\n{content}\n"
+            f"--- [Evidence Excerpt #{i}: {doc_name}{page_str}] ---\n{auth_tag}\n{content}\n"
         )
 
     evidence_block = "\n".join(formatted_evidence) if formatted_evidence else "[No evidence retrieved]"
@@ -94,25 +111,28 @@ Retrieved Technical Evidence:
 {evidence_block}
 
 Auditing Rules & Constraints:
-1. Evaluate each retrieved evidence excerpt INDEPENDENTLY.
-2. Distinguish document types:
-   - Test Report / Validation Log: Direct proof of empirical testing.
-   - Compliance Matrix: Formal verification tracking record (PASS, IN PROGRESS, NOT STARTED, FAIL).
-   - Component Datasheet: Hardware component electrical/thermal operating limits.
-   - Technical Specification / Architecture: Design intentions and architecture specs.
-3. For numerical / technical requirements, explicitly compare:
+1. Evaluate each retrieved evidence excerpt INDEPENDENTLY and respect Document Authority:
+   - EMPIRICAL TEST REPORT: Direct proof of empirical testing.
+   - COMPLIANCE MATRIX: Formal verification tracking record (PASS, IN PROGRESS, NOT STARTED, FAIL).
+   - COMPONENT DATASHEET: Hardware component electrical/thermal operating limits.
+   - THEORETICAL SIMULATION / ARCHITECTURE SPEC: Design intentions and mathematical predictions only.
+2. SOURCE AUTHORITY RULE:
+   - Theoretical simulations (SPICE, CFD, MATLAB, mathematical models) and Architecture Specifications describe design intentions, NOT empirical test proof.
+   - If the ONLY available evidence for a requirement is theoretical simulation, calculation, or architecture specification clause, you MUST classify as 'UNKNOWN'.
+3. ENTITY & SCOPE RULE:
+   - If a supplier component datasheet declares a component maximum rating (e.g. ASIC voltage limit), and the requirement is for the overall system (e.g. BCU Pack operating voltage), and system test reports show successful system testing across the full range, classify as 'SUPPORTED'.
+4. For numerical / technical requirements, explicitly compare:
    - Parameter name and unit
    - Required value or operating range
    - Observed tested value or operating range
-   - Test outcome and completion status
-4. Multi-Condition Rule:
-   - Identify all mandatory conditions (e.g. all 3 vibration axes, full temperature span -40°C to +85°C, calculation AND physical burst test).
-   - Classify as 'SUPPORTED' ONLY if EVERY mandatory condition is explicitly verified by test/compliance records.
-   - Classify as 'PARTIAL' if some conditions are verified but others are pending, scheduled, in progress, or only simulated.
-   - Classify as 'CONFLICT' if evidence restricts or contradicts the required parameter limit (e.g. datasheet maximum rating is lower than specification).
-   - Classify as 'MISSING' if no retrieved excerpt contains meaningful technical information for this requirement.
-   - Classify as 'UNKNOWN' if relevant evidence exists but is ambiguous or insufficient to determine compliance.
-5. Conservative Factuality:
+   - A tested operating range [Tmin, Tmax] that fully encompasses the required range [Rmin, Rmax] (Tmin <= Rmin and Tmax >= Rmax) is SUPPORTED.
+5. Multi-Condition Classification:
+   - Classify as 'SUPPORTED' ONLY if EVERY mandatory condition is explicitly verified by empirical test/compliance records.
+   - Classify as 'PARTIAL' if some conditions are verified by empirical testing but others are pending, scheduled, in progress, or unmeasured.
+   - Classify as 'CONFLICT' if empirical evidence shows a test failure, parameter violation, or an incompatible component limit.
+   - Classify as 'MISSING' if no retrieved excerpt contains meaningful technical information for this requirement, or if explicitly marked NOT STARTED.
+   - Classify as 'UNKNOWN' if only theoretical simulation, calculation, or architecture intention is provided, or evidence is inconclusive.
+6. Conservative Factuality:
    - Never infer or assume values or conditions not explicitly stated in the evidence excerpts.
    - Cite the exact quote snippet in your findings.
 
@@ -212,7 +232,19 @@ def rule_based_multi_condition_verification(
                     highlight=snippet,
                 )
 
-    # 4. Check for explicit PASS verdicts in authoritative test reports
+    # 4. Check if all available non-spec chunks are theoretical simulation or architecture specification
+    is_only_simulation = all(
+        any(k in c.get("document_name", "").lower() or k in c.get("content", "").lower() for k in ("simul", "spice", "cfd", "matlab", "ltspice", "model predicts", "modeling", "theoretical", "arch", "interface", "arch_spec"))
+        for c in non_spec_chunks
+    )
+    if is_only_simulation:
+        return VerificationAnalysisResult(
+            status="UNKNOWN",
+            confidence=85,
+            reason=f"Evidence for {contract.req_code} consists only of theoretical simulations, calculations, or architecture specifications without empirical test data.",
+        )
+
+    # 5. Check for explicit PASS verdicts in authoritative test reports
     for c in non_spec_chunks:
         c_text = c.get("content", "")
         c_lower = c_text.lower()
@@ -255,8 +287,9 @@ def build_batch_verification_prompt(
             page = c.get("page_number")
             page_str = f", Page {page}" if page else ""
             content = (c.get("content") or c.get("quote") or "").strip()
+            auth_tag = _infer_source_authority(doc_name, content)
             formatted_evidence.append(
-                f"  [Excerpt #{j}: {doc_name}{page_str}]\n  {content}"
+                f"  [Excerpt #{j}: {doc_name}{page_str}]\n  {auth_tag}\n  {content}"
             )
         evidence_str = "\n".join(formatted_evidence) if formatted_evidence else "  [No independent evidence retrieved]"
 
@@ -274,18 +307,24 @@ def build_batch_verification_prompt(
 {"\n".join(req_blocks)}
 
 Auditing Rules for each requirement:
-1. Evaluate each requirement INDEPENDENTLY.
-2. Distinguish document types:
-   - Test Report / Validation Log: Direct proof of empirical testing.
-   - Compliance Matrix: Formal verification tracking record (PASS, IN PROGRESS, NOT STARTED, FAIL).
-   - Component Datasheet: Hardware component electrical/thermal operating limits.
-   - Technical Specification / Architecture: Design intentions and architecture specs.
-3. Multi-Condition Rule:
-   - Classify as 'SUPPORTED' ONLY if EVERY mandatory condition is explicitly verified by test/compliance records.
-   - Classify as 'PARTIAL' if some conditions are verified but others are pending, scheduled, in progress, or only simulated (e.g. CFD simulation completed, physical burst fixture pending; or X/Y axes completed, Z axis pending; or single-point test for a multi-tier curve).
-   - Classify as 'CONFLICT' if evidence restricts or contradicts the required parameter limit (e.g. datasheet maximum rating is lower than specification).
+1. Evaluate each requirement INDEPENDENTLY and respect Document Authority:
+   - EMPIRICAL TEST REPORT: Direct proof of empirical testing.
+   - COMPLIANCE MATRIX: Formal verification tracking record (PASS, IN PROGRESS, NOT STARTED, FAIL).
+   - COMPONENT DATASHEET: Hardware component electrical/thermal operating limits.
+   - THEORETICAL SIMULATION / ARCHITECTURE SPEC: Design intentions and mathematical predictions only.
+2. SOURCE AUTHORITY RULE:
+   - Theoretical simulations (SPICE, CFD, MATLAB, mathematical calculations) and Architecture Specifications describe design intentions and mathematical models only. They CANNOT satisfy physical/functional testing requirements.
+   - If the ONLY available evidence for a requirement is theoretical simulation, calculation, or architecture specification clause, you MUST classify as 'UNKNOWN'.
+3. ENTITY & SCOPE RULE:
+   - If a supplier component datasheet declares a component maximum rating (e.g. ASIC voltage limit), and the requirement is for the overall system (e.g. BCU Pack operating voltage), and system test reports show successful system testing across the full range, classify as 'SUPPORTED'.
+4. For numerical / technical requirements:
+   - A tested operating range [Tmin, Tmax] that fully encompasses the required range [Rmin, Rmax] (Tmin <= Rmin and Tmax >= Rmax) is SUPPORTED.
+5. Multi-Condition Classification:
+   - Classify as 'SUPPORTED' ONLY if EVERY mandatory condition is explicitly verified by empirical test/compliance records.
+   - Classify as 'PARTIAL' if some conditions are verified by empirical testing but others are pending, scheduled, in progress, or unmeasured.
+   - Classify as 'CONFLICT' if empirical evidence shows a test failure, parameter violation, or an incompatible component limit.
    - Classify as 'MISSING' if no retrieved excerpt contains meaningful technical information for this requirement, or matrix says NOT STARTED.
-   - Classify as 'UNKNOWN' if relevant evidence exists but is ambiguous or insufficient to determine compliance.
+   - Classify as 'UNKNOWN' if only theoretical simulation, calculation, or architecture intention is provided, or evidence is inconclusive.
 
 Respond with a JSON object containing `batch_results: list[BatchVerificationItemResult]` with an item for each requirement.
 """

@@ -39,7 +39,7 @@ class EvidenceLinkAssessment:
 
 @dataclass
 class RequirementAssessment:
-    coverage_status: str  # "Supported" | "Partial" | "Missing" | "Conflict"
+    coverage_status: str  # "Supported" | "Partial" | "Missing" | "Conflict" | "Unknown"
     confidence: float
     review_state: str     # "Reviewed" | "Needs review" | "Open"
     ai_analysis: str
@@ -53,6 +53,7 @@ RECOMMENDATIONS = {
     "Partial": "Extend qualification testing to cover remaining parameter bounds or attach completed test records.",
     "Conflict": "Review contradictory technical documentation with engineering stakeholders.",
     "Missing": "Upload the relevant test plan, test report, or compliance record covering this requirement.",
+    "Unknown": "Evidence is inconclusive (e.g. simulation, calculation, or design intent only). Request empirical test records or an authoritative verification record.",
 }
 
 
@@ -218,7 +219,9 @@ def _finalize_assessment(
         "PARTIAL": ("Partial", "Needs review"),
         "CONFLICT": ("Conflict", "Needs review"),
         "MISSING": ("Missing", "Open"),
-        "UNKNOWN": ("Partial", "Needs review"),  # Conservative mapping for UI
+        # Inconclusive evidence (simulation / design intent / ambiguous) is surfaced
+        # as a first-class "Unknown" status instead of being silently downgraded.
+        "UNKNOWN": ("Unknown", "Needs review"),
     }
 
     if outcome is None:
@@ -228,7 +231,7 @@ def _finalize_assessment(
             reason="Evidence could not be deterministically verified.",
         )
 
-    cov_status, rev_state = status_mapping.get(outcome.status, ("Partial", "Needs review"))
+    cov_status, rev_state = status_mapping.get(outcome.status, ("Unknown", "Needs review"))
 
     highlight = outcome.highlight
     links = []

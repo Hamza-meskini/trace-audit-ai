@@ -37,6 +37,7 @@ from app.config import settings
 
 # Benchmark 5 Status Classes
 BENCHMARK_CLASSES = ["SUPPORTED", "PARTIAL", "CONFLICT", "MISSING", "UNKNOWN"]
+SRS_DOC_NAME = "01_System_Requirements_Specification_SRS.docx"
 
 
 def normalize_status_5(status: Optional[str]) -> str:
@@ -141,13 +142,15 @@ async def run_benchmark():
     for r in ground_truth_reqs:
         req_id = r["requirement_id"]
         query_text = f"{r['requirement_id']} {r['title']} {r['requirement_text']}"
-        
-        # Hybrid retrieval
+
+        # Hybrid retrieval — the SRS itself is excluded from candidates because its
+        # chunks contain the requirement text verbatim and always occupy rank 1.
         retrieved = await retrieve_candidate_evidence_hybrid(
             requirement_text=query_text,
             chunks=all_chunks,
             chunk_embeddings=chunk_embeddings,
             top_k=5,
+            exclude_doc_names={SRS_DOC_NAME},
         )
 
         candidate_chunks = [

@@ -14,6 +14,7 @@ const coverageStyles: Record<CoverageStatus, string> = {
   Partial: "border-warning/30 bg-warning-soft text-warning",
   Missing: "border-critical/25 bg-critical-soft text-critical",
   Conflict: "border-critical/25 bg-critical-soft text-critical",
+  Unknown: "border-info/30 bg-info-soft text-info",
 };
 
 const coverageDot: Record<CoverageStatus, string> = {
@@ -21,6 +22,7 @@ const coverageDot: Record<CoverageStatus, string> = {
   Partial: "bg-warning",
   Missing: "bg-critical",
   Conflict: "bg-critical",
+  Unknown: "bg-info",
 };
 
 export function CoverageBadge({ status }: { status: CoverageStatus }) {

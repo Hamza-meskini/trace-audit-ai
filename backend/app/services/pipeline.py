@@ -169,12 +169,15 @@ async def run_audit_pipeline(
             delete(RequirementEvidence).where(RequirementEvidence.requirement_id == req.id)
         )
 
-        # Hybrid retrieval: BM25 + Gemini text-embedding-005 cosine similarity
+        # Hybrid retrieval: BM25 + Gemini embedding cosine similarity.
+        # Spec docs are excluded from candidates (self-referential, they contain
+        # the requirement text itself and always outrank true evidence).
         retrieved = await retrieve_candidate_evidence_hybrid(
-            f"{req.title} {req.description or ''}",
+            f"{req.req_code} {req.title} {req.description or ''}",
             all_chunks_for_retrieval,
             chunk_embeddings=chunk_embeddings,
             top_k=4,
+            exclude_doc_names=spec_doc_names,
         )
 
         candidate_chunks = [
@@ -233,12 +236,13 @@ async def run_audit_pipeline(
                 highlight=ev_link.highlight,
             ))
 
-        # Generate a Finding if Partial, Missing, or Conflict
-        if assessment.coverage_status in ("Partial", "Missing", "Conflict"):
+        # Generate a Finding if Partial, Missing, Conflict, or Unknown (inconclusive)
+        if assessment.coverage_status in ("Partial", "Missing", "Conflict", "Unknown"):
             finding_type_map = {
                 "Missing": "Missing evidence",
                 "Partial": "Partial evidence",
                 "Conflict": "Potential conflict",
+                "Unknown": "Inconclusive evidence",
             }
             finding = Finding(
                 id=str(uuid.uuid4()),
