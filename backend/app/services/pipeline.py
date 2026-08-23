@@ -21,11 +21,9 @@ from app.services.ingestion import parse_document
 from app.services.extraction import extract_requirements_from_text
 from app.services.retrieval import retrieve_candidate_evidence_hybrid, precompute_chunk_embeddings
 from app.services.classification import batch_assess_requirements
+from app.services.document_classifier import discover_specification_documents
 
 logger = logging.getLogger("traceaudit.pipeline")
-
-# Filename keywords used to locate specification documents to extract requirements from
-SPEC_DOC_KEYWORDS = ("spec", "requirement", "srs", "user_manual")
 
 
 async def run_audit_pipeline(
@@ -101,6 +99,14 @@ async def run_audit_pipeline(
 
     await db.flush()
 
+    # Discover specification documents dynamically via content heuristics & LLM role classification
+    spec_docs, spec_doc_names = await discover_specification_documents(
+        documents=documents,
+        all_chunks=all_chunks_for_retrieval,
+        model=active_model,
+        thinking_level=active_thinking,
+    )
+
     # 3. If no requirements exist yet, extract them from specification docs or create baseline
     req_result = await db.execute(
         select(Requirement).where(Requirement.project_id == project_id)
@@ -108,27 +114,6 @@ async def run_audit_pipeline(
     requirements = req_result.scalars().all()
 
     if not requirements:
-        # Select the primary requirement specification document(s)
-        # Priority 1: Primary SRS / Requirement specification files
-        srs_candidates = [
-            d for d in documents
-            if any(k in d.original_filename.lower() for k in ("srs", "requirement", "prd", "prs", "product_requirements"))
-            or ("requirement" in (d.doc_type or "").lower())
-        ]
-
-        if srs_candidates:
-            spec_docs = srs_candidates
-        else:
-            # Priority 2: General specification documents, explicitly excluding test reports, datasheets, matrices
-            spec_docs = [
-                d for d in documents
-                if ("spec" in d.original_filename.lower() or "spec" in (d.doc_type or "").lower())
-                and not any(k in d.original_filename.lower() for k in ("test", "report", "datasheet", "matrix", "compliance", "safety_report", "lab"))
-            ]
-
-        if not spec_docs and documents:
-            spec_docs = [documents[0]]
-
         extracted_count = 0
         seen_req_codes = set()
 
@@ -219,6 +204,7 @@ async def run_audit_pipeline(
         req_items=req_items,
         model=active_model,
         thinking_level=active_thinking,
+        spec_doc_names=spec_doc_names,
     )
 
     # 4c. Persist assessment results, evidence links, and findings

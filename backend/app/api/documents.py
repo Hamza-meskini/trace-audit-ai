@@ -31,19 +31,19 @@ DOC_TYPE_MAP = {
 def infer_doc_type(filename: str, ext: str) -> str:
     """Infer realistic engineering document type based on filename keywords."""
     fn = filename.lower()
-    if any(k in fn for k in ("srs", "requirement", "prd", "prs")):
+    if any(k in fn for k in ("srs", "requirement", "prd", "prs", "constraint", "technicalspec", "technical_spec", "system_def", "product_spec")):
         return "Technical specification"
-    elif any(k in fn for k in ("test", "report", "lab", "validation", "tr-")):
+    elif any(k in fn for k in ("test", "report", "lab", "validation", "verification_report", "tr-", "test_log", "measurement")):
         return "Test report"
-    elif any(k in fn for k in ("datasheet", "ds-", "supplier", "oem")):
+    elif any(k in fn for k in ("datasheet", "ds-", "supplier", "oem", "component", "part_spec")):
         return "Supplier documentation"
-    elif any(k in fn for k in ("matrix", "compliance", "verification_matrix")):
+    elif any(k in fn for k in ("matrix", "compliance", "verification_matrix", "rvtm", "traceability_matrix")):
         return "Compliance matrix"
-    elif any(k in fn for k in ("risk", "hazard", "fmea")):
+    elif any(k in fn for k in ("risk", "hazard", "fmea", "safety_case", "iso_14971", "iso14971")):
         return "Risk assessment"
-    elif any(k in fn for k in ("manual", "guide", "user_manual")):
+    elif any(k in fn for k in ("manual", "guide", "user_manual", "operating_instructions")):
         return "User manual"
-    elif any(k in fn for k in ("architecture", "system_architecture", "arch_spec")):
+    elif any(k in fn for k in ("architecture", "system_architecture", "arch_spec", "interface_spec")):
         return "Architecture specification"
     return DOC_TYPE_MAP.get(ext, "Technical documentation")
 

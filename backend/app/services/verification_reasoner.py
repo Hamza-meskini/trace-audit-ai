@@ -22,7 +22,20 @@ from app.services.units import convert_value, are_units_compatible
 logger = logging.getLogger("traceaudit.verifier")
 
 # Filenames that identify specification documents (self-referential, not independent evidence)
-SPEC_DOC_KEYWORDS = ("srs", "product_requirements", "requirements_specification")
+SPEC_DOC_KEYWORDS = (
+    "srs",
+    "product_requirements",
+    "requirements_specification",
+    "requirement_spec",
+    "system_requirements",
+    "technical_spec",
+    "design_constraints",
+    "design_constraint",
+    "system_definition",
+    "functional_spec",
+    "prd",
+    "prs",
+)
 
 # Document-name markers for formal verification tracking records
 COMPLIANCE_MATRIX_KEYWORDS = ("matrix", "verification")
@@ -119,6 +132,7 @@ def _match_indicator(text_lower: str, indicators: list[str]) -> Optional[str]:
 def rule_based_multi_condition_verification(
     contract: RequirementContract,
     evidence_chunks: list[dict[str, Any]],
+    spec_doc_names: Optional[set[str]] = None,
 ) -> VerificationAnalysisResult:
     """Deterministic rule-based evaluation for multi-condition and partial evidence.
 
@@ -127,7 +141,8 @@ def rule_based_multi_condition_verification(
     """
     non_spec_chunks = [
         c for c in evidence_chunks
-        if not any(k in c.get("document_name", "").lower() for k in SPEC_DOC_KEYWORDS)
+        if (not spec_doc_names or c.get("document_name") not in spec_doc_names)
+        and not any(k in c.get("document_name", "").lower() for k in SPEC_DOC_KEYWORDS)
     ]
 
     if not non_spec_chunks:
@@ -331,6 +346,7 @@ async def evaluate_requirement_verification(
     evidence_chunks: list[dict[str, Any]],
     model: Optional[str] = None,
     thinking_level: Optional[str] = None,
+    spec_doc_names: Optional[set[str]] = None,
 ) -> VerificationAnalysisResult:
     """Execute structured multi-condition verification using LLM or deterministic fallback."""
     active_model = model or settings.LLM_MODEL
@@ -338,7 +354,7 @@ async def evaluate_requirement_verification(
 
     # If no LLM keys are provided, use deterministic rule-based multi-condition engine
     if not has_keys:
-        return rule_based_multi_condition_verification(contract, evidence_chunks)
+        return rule_based_multi_condition_verification(contract, evidence_chunks, spec_doc_names=spec_doc_names)
 
     prompt, system_instruction = build_verification_prompt(contract, evidence_chunks)
 
@@ -355,4 +371,4 @@ async def evaluate_requirement_verification(
     except Exception as ex:
         logger.warning(f"Structured LLM verification call failed: {ex}. Falling back to deterministic engine.")
 
-    return rule_based_multi_condition_verification(contract, evidence_chunks)
+    return rule_based_multi_condition_verification(contract, evidence_chunks, spec_doc_names=spec_doc_names)

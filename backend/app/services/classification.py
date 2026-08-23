@@ -70,11 +70,20 @@ def _format_evidence_items(candidate_chunks: list[dict]) -> list[dict]:
     ]
 
 
-def _filter_non_spec(evidence_items: list[dict]) -> list[dict]:
-    """Drop self-referential specification chunks (SRS / product requirements docs)."""
+def _filter_non_spec(
+    evidence_items: list[dict],
+    spec_doc_names: Optional[set[str]] = None,
+) -> list[dict]:
+    """Drop self-referential specification chunks (SRS / product requirements docs / design constraints)."""
+    if spec_doc_names:
+        return [
+            e for e in evidence_items
+            if e.get("document_name") not in spec_doc_names
+            and not any(k in e.get("document_name", "").lower() for k in SPEC_DOC_KEYWORDS)
+        ]
     return [
         e for e in evidence_items
-        if not any(k in e["document_name"].lower() for k in SPEC_DOC_KEYWORDS)
+        if not any(k in e.get("document_name", "").lower() for k in SPEC_DOC_KEYWORDS)
     ]
 
 
@@ -165,6 +174,7 @@ def _run_deterministic_validators(contract: RequirementContract, claims: list) -
 def _deterministic_prechecks(
     contract: RequirementContract,
     candidate_chunks: list[dict],
+    spec_doc_names: Optional[set[str]] = None,
 ) -> tuple[Optional[tuple[list[dict], list[dict], list]], Optional[RequirementAssessment]]:
     """Shared deterministic pre-check chain: empty evidence, spec self-reference,
     cross-document contradictions, and compliance-matrix verdicts.
@@ -176,7 +186,7 @@ def _deterministic_prechecks(
         return None, _missing_assessment(contract, empty_index=True)
 
     evidence_items = _format_evidence_items(candidate_chunks)
-    non_spec_items = _filter_non_spec(evidence_items)
+    non_spec_items = _filter_non_spec(evidence_items, spec_doc_names=spec_doc_names)
 
     # If only specification self-chunks were retrieved, no independent test record exists
     if not non_spec_items:
@@ -253,6 +263,7 @@ def assess_requirement_coverage(
     description: Optional[str],
     category: str,
     candidate_chunks: list[dict],
+    spec_doc_names: Optional[set[str]] = None,
 ) -> RequirementAssessment:
     """Assess a requirement using the deterministic validation engine only (no LLM calls)."""
     contract = parse_requirement_contract(
@@ -262,7 +273,7 @@ def assess_requirement_coverage(
         category=category,
     )
 
-    context, decided = _deterministic_prechecks(contract, candidate_chunks)
+    context, decided = _deterministic_prechecks(contract, candidate_chunks, spec_doc_names=spec_doc_names)
     if decided:
         return decided
 
@@ -273,7 +284,7 @@ def assess_requirement_coverage(
     # If outcome is UNKNOWN, run the deterministic multi-condition reasoner
     if validation_outcome and validation_outcome.status == "UNKNOWN":
         from app.services.verification_reasoner import rule_based_multi_condition_verification
-        reasoner_result = rule_based_multi_condition_verification(contract, candidate_chunks)
+        reasoner_result = rule_based_multi_condition_verification(contract, candidate_chunks, spec_doc_names=spec_doc_names)
         if reasoner_result.status in ("SUPPORTED", "PARTIAL", "CONFLICT", "MISSING"):
             validation_outcome = ValidationOutcome(
                 status=reasoner_result.status,
@@ -293,6 +304,7 @@ async def assess_requirement_coverage_async(
     candidate_chunks: list[dict],
     model: Optional[str] = None,
     thinking_level: Optional[str] = None,
+    spec_doc_names: Optional[set[str]] = None,
 ) -> RequirementAssessment:
     """Async assessment that escalates inconclusive cases to the LLM verification reasoner."""
     contract = parse_requirement_contract(
@@ -302,7 +314,7 @@ async def assess_requirement_coverage_async(
         category=category,
     )
 
-    context, decided = _deterministic_prechecks(contract, candidate_chunks)
+    context, decided = _deterministic_prechecks(contract, candidate_chunks, spec_doc_names=spec_doc_names)
     if decided:
         return decided
 
@@ -318,6 +330,7 @@ async def assess_requirement_coverage_async(
             evidence_chunks=candidate_chunks,
             model=model,
             thinking_level=thinking_level,
+            spec_doc_names=spec_doc_names,
         )
         validation_outcome = ValidationOutcome(
             status=reasoner_result.status,
@@ -334,6 +347,7 @@ async def batch_assess_requirements(
     model: Optional[str] = None,
     thinking_level: Optional[str] = None,
     batch_size: int = 10,
+    spec_doc_names: Optional[set[str]] = None,
 ) -> dict[str, RequirementAssessment]:
     """Assess a batch of requirements: deterministic checks first, batched LLM reasoning for the rest.
 
@@ -356,7 +370,7 @@ async def batch_assess_requirements(
         )
         candidate_chunks = item.get("candidate_chunks", [])
 
-        context, decided = _deterministic_prechecks(contract, candidate_chunks)
+        context, decided = _deterministic_prechecks(contract, candidate_chunks, spec_doc_names=spec_doc_names)
         if decided:
             assessments[req_code] = decided
             continue
