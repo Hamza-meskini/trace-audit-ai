@@ -41,6 +41,8 @@ backend/traceaudit.db
 backend/uploads/
 backend/chroma_data/
 backend/.env
+traceaudit.db
+uploads/
 
 # Python bytecode & test caches (anywhere in tree)
 __pycache__/
