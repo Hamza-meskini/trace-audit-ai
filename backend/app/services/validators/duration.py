@@ -30,8 +30,12 @@ def validate_duration(
     ]
 
     for claim in time_claims:
+        if contract.verification_method == "physical_test" and claim.source_authority in ("SIMULATION", "CALCULATION", "ARCHITECTURE_SPEC", "UNKNOWN"):
+            continue
+
         if not are_units_compatible(claim.unit, req_unit):
             continue
+
 
         if contract_terms and not any(t in claim.quote.lower() for t in contract_terms):
             continue

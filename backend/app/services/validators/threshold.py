@@ -21,6 +21,9 @@ def validate_threshold(
         return None
 
     req_unit = contract.unit
+    if not req_unit:
+        return None
+
     contract_terms = [w.lower() for w in re.findall(r"\w+", f"{contract.req_code} {contract.title}") if len(w) > 3 and w.lower() not in ["level", "target", "maximum", "minimum", "limit", "rate", "test", "tested", "specification"]]
 
     # Check threshold and single value claims
@@ -30,11 +33,16 @@ def validate_threshold(
     ]
 
     for claim in numeric_claims:
-        if not are_units_compatible(claim.unit, req_unit):
+        if not claim.unit or not are_units_compatible(claim.unit, req_unit):
+            continue
+
+        # Don't use simulation or architecture specs to deterministically prove physical test requirement
+        if contract.verification_method == "physical_test" and claim.source_authority in ("SIMULATION", "CALCULATION", "ARCHITECTURE_SPEC", "UNKNOWN"):
             continue
 
         if contract_terms and not any(t in claim.quote.lower() for t in contract_terms):
             continue
+
 
         raw_val = claim.value if claim.value is not None else (claim.max_value if contract.operator in ("<=", "<") else claim.min_value)
         if raw_val is None:

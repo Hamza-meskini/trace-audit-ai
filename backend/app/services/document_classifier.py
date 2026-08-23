@@ -14,7 +14,7 @@ such as 'TechnicalSpec_V2.pdf', 'Design_Constraints.docx', 'System_SRS.pdf', or 
 
 import re
 import logging
-from typing import Optional, Literal
+from typing import Optional, Literal, Any
 from pydantic import BaseModel, Field
 from app.config import settings
 from app.services.llm_client import generate_structured

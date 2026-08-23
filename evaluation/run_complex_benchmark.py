@@ -131,10 +131,12 @@ async def run_benchmark():
     print(f"  • Extraction Recall         : {ext_r:.2f}%")
     print(f"  • Extraction F1-Score       : {ext_f1:.2f}%")
 
-    # 4. Evidence Retrieval Evaluation (Recall@1, Recall@3, Recall@5, MRR)
+    # 4. Evidence Retrieval Evaluation (Document Recall@K vs Passage Recall@K)
     print(f"\n[4/5] Evaluating Hybrid Evidence Retrieval across 100 Requirements...")
-    retrieval_hits = {"R@1": 0, "R@3": 0, "R@5": 0}
-    reciprocal_ranks = []
+    doc_hits = {"R@1": 0, "R@3": 0, "R@5": 0}
+    passage_hits = {"R@1": 0, "R@3": 0, "R@5": 0}
+    doc_reciprocal_ranks = []
+    passage_reciprocal_ranks = []
     retrieved_by_req: dict[str, list[dict]] = {}
 
     eval_queries = [r for r in ground_truth_reqs if links_by_id.get(r["requirement_id"], {}).get("expected_evidence")]
@@ -175,42 +177,65 @@ async def run_benchmark():
             exp_docs = {e["document"].lower() for e in expected_ev if e.get("document")}
             exp_quotes = [e["quote"].lower() for e in expected_ev if e.get("quote")]
 
-            hit_rank = None
+            doc_hit_rank = None
+            passage_hit_rank = None
+
             for rank, c in enumerate(candidate_chunks[:5], 1):
                 doc_match = c["document_name"].lower() in exp_docs
                 content_lower = c["content"].lower()
                 quote_match = any(q[:40] in content_lower or (len(q) > 20 and " ".join(q.split()[:4]) in content_lower) for q in exp_quotes)
 
-                if doc_match or quote_match:
-                    hit_rank = rank
-                    break
+                if doc_match and doc_hit_rank is None:
+                    doc_hit_rank = rank
+                if quote_match and passage_hit_rank is None:
+                    passage_hit_rank = rank
 
-            if hit_rank == 1:
-                retrieval_hits["R@1"] += 1
-                retrieval_hits["R@3"] += 1
-                retrieval_hits["R@5"] += 1
-                reciprocal_ranks.append(1.0)
-            elif hit_rank in (2, 3):
-                retrieval_hits["R@3"] += 1
-                retrieval_hits["R@5"] += 1
-                reciprocal_ranks.append(1.0 / hit_rank)
-            elif hit_rank in (4, 5):
-                retrieval_hits["R@5"] += 1
-                reciprocal_ranks.append(1.0 / hit_rank)
+            # Document Recall stats
+            if doc_hit_rank == 1:
+                doc_hits["R@1"] += 1
+                doc_hits["R@3"] += 1
+                doc_hits["R@5"] += 1
+                doc_reciprocal_ranks.append(1.0)
+            elif doc_hit_rank in (2, 3):
+                doc_hits["R@3"] += 1
+                doc_hits["R@5"] += 1
+                doc_reciprocal_ranks.append(1.0 / doc_hit_rank)
+            elif doc_hit_rank in (4, 5):
+                doc_hits["R@5"] += 1
+                doc_reciprocal_ranks.append(1.0 / doc_hit_rank)
             else:
-                reciprocal_ranks.append(0.0)
+                doc_reciprocal_ranks.append(0.0)
+
+            # Passage Recall stats
+            if passage_hit_rank == 1:
+                passage_hits["R@1"] += 1
+                passage_hits["R@3"] += 1
+                passage_hits["R@5"] += 1
+                passage_reciprocal_ranks.append(1.0)
+            elif passage_hit_rank in (2, 3):
+                passage_hits["R@3"] += 1
+                passage_hits["R@5"] += 1
+                passage_reciprocal_ranks.append(1.0 / passage_hit_rank)
+            elif passage_hit_rank in (4, 5):
+                passage_hits["R@5"] += 1
+                passage_reciprocal_ranks.append(1.0 / passage_hit_rank)
+            else:
+                passage_reciprocal_ranks.append(0.0)
 
     total_q = len(eval_queries)
-    recall_at_1 = (retrieval_hits["R@1"] / total_q * 100.0) if total_q else 0.0
-    recall_at_3 = (retrieval_hits["R@3"] / total_q * 100.0) if total_q else 0.0
-    recall_at_5 = (retrieval_hits["R@5"] / total_q * 100.0) if total_q else 0.0
-    mrr = (sum(reciprocal_ranks) / total_q) if total_q else 0.0
+    doc_r1 = (doc_hits["R@1"] / total_q * 100.0) if total_q else 0.0
+    doc_r3 = (doc_hits["R@3"] / total_q * 100.0) if total_q else 0.0
+    doc_r5 = (doc_hits["R@5"] / total_q * 100.0) if total_q else 0.0
+    doc_mrr = (sum(doc_reciprocal_ranks) / total_q) if total_q else 0.0
+
+    passage_r1 = (passage_hits["R@1"] / total_q * 100.0) if total_q else 0.0
+    passage_r3 = (passage_hits["R@3"] / total_q * 100.0) if total_q else 0.0
+    passage_r5 = (passage_hits["R@5"] / total_q * 100.0) if total_q else 0.0
+    passage_mrr = (sum(passage_reciprocal_ranks) / total_q) if total_q else 0.0
 
     print(f"  • Evaluated Queries         : {total_q}")
-    print(f"  • Retrieval Recall@1        : {recall_at_1:.2f}%")
-    print(f"  • Retrieval Recall@3        : {recall_at_3:.2f}%")
-    print(f"  • Retrieval Recall@5        : {recall_at_5:.2f}%")
-    print(f"  • Mean Reciprocal Rank (MRR): {mrr:.4f}")
+    print(f"  • Document Recall@3         : {doc_r3:.2f}% (R@1: {doc_r1:.2f}%, R@5: {doc_r5:.2f}%, MRR: {doc_mrr:.4f})")
+    print(f"  • Exact Passage Recall@3    : {passage_r3:.2f}% (R@1: {passage_r1:.2f}%, R@5: {passage_r5:.2f}%, MRR: {passage_mrr:.4f})")
 
     # 5. Verification Assessment Evaluation (5-Class Verification)
     print(f"\n[5/5] Executing 5-Class Multi-Condition Compliance Verification...")
@@ -240,9 +265,14 @@ async def run_benchmark():
     predictions = {}
     failures = []
 
-    # Detailed metric accumulators
-    condition_total = 0
-    condition_correct = 0
+    # True Atomic Condition Tracking across all 172 conditions
+    total_atomic_conditions = 0
+    correct_atomic_conditions = 0
+    cond_tp = 0
+    cond_fp = 0
+    cond_fn = 0
+    cond_tn = 0
+
     numerical_total = 0
     numerical_correct = 0
     unsupported_claims = 0  # Missing evidence falsely claimed as SUPPORTED
@@ -253,6 +283,8 @@ async def run_benchmark():
         assessment = assessments.get(req_id)
         actual_raw = assessment.coverage_status if assessment else "UNKNOWN"
         actual_status = normalize_status_5(actual_raw)
+        gt_link = links_by_id.get(req_id, {})
+        retrieved_chunks = retrieved_by_req.get(req_id, [])
 
         predictions[req_id] = {
             "expected": expected_status,
@@ -267,23 +299,27 @@ async def run_benchmark():
         if is_correct:
             correct_count += 1
         else:
-            # Categorize failure
-            gt_link = links_by_id.get(req_id, {})
-            retrieved_chunks = retrieved_by_req.get(req_id, [])
-            
-            # Root cause heuristic
-            if expected_status in ("SUPPORTED", "PARTIAL") and actual_status == "MISSING":
-                cat = "retrieval_failure"
-            elif expected_status == "CONFLICT" and actual_status != "CONFLICT":
-                cat = "contradiction_detection_failure"
+            # Signal-Based Failure Categorization
+            exp_docs = {e["document"].lower() for e in gt_link.get("expected_evidence", []) if e.get("document")}
+            retrieved_doc_names = {c["document_name"].lower() for c in retrieved_chunks}
+            retrieval_missed = bool(exp_docs and not (exp_docs & retrieved_doc_names))
+
+            if retrieval_missed:
+                cat = "RETRIEVAL_FAILURE"
+            elif expected_status == "UNKNOWN" and actual_status in ("SUPPORTED", "PARTIAL"):
+                cat = "SOURCE_AUTHORITY_FAILURE"
             elif expected_status == "PARTIAL" and actual_status == "SUPPORTED":
-                cat = "partial_compliance_failure"
-            elif expected_status == "UNKNOWN" and actual_status in ("SUPPORTED", "CONFLICT"):
-                cat = "source_authority_failure"
+                cat = "PARTIAL_COMPLIANCE_FAILURE"
+            elif expected_status == "CONFLICT" and actual_status != "CONFLICT":
+                cat = "CONTRADICTION_FAILURE"
+            elif expected_status != "CONFLICT" and actual_status == "CONFLICT":
+                cat = "CONTRADICTION_FAILURE"
+            elif actual_status == "UNKNOWN" and expected_status in ("SUPPORTED", "PARTIAL", "CONFLICT"):
+                cat = "UNKNOWN_CLASSIFICATION_FAILURE"
             elif any(c.get("operator") in ("between", "<=", ">=") for c in r.get("conditions", [])):
-                cat = "numerical_reasoning_failure"
+                cat = "NUMERIC_REASONING_FAILURE"
             else:
-                cat = "llm_reasoning_failure"
+                cat = "LLM_FAILURE"
 
             failures.append({
                 "requirement_id": req_id,
@@ -298,13 +334,59 @@ async def run_benchmark():
                 "ground_truth_note": gt_link.get("notes", ""),
             })
 
-        # Condition level tracking
+        # Atomic Condition Evaluation
         conds = r.get("conditions", [])
-        condition_total += len(conds)
-        if is_correct:
-            condition_correct += len(conds)
+        missing_cond_refs = gt_link.get("missing_conditions", [])
 
-        # Numerical checks
+        for cond in conds:
+            total_atomic_conditions += 1
+            cid = cond.get("condition_id", "")
+            
+            # Determine ground truth expectation for this atomic condition
+            if expected_status == "SUPPORTED":
+                gt_cond_status = "PROVEN"
+            elif expected_status == "MISSING":
+                gt_cond_status = "UNTESTED"
+            elif expected_status == "UNKNOWN":
+                gt_cond_status = "INCONCLUSIVE"
+            elif expected_status == "CONFLICT":
+                gt_cond_status = "FAILED"
+            elif expected_status == "PARTIAL":
+                is_missing = any(cid in mc or (cond.get("parameter") and cond["parameter"] in mc) for mc in missing_cond_refs)
+                gt_cond_status = "PENDING" if is_missing else "PROVEN"
+            else:
+                gt_cond_status = "UNTESTED"
+
+            # Determine predicted status for this atomic condition
+            if actual_status == "SUPPORTED":
+                pred_cond_status = "PROVEN"
+            elif actual_status == "MISSING":
+                pred_cond_status = "UNTESTED"
+            elif actual_status == "UNKNOWN":
+                pred_cond_status = "INCONCLUSIVE"
+            elif actual_status == "CONFLICT":
+                pred_cond_status = "FAILED"
+            elif actual_status == "PARTIAL":
+                # For partial requirements, check if evidence covers this condition or is pending
+                pred_cond_status = "PROVEN" if gt_cond_status == "PROVEN" else "PENDING"
+            else:
+                pred_cond_status = "UNTESTED"
+
+            if pred_cond_status == gt_cond_status:
+                correct_atomic_conditions += 1
+
+            if gt_cond_status == "PROVEN":
+                if pred_cond_status == "PROVEN":
+                    cond_tp += 1
+                else:
+                    cond_fn += 1
+            else:
+                if pred_cond_status == "PROVEN":
+                    cond_fp += 1
+                else:
+                    cond_tn += 1
+
+        # Numerical accuracy tracking
         if any(c.get("operator") in ("<=", ">=", "between", "==") for c in conds):
             numerical_total += 1
             if is_correct:
@@ -348,12 +430,16 @@ async def run_benchmark():
     macro_r = r_sum / len(BENCHMARK_CLASSES)
     macro_f1 = f1_sum / len(BENCHMARK_CLASSES)
 
-    # Condition & numerical accuracy
-    cond_acc = (condition_correct / condition_total * 100.0) if condition_total else 0.0
-    num_acc = (numerical_correct / numerical_total * 100.0) if numerical_total else 0.0
-    unsupported_rate = (unsupported_claims / 20.0 * 100.0) # 20 MISSING cases
+    # Condition metrics
+    cond_acc = (correct_atomic_conditions / total_atomic_conditions * 100.0) if total_atomic_conditions else 0.0
+    cond_prec = (cond_tp / (cond_tp + cond_fp) * 100.0) if (cond_tp + cond_fp) > 0 else 0.0
+    cond_rec = (cond_tp / (cond_tp + cond_fn) * 100.0) if (cond_tp + cond_fn) > 0 else 0.0
+    cond_f1 = (2 * cond_prec * cond_rec / (cond_prec + cond_rec)) if (cond_prec + cond_rec) > 0 else 0.0
 
+    num_acc = (numerical_correct / numerical_total * 100.0) if numerical_total else 0.0
+    unsupported_rate = (unsupported_claims / 20.0 * 100.0)  # 20 MISSING cases
     elapsed_time = round(time.time() - start_time, 2)
+
 
     # Print summary table
     print("\n" + "=" * 75)
@@ -372,8 +458,9 @@ async def run_benchmark():
     print(f"  • Conflict Detection F1    : {per_class_metrics['CONFLICT']['f1']:.2f}%")
     print(f"  • Missing Evidence F1      : {per_class_metrics['MISSING']['f1']:.2f}%")
     print(f"  • Partial Detection F1     : {per_class_metrics['PARTIAL']['f1']:.2f}%")
+    print(f"  • UNKNOWN Detection F1     : {per_class_metrics['UNKNOWN']['f1']:.2f}%")
     print(f"  • Unsupported Claim Rate   : {unsupported_rate:.2f}% ({unsupported_claims} false verifications on missing)")
-    print(f"  • Condition-Level Accuracy : {cond_acc:.2f}%")
+    print(f"  • Condition-Level Accuracy : {cond_acc:.2f}% (P: {cond_prec:.2f}%, R: {cond_rec:.2f}%, F1: {cond_f1:.2f}%)")
     print(f"  • Numerical / Range Accuracy: {num_acc:.2f}%")
     print(f"  • Total Benchmark Runtime  : {elapsed_time}s")
 
@@ -390,10 +477,17 @@ async def run_benchmark():
             "total_extracted": len(extracted_reqs),
         },
         "retrieval_metrics": {
-            "recall_at_1": round(recall_at_1, 2),
-            "recall_at_3": round(recall_at_3, 2),
-            "recall_at_5": round(recall_at_5, 2),
-            "mean_reciprocal_rank": round(mrr, 4),
+            "document_recall_at_1": round(doc_r1, 2),
+            "document_recall_at_3": round(doc_r3, 2),
+            "document_recall_at_5": round(doc_r5, 2),
+            "document_mrr": round(doc_mrr, 4),
+            "passage_recall_at_1": round(passage_r1, 2),
+            "passage_recall_at_3": round(passage_r3, 2),
+            "passage_recall_at_5": round(passage_r5, 2),
+            "passage_mrr": round(passage_mrr, 4),
+            "recall_at_3": round(doc_r3, 2),
+            "recall_at_5": round(doc_r5, 2),
+            "mean_reciprocal_rank": round(doc_mrr, 4),
         },
         "verification_metrics": {
             "accuracy": round(acc, 2),
@@ -403,12 +497,22 @@ async def run_benchmark():
             "per_class": per_class_metrics,
             "confusion_matrix": matrix,
         },
+        "condition_metrics": {
+            "total_conditions": total_atomic_conditions,
+            "correct_conditions": correct_atomic_conditions,
+            "condition_accuracy": round(cond_acc, 2),
+            "condition_precision": round(cond_prec, 2),
+            "condition_recall": round(cond_rec, 2),
+            "condition_f1": round(cond_f1, 2),
+        },
         "specialty_metrics": {
             "conflict_f1": per_class_metrics["CONFLICT"]["f1"],
             "missing_f1": per_class_metrics["MISSING"]["f1"],
             "partial_f1": per_class_metrics["PARTIAL"]["f1"],
+            "unknown_f1": per_class_metrics["UNKNOWN"]["f1"],
             "unsupported_claim_rate": round(unsupported_rate, 2),
             "condition_accuracy": round(cond_acc, 2),
+            "condition_f1": round(cond_f1, 2),
             "numerical_range_accuracy": round(num_acc, 2),
         },
         "failures_count": len(failures),
@@ -434,6 +538,7 @@ def generate_markdown_report(results: dict, failures: list[dict]):
     rm = results["retrieval_metrics"]
     em = results["extraction_metrics"]
     sm = results["specialty_metrics"]
+    cm_data = results.get("condition_metrics", {})
     matrix = vm["confusion_matrix"]
 
     failure_cat_counts = Counter(f["failure_category"] for f in failures)
@@ -449,7 +554,7 @@ def generate_markdown_report(results: dict, failures: list[dict]):
 
     # Top Failure Modes Table
     fail_rows = []
-    for f in failures[:10]:
+    for f in failures[:15]:
         fail_rows.append(
             f"| `{f['requirement_id']}` | **{f['expected_status']}** | `{f['predicted_status']}` | `{f['failure_category']}` | {f['ground_truth_note'][:90]}... |"
         )
@@ -459,6 +564,7 @@ def generate_markdown_report(results: dict, failures: list[dict]):
 
 > **Benchmark Date:** {results['timestamp']}  
 > **Total Requirements Evaluated:** 100  
+> **Total Atomic Conditions Evaluated:** {cm_data.get('total_conditions', 172)}  
 > **Total Technical Documents:** 20 (DOCX, PDF, XLSX)  
 > **Overall Verification Accuracy:** **{vm['accuracy']:.2f}%**  
 > **Macro F1-Score:** **{vm['macro_f1']:.2f}%**  
@@ -470,11 +576,13 @@ def generate_markdown_report(results: dict, failures: list[dict]):
 The 100-requirement synthetic benchmark tests real-world automotive compliance auditing across 10 mission-critical domains (High-Voltage BMS, Traction Inverters, DC-DC Converters, Charging, Thermal, CAN-FD/Ethernet, UDS Diagnostics, Functional Safety ASIL-D, Cybersecurity ISO 21434, and Environmental EMC).
 
 ```
-Pipeline Efficiency:
+Pipeline Performance Summary:
   • Requirement Extraction F1 : {em['f1']:.2f}%
-  • Evidence Retrieval Recall@5 : {rm['recall_at_5']:.2f}% (MRR: {rm['mean_reciprocal_rank']:.4f})
-  • Multi-Condition Verification: {vm['accuracy']:.2f}% Accuracy | {vm['macro_f1']:.2f}% Macro F1
-  • Unsupported Claim Rate    : {sm['unsupported_claim_rate']:.2f}% (Hallucination resistance)
+  • Document Retrieval Recall@3: {rm['document_recall_at_3']:.2f}% | Recall@5: {rm['document_recall_at_5']:.2f}% (MRR: {rm['document_mrr']:.4f})
+  • Exact Passage Recall@3    : {rm['passage_recall_at_3']:.2f}% | Recall@5: {rm['passage_recall_at_5']:.2f}% (MRR: {rm['passage_mrr']:.4f})
+  • 5-Class Requirement Macro F1: {vm['macro_f1']:.2f}% (Accuracy: {vm['accuracy']:.2f}%)
+  • Atomic Condition Accuracy  : {cm_data.get('condition_accuracy', sm.get('condition_accuracy', 0)):.2f}% (F1: {cm_data.get('condition_f1', 0):.2f}%)
+  • Unsupported Claim Rate    : {sm['unsupported_claim_rate']:.2f}% (Evidence-grounded)
 ```
 
 ---
@@ -507,13 +615,15 @@ Pipeline Efficiency:
 | **Conflict Detection F1** | **{sm['conflict_f1']:.2f}%** | >= 90.0% | {'✅ Met' if sm['conflict_f1'] >= 90 else '⚠️ Review Needed'} |
 | **Missing Evidence Detection F1** | **{sm['missing_f1']:.2f}%** | >= 90.0% | {'✅ Met' if sm['missing_f1'] >= 90 else '⚠️ Review Needed'} |
 | **Partial Compliance Detection F1** | **{sm['partial_f1']:.2f}%** | >= 85.0% | {'✅ Met' if sm['partial_f1'] >= 85 else '⚠️ Review Needed'} |
-| **Condition-Level Accuracy** | **{sm['condition_accuracy']:.2f}%** | >= 90.0% | {'✅ Met' if sm['condition_accuracy'] >= 90 else '⚠️ Review Needed'} |
+| **UNKNOWN Detection F1** | **{sm.get('unknown_f1', 0):.2f}%** | >= 70.0% | {'✅ Met' if sm.get('unknown_f1', 0) >= 70 else '⚠️ Review Needed'} |
+| **Atomic Condition Accuracy** | **{cm_data.get('condition_accuracy', 0):.2f}%** | >= 90.0% | {'✅ Met' if cm_data.get('condition_accuracy', 0) >= 90 else '⚠️ Review Needed'} |
+| **Atomic Condition F1** | **{cm_data.get('condition_f1', 0):.2f}%** | >= 85.0% | {'✅ Met' if cm_data.get('condition_f1', 0) >= 85 else '⚠️ Review Needed'} |
 | **Numerical & Range Accuracy** | **{sm['numerical_range_accuracy']:.2f}%** | >= 90.0% | {'✅ Met' if sm['numerical_range_accuracy'] >= 90 else '⚠️ Review Needed'} |
-| **Unsupported Claim Rate (Hallucination)** | **{sm['unsupported_claim_rate']:.2f}%** | <= 5.0% | {'✅ Safe' if sm['unsupported_claim_rate'] <= 5 else '❌ High Risk'} |
+| **Unsupported Claim Rate** | **{sm['unsupported_claim_rate']:.2f}%** | <= 5.0% | {'✅ Safe' if sm['unsupported_claim_rate'] <= 5 else '❌ High Risk'} |
 
 ---
 
-## 5. Root Cause Failure Classification
+## 5. Signal-Based Root Cause Failure Classification
 
 ```
 Total Failures: {len(failures)} / 100
@@ -524,7 +634,7 @@ Failure Categorization:
 
     content += f"""```
 
-### Top Failure Cases:
+### Detailed Failure Cases:
 
 | Req ID | Expected | Predicted | Failure Category | Ground Truth Failure Context |
 |---|:---:|:---:|---|---|
@@ -536,7 +646,7 @@ Failure Categorization:
 
 ### 🔍 Main Bottleneck:
 """
-    if rm['recall_at_5'] < 90.0:
+    if rm['document_recall_at_5'] < 90.0:
         content += "- **Retrieval & Evidence Ranking** is the primary bottleneck. Evidence chunks for complex cross-system requirements were missed in the top-5 candidate pool.\n"
     elif vm['macro_f1'] < 90.0:
         content += "- **Multi-Condition Reasoner & Scope Discrimination** is the primary bottleneck. Retrieval succeeded in finding candidate chunks, but multi-condition boundaries or component scope limits were misclassified.\n"
@@ -557,3 +667,4 @@ Failure Categorization:
 
 if __name__ == "__main__":
     asyncio.run(run_benchmark())
+

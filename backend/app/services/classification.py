@@ -156,6 +156,12 @@ def _verdict_assessment(contract: RequirementContract, verdict_outcome: Validati
 
 def _run_deterministic_validators(contract: RequirementContract, claims: list) -> Optional[ValidationOutcome]:
     """Run type-specific deterministic validators, falling back to semantic validation."""
+    has_empirical = any(
+        getattr(c, "source_authority", None) in ("EMPIRICAL_TEST", "QUALIFICATION_TEST", "VALIDATION_REPORT")
+        for c in claims
+    )
+    is_physical = contract.verification_method != "simulation" and contract.verification_method != "calculation"
+
     outcome: Optional[ValidationOutcome] = None
 
     if contract.requirement_type == "numeric_range":
@@ -167,9 +173,19 @@ def _run_deterministic_validators(contract: RequirementContract, claims: list) -
     elif contract.requirement_type in ("boolean", "enumeration"):
         outcome = validate_boolean_flag(contract, claims)
 
-    if outcome is None:
+    if outcome is None and has_empirical:
         outcome = validate_semantic(contract, claims)
+
+    # If an outcome is SUPPORTED but physical testing is required without empirical evidence -> UNKNOWN
+    if outcome and outcome.status == "SUPPORTED" and is_physical and not has_empirical:
+        return ValidationOutcome(
+            status="UNKNOWN",
+            confidence=85.0,
+            reason="Evidence consists only of theoretical simulations, calculations, or architecture specifications without empirical test data.",
+        )
+
     return outcome
+
 
 
 def _deterministic_prechecks(

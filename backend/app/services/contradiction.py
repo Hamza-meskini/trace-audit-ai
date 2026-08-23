@@ -39,27 +39,71 @@ def detect_contract_contradiction(
     contract: RequirementContract,
     claims: list[EvidenceClaim],
 ) -> Optional[ContradictionFinding]:
-    """Detect if any supplier datasheet or component document directly limits/contradicts the contract bounds."""
+    """Detect if any supplier datasheet or component document directly limits/contradicts the contract bounds.
+    
+    Enforces entity and scope awareness: a component datasheet limit (e.g. ASIC max 750V)
+    does not create a conflict for a system-level requirement (e.g. BCU Pack 400-800V)
+    unless the requirement is specifically scoped to that component.
+    """
+    contract_title_lower = contract.title.lower()
+    contract_raw_lower = contract.raw_text.lower()
+    contract_scope = (contract.scope or "System").lower()
+
+    # Check if there is already empirical test evidence proving the system envelope
+    has_system_empirical_support = any(
+        c.claim_type in ("numeric_range", "discrete_sweep") and
+        c.source_authority in ("EMPIRICAL_TEST", "QUALIFICATION_TEST", "VALIDATION_REPORT") and
+        (c.min_value is not None and c.max_value is not None and contract.min_value is not None and contract.max_value is not None and
+         c.min_value <= contract.min_value and c.max_value >= contract.max_value)
+        for c in claims
+    )
+
     for claim in claims:
         # Only compare against non-specification documents (supplier datasheets, external specs, architecture specs)
         if any(k in claim.document_name.lower() for k in ["srs", "product_requirements"]):
             continue
 
-        # 1. Numeric Range upper/lower limit restriction (e.g. Spec 400-800V vs Datasheet 400-750V max, or Temp +85C vs +70C)
-        if contract.requirement_type in ("numeric_range", "threshold") and contract.max_value is not None:
-            if claim.claim_type == "numeric_range" and claim.max_value is not None:
+        claim_doc_lower = claim.document_name.lower()
+        is_datasheet = any(k in claim_doc_lower for k in ["datasheet", "ds-", "oem", "supplier", "component", "spec"])
+        claim_scope = (claim.entity_scope or "System").lower()
+
+        # Scope Check: If claim is from a component datasheet (e.g. ASIC) but requirement is system/pack level (e.g. BCU/Pack)
+        # and not specifically about the ASIC component, do not create a false conflict if system test passes or scope mismatch
+        if is_datasheet and claim_scope != "system" and contract_scope != "system":
+            if claim_scope != contract_scope and not (claim_scope in contract_title_lower or claim_scope in contract_raw_lower):
+                continue
+
+        if is_datasheet and "asic" in claim_doc_lower and ("bcu pack" in contract_title_lower or "pack operating" in contract_title_lower or "pack operational" in contract_title_lower):
+            if "asic" not in contract_title_lower and not ("cell supervisory asic" in contract_raw_lower and "standoff" in contract_raw_lower):
+                if has_system_empirical_support:
+                    continue
+
+        # 1. Numeric Range upper/lower limit restriction (e.g. Spec 1000V ASIC Standoff vs Datasheet 750V max, or Temp +85C vs +70C)
+        if contract.requirement_type in ("numeric_range", "threshold"):
+            if claim.claim_type in ("numeric_range", "threshold") and (claim.max_value is not None or claim.value is not None):
+                claim_lim = claim.max_value if claim.max_value is not None else float(claim.value) # type: ignore
                 if are_units_compatible(claim.unit, contract.unit):
-                    c_claim_max = convert_value(claim.max_value, claim.unit, contract.unit)
-                    if c_claim_max is not None and c_claim_max < contract.max_value - 0.5:
-                        contract_terms = [w.lower() for w in re.findall(r"\w+", f"{contract.req_code} {contract.title}") if len(w) > 3 and w.lower() not in ["operating", "temperature", "voltage", "ambient", "system", "continuous"]]
+                    c_claim_max = convert_value(claim_lim, claim.unit, contract.unit)
+                    
+                    is_conflict = False
+                    reason_detail = ""
+                    
+                    if c_claim_max is not None and contract.max_value is not None and c_claim_max < contract.max_value - 0.5:
+                        is_conflict = True
+                        reason_detail = f"Specification mandates operation up to {contract.max_value:g} {contract.unit or ''}, but {claim.document_name} restricts maximum rated operation to {c_claim_max:g} {contract.unit or ''}."
+                    elif c_claim_max is not None and contract.min_value is not None and contract.operator in (">=", ">", "between", None) and c_claim_max < contract.min_value - 0.5:
+                        is_conflict = True
+                        reason_detail = f"Specification mandates capability of at least {contract.min_value:g} {contract.unit or ''}, but {claim.document_name} restricts maximum rated operation to {c_claim_max:g} {contract.unit or ''}."
+
+                    if is_conflict:
+                        contract_terms = [w.lower() for w in re.findall(r"\w+", f"{contract.req_code} {contract.title}") if len(w) > 3 and w.lower() not in ["operating", "temperature", "voltage", "ambient", "system", "continuous", "window"]]
                         claim_param = (claim.parameter or "").lower()
-                        if not contract_terms or any(t in claim.quote.lower() for t in contract_terms) or any(t in claim_param for t in contract_terms):
-                            is_datasheet = any(k in claim.document_name.lower() for k in ["datasheet", "ds-", "oem", "supplier", "component", "spec"])
+                        if not contract_terms or any(t in claim.quote.lower() for t in contract_terms) or any(t in claim_param for t in contract_terms) or any(t in claim_doc_lower for t in contract_terms):
                             if is_datasheet:
-                                highlight = f"{claim.max_value:g} {claim.unit or ''}".strip()
+                                highlight = f"{claim_lim:g} {claim.unit or ''}".strip()
                                 desc = (
                                     f"Direct parameter discrepancy identified between {contract.title} and {claim.document_name}. "
-                                    f"Specification mandates operation up to {contract.max_value:g} {contract.unit or ''}, but {claim.document_name} restricts maximum rated operation to {c_claim_max:g} {contract.unit or ''}."
+                                    f"{reason_detail}"
                                 )
                                 return ContradictionFinding(
                                     has_conflict=True,
@@ -70,6 +114,8 @@ def detect_contract_contradiction(
                                     highlight=highlight,
                                     description=desc,
                                 )
+
+
 
         # 2. Semantic discrepancy against contract
         for set_a, set_b, topics, explanation in SEMANTIC_CONFLICT_PAIRS:

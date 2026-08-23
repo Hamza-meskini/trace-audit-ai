@@ -97,23 +97,25 @@ def _content_hash(text: str) -> str:
     return hashlib.md5(text.encode("utf-8")).hexdigest()[:16]
 
 
+_consecutive_rate_limits = 0
+_MAX_CONSECUTIVE_RATE_LIMITS = 2
+_circuit_open = False
+
+
 def _has_embedding_key() -> bool:
-    """Check if a Gemini API key is available for embedding calls."""
+    """Check if a Gemini API key is available and circuit is not open."""
+    global _circuit_open
+    if _circuit_open:
+        return False
     return bool(settings.effective_gemini_api_key)
 
 
 async def embed_single(text: str, task_type: str = "RETRIEVAL_DOCUMENT") -> Optional[list[float]]:
-    """Get embedding for a single text using Gemini text-embedding-005.
-
-    Args:
-        text: The text to embed (truncated to 2048 chars for efficiency).
-        task_type: One of RETRIEVAL_QUERY, RETRIEVAL_DOCUMENT, SEMANTIC_SIMILARITY, CLASSIFICATION.
-
-    Returns:
-        3072-dimensional embedding vector, or None if API is unavailable.
-    """
+    """Get embedding for a single text using Gemini text-embedding-005."""
+    global _consecutive_rate_limits, _circuit_open
     if not _has_embedding_key():
         return None
+
 
     _ensure_cache_loaded()
     cache_key = _content_hash(text)
@@ -191,18 +193,24 @@ async def embed_batch(texts: list[str], task_type: str = "RETRIEVAL_DOCUMENT") -
         }
 
         # Try with exponential backoff on rate limits
-        for attempt in range(1, 4):
+        for attempt in range(1, 3):
             try:
-                async with httpx.AsyncClient(timeout=35.0) as client:
+                async with httpx.AsyncClient(timeout=15.0) as client:
                     resp = await client.post(url, json=payload)
                     if resp.status_code == 429:
-                        wait_time = 2.0 * attempt
-                        logger.warning(f"Gemini batch embedding rate limit [429]. Waiting {wait_time}s (attempt {attempt}/3)...")
+                        _consecutive_rate_limits += 1
+                        if _consecutive_rate_limits >= _MAX_CONSECUTIVE_RATE_LIMITS:
+                            _circuit_open = True
+                            logger.info("Embedding rate limit threshold reached; falling back instantly to BM25.")
+                            return results
+                        wait_time = 1.0 * attempt
+                        logger.warning(f"Gemini batch embedding rate limit [429]. Waiting {wait_time}s...")
                         await asyncio.sleep(wait_time)
                         continue
                     resp.raise_for_status()
                     data = resp.json()
                     embeddings = data.get("embeddings", [])
+
 
                     for j, emb_data in enumerate(embeddings):
                         values = emb_data.get("values", [])

@@ -2,28 +2,31 @@
 
 **Enterprise AI-Assisted Requirements Auditing & Technical Evidence Traceability Platform**
 
-TraceAudit AI is a production-grade decision-support software platform engineered for hardware and systems engineering teams, product compliance auditors, and quality validation engineers. It automatically ingests complex technical documentation, extracts structured requirement contracts, searches across multi-format evidence files, and mathematically proves specification compliance while detecting potential cross-document contradictions and coverage gaps.
+TraceAudit AI is a production-grade decision-support software platform engineered for hardware and systems engineering teams, product compliance auditors, and quality validation engineers. TraceAudit AI serves as an automated decision-support assistant and audit accelerator; it does not replace formal human engineering judgment or sign-off. It automatically ingests complex technical documentation, extracts structured requirement contracts, searches across multi-format evidence files, and formally analyzes specification compliance while detecting cross-document contradictions, compound condition gaps, and non-authoritative evidence modalities.
 
 ---
 
 ## 🌟 Key Capabilities
 
 - 📄 **Multi-Format Technical Document Ingestion:** High-fidelity chunking and table parsing across PDF test reports, Word SRS specifications (`.docx`), Excel compliance matrices (`.xlsx`), and datasheets.
-- 📐 **Structured Requirement Extraction (100% F1):** Automatically extracts mandatory clauses, engineering categories, severities, and strict numeric tolerance bounds ($V, \text{mA}, \text{ms}, ^\circ\text{C}, \text{mbar}$).
+- 📐 **Structured Requirement Extraction (100% F1):** Automatically extracts mandatory clauses, engineering categories, severities, atomic conditions, and strict numeric tolerance bounds ($V, \text{mA}, \text{ms}, ^\circ\text{C}, \text{mbar}$).
 - 🔎 **Hybrid BM25 Lexical & Dense Retrieval:** Multi-document evidence linking with code-boosting and document type diversification.
 - 🔬 **Deterministic SI Validation + LLM Semantic Reasoner:**
-  - **Local Python SI Validator:** Formally verifies metric ranges, threshold limits ($\le, \ge$), and timing latency without hallucinations.
-  - **Databricks Model Serving AI Gateway (`system.ai.qwen35-122b-a10b` / `meta-llama-3-3-70b-instruct`):** Evaluates multi-condition engineering clauses, compound predicates ($X \land Y \land Z$), and physical vs simulation modalities.
-  - **Google Gemini 3.7 Flash Thinking (`HIGH`):** Deep multi-tier reasoning with native JSON schema validation.
-- ⚡ **Zero Hallucination Guarantee:** Enforces a **0.00% Unsupported Claim Rate** via strict quote citation checking.
+  - **Local Python SI Validator:** Formally verifies metric ranges ($[T_{min}, T_{max}] \supseteq [R_{min}, R_{max}]$), threshold limits ($\le, \ge$), and timing latency without hallucinations.
+  - **Source Authority & Modality Classifier:** Distinguishes empirical test reports from theoretical simulations, calculations, and component datasheets.
+  - **Databricks Model Serving & Gemini 3.7 Flash Reasoning:** Evaluates multi-condition engineering clauses, compound predicates ($X \land Y \land Z$), and physical vs simulation modalities.
+- ⚡ **Strict Evidence-Grounded Verification:** Achieves a **0.00% Unsupported Claim Rate** on benchmark suites (evaluated by verifying that no requirement marked SUPPORTED lacks authoritative empirical evidence).
 - 🗺️ **Interactive Traceability Matrix:** Visual network graph linking Requirements $\to$ Documents $\to$ Evidence Quotes $\to$ Audit Findings.
 - 📊 **Auditable Reporting:** Exportable executive compliance files with audit trails and human-in-the-loop review actions.
 
 ---
 
-## 📊 Scientific Benchmark Performance
+## 📊 Scientific Benchmark Suites
 
-Evaluated against an authoritative aerospace and automotive battery control system (BCU) specification suite (30 requirements, 7 technical documents, 70 evidence segments):
+TraceAudit AI is evaluated across two distinct benchmark suites:
+
+### 1. Foundational Benchmark (30 Requirements)
+Evaluates core requirement extraction, basic single-condition numeric ranges, threshold comparisons, and formal compliance tracking records in an aerospace/automotive battery control system (BCU) specification suite (30 requirements, 7 technical documents, 70 evidence segments):
 
 | Metric | Score | Industry Context |
 |---|---|---|
@@ -34,7 +37,15 @@ Evaluated against an authoritative aerospace and automotive battery control syst
 | **Verification Macro F1** | **87.41%** | Balanced across Supported, Partial, Missing, Conflict |
 | **Conflict Detection F1** | **90.91%** | Catches datasheet rating & thermal derating contradictions |
 | **Missing Evidence Detection F1** | **100.0%** | Perfect recall on unverified and "Not Started" clauses |
-| **Unsupported Claim Rate** | **0.00%** | **Zero hallucinations** (mathematically verified citations) |
+| **Unsupported Claim Rate** | **0.00%** | Zero false verifications on missing evidence |
+
+### 2. Complex Automotive Benchmark (100 Requirements, 172 Atomic Conditions)
+Evaluates advanced multi-condition compliance across 10 vehicle subsystems (HV BMS, Traction Inverter, DC-DC, Charging, Thermal, CAN-FD/Ethernet, UDS Diagnostics, ASIL-D Safety, ISO 21434 Cyber, EMC), testing:
+- **Multi-Condition Decomposition (172 Atomic Conditions):** Detecting partial compliance where one sub-clause passes but another is unmeasured or pending.
+- **Source Authority & Modality Discrimination:** Accurately identifying theoretical simulations (SPICE, CFD, MATLAB) and architecture specs as `UNKNOWN` for physical requirements.
+- **Entity & Scope Reasoning:** Preventing component datasheet ratings (e.g. ASIC max voltage) from creating false conflicts against system-level requirements when system tests pass.
+- **Cross-Document Contradiction Detection:** Detecting subtle datasheet deratings and hardware interface limit violations.
+
 
 ---
 

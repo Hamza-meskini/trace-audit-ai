@@ -17,6 +17,22 @@ RequirementType = Literal[
 ]
 
 
+class AtomicConditionContract(BaseModel):
+    """Structured atomic condition within a requirement contract."""
+
+    condition_id: str
+    description: Optional[str] = None
+    parameter: Optional[str] = None
+    operator: Optional[str] = None  # ">=", "<=", "==", "between", ">", "<", "in"
+    threshold: Optional[Union[float, str, bool]] = None
+    min_value: Optional[float] = None
+    max_value: Optional[float] = None
+    unit: Optional[str] = None
+    scope: Optional[str] = None  # e.g. "BCU", "ASIC", "Inverter", "System"
+    mandatory: bool = True
+    verification_method: Optional[str] = None  # "physical_test", "simulation", "calculation", "inspection"
+
+
 class RequirementContract(BaseModel):
     """Structured engineering requirement contract."""
 
@@ -35,7 +51,9 @@ class RequirementContract(BaseModel):
     tolerance: Optional[float] = None
     unit: Optional[str] = None
     conditions: list[str] = Field(default_factory=list)
-    verification_method: Optional[str] = None  # "test", "calculation", "simulation", "inspection"
+    atomic_conditions: list[AtomicConditionContract] = Field(default_factory=list)
+    verification_method: Optional[str] = None  # "physical_test", "calculation", "simulation", "inspection"
+    scope: Optional[str] = None  # "BCU", "ASIC", "Pack", "Inverter", "System"
     mandatory: bool = True
     raw_text: str = ""
 
@@ -76,6 +94,34 @@ def parse_requirement_contract(
     semantic type without inventing values.
     """
     full_text = f"{title}. {description or ''}".strip()
+    full_lower = full_text.lower()
+
+    # Determine verification method
+    v_method = "physical_test"
+    if any(k in full_lower for k in ["by simulation", "simulation with", "simulated in", "simulation model", "simulation analysis"]):
+        v_method = "simulation"
+    elif any(k in full_lower for k in ["by calculation", "analytical calculation", "calculated estimate", "calculation model"]):
+        v_method = "calculation"
+    elif any(k in full_lower for k in ["by inspection", "visual inspection", "inspection of"]):
+        v_method = "inspection"
+
+    # Determine scope / entity
+    scope = "System"
+    if "asic" in full_lower:
+        scope = "ASIC"
+    elif "inverter" in full_lower or "gate driver" in full_lower:
+        scope = "Inverter"
+    elif "bcu" in full_lower:
+        scope = "BCU"
+    elif "bms" in full_lower:
+        scope = "BMS"
+    elif "pack" in full_lower:
+        scope = "Pack"
+    elif "hvil" in full_lower:
+        scope = "HVIL"
+    elif "dc-dc" in full_lower or "dcdc" in full_lower:
+        scope = "DC-DC"
+
     contract = RequirementContract(
         requirement_id=req_code,
         req_code=req_code,
@@ -83,17 +129,29 @@ def parse_requirement_contract(
         description=description,
         category=category,
         requirement_type="semantic",
+        verification_method=v_method,
+        scope=scope,
         raw_text=full_text,
     )
 
     # 1. Check for IP rating
     ip_match = IP_REGEX.search(full_text)
-    if ip_match and ("ingress" in full_text.lower() or "enclosure" in full_text.lower() or "protection" in full_text.lower()):
+    if ip_match and ("ingress" in full_lower or "enclosure" in full_lower or "protection" in full_lower):
         contract.requirement_type = "enumeration"
         contract.parameter = "ingress_protection"
         contract.operator = "=="
         contract.expected_value = ip_match.group(1).upper()
         contract.unit = "IP"
+        contract.atomic_conditions.append(AtomicConditionContract(
+            condition_id=f"{req_code}-C1",
+            description="Ingress protection level",
+            parameter="ingress_protection",
+            operator="==",
+            threshold=ip_match.group(1).upper(),
+            unit="IP",
+            scope=scope,
+            verification_method=v_method,
+        ))
         return contract
 
     # 2. Check for numeric ranges: e.g. "400.0 V DC to 800.0 V DC", "-40°C to +85°C", "18–30 V"
@@ -116,14 +174,36 @@ def parse_requirement_contract(
             tol_match = TOLERANCE_REGEX.search(full_text)
             if tol_match:
                 contract.tolerance = float(tol_match.group(1))
+
+            contract.atomic_conditions.append(AtomicConditionContract(
+                condition_id=f"{req_code}-C1",
+                description="Minimum operating limit",
+                parameter="range_min",
+                operator="<=",
+                threshold=min_v,
+                min_value=min_v,
+                unit=contract.unit,
+                scope=scope,
+                verification_method=v_method,
+            ))
+            contract.atomic_conditions.append(AtomicConditionContract(
+                condition_id=f"{req_code}-C2",
+                description="Maximum operating limit",
+                parameter="range_max",
+                operator=">=",
+                threshold=max_v,
+                max_value=max_v,
+                unit=contract.unit,
+                scope=scope,
+                verification_method=v_method,
+            ))
             
             return contract
         except (ValueError, TypeError):
             pass
 
     # 3. Check for duration / latency threshold (<= X ms, <= X us, <= X s, <= X hours)
-    if any(tw in full_text.lower() for tw in ["latency", "time", "duration", "response", "delay", "disconnect", "cycle", "hours"]):
-        # Check <= threshold
+    if any(tw in full_lower for tw in ["latency", "time", "duration", "response", "delay", "disconnect", "cycle", "hours"]):
         le_m = THRESHOLD_LE_REGEX.search(full_text)
         if le_m:
             try:
@@ -134,6 +214,17 @@ def parse_requirement_contract(
                     contract.operator = "<="
                     contract.max_value = val
                     contract.unit = unit
+                    contract.atomic_conditions.append(AtomicConditionContract(
+                        condition_id=f"{req_code}-C1",
+                        description="Latency / duration limit",
+                        parameter="duration",
+                        operator="<=",
+                        threshold=val,
+                        max_value=val,
+                        unit=unit,
+                        scope=scope,
+                        verification_method=v_method,
+                    ))
                     return contract
             except (ValueError, TypeError):
                 pass
@@ -148,6 +239,17 @@ def parse_requirement_contract(
             contract.operator = "<="
             contract.max_value = val
             contract.unit = unit or None
+            contract.atomic_conditions.append(AtomicConditionContract(
+                condition_id=f"{req_code}-C1",
+                description="Upper threshold limit",
+                parameter="upper_bound",
+                operator="<=",
+                threshold=val,
+                max_value=val,
+                unit=unit or None,
+                scope=scope,
+                verification_method=v_method,
+            ))
             return contract
         except (ValueError, TypeError):
             pass
@@ -162,15 +264,36 @@ def parse_requirement_contract(
             contract.operator = ">="
             contract.min_value = val
             contract.unit = unit or None
+            contract.atomic_conditions.append(AtomicConditionContract(
+                condition_id=f"{req_code}-C1",
+                description="Lower threshold limit",
+                parameter="lower_bound",
+                operator=">=",
+                threshold=val,
+                min_value=val,
+                unit=unit or None,
+                scope=scope,
+                verification_method=v_method,
+            ))
             return contract
         except (ValueError, TypeError):
             pass
 
     # 6. Check for boolean flags (e.g. secure boot, galvanic isolation, authentication)
-    if any(kw in full_text.lower() for kw in ["secure boot", "hardware root-of-trust", "galvanic isolation", "ecdsa", "authentication"]):
+    if any(kw in full_lower for kw in ["secure boot", "hardware root-of-trust", "galvanic isolation", "ecdsa", "authentication"]):
         contract.requirement_type = "boolean"
         contract.operator = "=="
         contract.expected_value = True
+        contract.atomic_conditions.append(AtomicConditionContract(
+            condition_id=f"{req_code}-C1",
+            description="Feature implementation",
+            parameter="feature_present",
+            operator="==",
+            threshold=True,
+            scope=scope,
+            verification_method=v_method,
+        ))
         return contract
 
     return contract
+

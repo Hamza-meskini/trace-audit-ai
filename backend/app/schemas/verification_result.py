@@ -4,13 +4,27 @@ from typing import Literal, Optional
 from pydantic import BaseModel, Field
 
 
+AtomicConditionStatus = Literal["PROVEN", "FAILED", "PENDING", "UNTESTED", "NOT_APPLICABLE", "INCONCLUSIVE"]
+
+
 class RequirementCondition(BaseModel):
     """A distinct mandatory technical condition extracted from a requirement."""
+    condition_id: Optional[str] = None
     condition: str
     parameter: Optional[str] = None
     required_value: Optional[str] = None
     unit: Optional[str] = None
     is_mandatory: bool = True
+
+
+class ConditionVerificationResult(BaseModel):
+    """Evaluation result for an individual atomic condition."""
+    condition_id: str
+    description: Optional[str] = None
+    status: AtomicConditionStatus = "UNTESTED"
+    evidence_ids: list[str] = Field(default_factory=list)
+    quote: Optional[str] = None
+    reason: Optional[str] = None
 
 
 class EvidenceFinding(BaseModel):
@@ -30,6 +44,7 @@ class VerificationAnalysisResult(BaseModel):
     status: Literal["SUPPORTED", "PARTIAL", "MISSING", "UNKNOWN", "CONFLICT"]
     confidence: int = Field(default=85, ge=0, le=100)
     requirement_conditions: list[RequirementCondition] = Field(default_factory=list)
+    condition_results: list[ConditionVerificationResult] = Field(default_factory=list)
     evidence_findings: list[EvidenceFinding] = Field(default_factory=list)
     reason: str
     highlight: Optional[str] = None
@@ -40,6 +55,7 @@ class BatchVerificationItemResult(BaseModel):
     req_code: str
     status: Literal["SUPPORTED", "PARTIAL", "MISSING", "UNKNOWN", "CONFLICT"]
     confidence: int = Field(default=85, ge=0, le=100)
+    condition_results: list[ConditionVerificationResult] = Field(default_factory=list)
     reason: str
     highlight: Optional[str] = None
 
@@ -47,4 +63,5 @@ class BatchVerificationItemResult(BaseModel):
 class BatchVerificationResult(BaseModel):
     """Batch verification payload from Gemini LLM."""
     batch_results: list[BatchVerificationItemResult] = Field(default_factory=list)
+
 

@@ -25,9 +25,17 @@ def validate_numeric_range(
     # 1. Check discrete point sweeps first (e.g. tested at 400V, 600V, 800V)
     for claim in claims:
         if claim.claim_type == "discrete_sweep" and claim.discrete_points:
+            if contract.verification_method == "physical_test" and claim.source_authority in ("SIMULATION", "CALCULATION", "ARCHITECTURE_SPEC", "UNKNOWN"):
+                continue
+
             if are_units_compatible(claim.unit, req_unit):
                 # Topic relevance check
-                if contract_terms and not any(t in claim.quote.lower() for t in contract_terms):
+                if contract_terms and not (
+                    any(t in claim.quote.lower() for t in contract_terms)
+                    or any(t in (claim.parameter or "").lower() for t in contract_terms)
+                    or any(t in claim.document_name.lower() for t in contract_terms)
+                    or any(k in claim.quote.lower() for k in ["sweep", "tested", "evaluated", "range", "from", "chamber", "pack", "voltage", "thermal", "temperature"])
+                ):
                     continue
 
                 converted_pts = []
@@ -52,11 +60,20 @@ def validate_numeric_range(
     range_claims = [c for c in claims if c.claim_type == "numeric_range" and c.min_value is not None and c.max_value is not None]
     
     for claim in range_claims:
+        if contract.verification_method == "physical_test" and claim.source_authority in ("SIMULATION", "CALCULATION", "ARCHITECTURE_SPEC", "UNKNOWN"):
+            continue
+
         if not are_units_compatible(claim.unit, req_unit):
             continue
 
-        if contract_terms and not any(t in claim.quote.lower() for t in contract_terms):
+        if contract_terms and not (
+            any(t in claim.quote.lower() for t in contract_terms)
+            or any(t in (claim.parameter or "").lower() for t in contract_terms)
+            or any(t in claim.document_name.lower() for t in contract_terms)
+            or any(k in claim.quote.lower() for k in ["sweep", "tested", "evaluated", "range", "from", "chamber", "pack", "voltage", "thermal", "temperature", "climatic"])
+        ):
             continue
+
 
         c_min = convert_value(claim.min_value, claim.unit, req_unit)
         c_max = convert_value(claim.max_value, claim.unit, req_unit)
