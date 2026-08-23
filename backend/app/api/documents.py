@@ -16,6 +16,9 @@ from app.schemas.document import DocumentResponse, DocumentUploadResponse
 
 router = APIRouter(prefix="/projects/{project_id}/documents", tags=["Documents"])
 
+# Maximum upload size: 50 MB
+MAX_UPLOAD_SIZE_BYTES = 50 * 1024 * 1024
+
 # Map file extensions and filename keywords to realistic engineering document types
 DOC_TYPE_MAP = {
     ".pdf": "Technical specification",
