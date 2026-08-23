@@ -48,6 +48,7 @@ class ProjectStatsResponse(BaseModel):
     partial: int = 0
     missing: int = 0
     conflict: int = 0
+    unknown: int = 0
     documents: int = 0
     evidence_segments: int = 0
     findings: int = 0

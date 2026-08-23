@@ -7,7 +7,8 @@ export type FindingType =
   | "Potential conflict"
   | "Unsupported requirement"
   | "Duplicate requirement"
-  | "Ambiguous requirement";
+  | "Ambiguous requirement"
+  | "Inconclusive evidence";
 export type Category =
   | "Electrical"
   | "Safety"

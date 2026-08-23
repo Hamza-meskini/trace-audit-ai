@@ -25,6 +25,7 @@ export interface ApiProjectStats {
   partial: number;
   missing: number;
   conflict: number;
+  unknown: number;
   documents: number;
   evidence_segments: number;
   findings: number;
@@ -86,7 +87,8 @@ export interface ApiFinding {
     | "Potential conflict"
     | "Unsupported requirement"
     | "Duplicate requirement"
-    | "Ambiguous requirement";
+    | "Ambiguous requirement"
+    | "Inconclusive evidence";
   severity: "Critical" | "High" | "Medium" | "Low";
   review_state: "Reviewed" | "Needs review" | "Open" | "Approved" | "Rejected";
   assigned_to: string | null;

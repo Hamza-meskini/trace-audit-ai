@@ -103,6 +103,7 @@ async def get_project_stats(project_id: str, db: AsyncSession = Depends(get_db))
     partial = status_counts.get("Partial", 0)
     missing = status_counts.get("Missing", 0)
     conflict = status_counts.get("Conflict", 0)
+    unknown = status_counts.get("Unknown", 0)
 
     # Count documents
     doc_count_result = await db.execute(
@@ -134,6 +135,7 @@ async def get_project_stats(project_id: str, db: AsyncSession = Depends(get_db))
         partial=partial,
         missing=missing,
         conflict=conflict,
+        unknown=unknown,
         documents=doc_count,
         evidence_segments=chunk_count,
         findings=finding_count,

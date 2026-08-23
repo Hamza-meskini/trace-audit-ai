@@ -37,7 +37,7 @@ export const Route = createFileRoute("/requirements/")({
   component: RequirementsPage,
 });
 
-const tabs = ["All", "Supported", "Partial", "Missing", "Conflict", "Needs review"] as const;
+const tabs = ["All", "Supported", "Partial", "Missing", "Conflict", "Unknown", "Needs review"] as const;
 
 function RequirementsPage() {
   const navigate = useNavigate();
