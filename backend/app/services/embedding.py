@@ -48,9 +48,9 @@ def compute_bm25_score(query_tokens: list[str], doc_tokens: list[str], avg_doc_l
     return score
 
 
-# ── Gemini text-embedding-005 Semantic Embeddings ────────────────────────────
+# ── Gemini Semantic Embeddings ───────────────────────────────────────────────
 
-GEMINI_EMBEDDING_MODEL = "text-embedding-005"
+GEMINI_EMBEDDING_MODEL = "gemini-embedding-001"
 GEMINI_EMBED_API_URL = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_EMBEDDING_MODEL}:embedContent"
 GEMINI_BATCH_EMBED_API_URL = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_EMBEDDING_MODEL}:batchEmbedContents"
 
