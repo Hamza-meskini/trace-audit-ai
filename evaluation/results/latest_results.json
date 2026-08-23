@@ -1,6 +1,6 @@
 {
   "metadata": {
-    "timestamp": "2026-08-23T11:49:54.116083+00:00",
+    "timestamp": "2026-08-23T14:25:26.430590+00:00",
     "model": "gemini-3.7-flash",
     "thinking_level": "HIGH",
     "dataset_name": "Automotive Battery Control Unit (BCU-800V)",
@@ -284,7 +284,7 @@
         "coverage_status": "Supported",
         "confidence": 100.0,
         "review_state": "Reviewed",
-        "ai_analysis": "Laboratory dielectric testing in TR-BMS-2026-8801 verified the isolation barrier with 2,500 V AC applied for 60.0 s, measuring a leakage current of 0.28 mA (below the < 1.0 mA limit), confirmed by the compliance matrix.",
+        "ai_analysis": "Dielectric withstand test passed with 2,500 V AC applied for 60 seconds and leakage current < 1.0 mA.",
         "ai_recommendation": "No immediate action required. Retain the current evidence set for the technical compliance file.",
         "evidence_links_count": 5
       }
@@ -396,7 +396,7 @@
         "coverage_status": "Supported",
         "confidence": 100.0,
         "review_state": "Reviewed",
-        "ai_analysis": "Functional safety validation report TR-SAF-2026-902 confirms the hardware short-circuit analog comparator triggered the pyro-switch in 2.8 microseconds, well within the <= 5.0 microsecond requirement limit.",
+        "ai_analysis": "Pyro-fuse ignition timing test passed with trigger pulse issued in 2.8 microseconds.",
         "ai_recommendation": "No immediate action required. Retain the current evidence set for the technical compliance file.",
         "evidence_links_count": 5
       }
@@ -522,9 +522,9 @@
       "is_correct": true,
       "assessment": {
         "coverage_status": "Missing",
-        "confidence": 95.0,
+        "confidence": 0.0,
         "review_state": "Open",
-        "ai_analysis": "No test results, verification records, or compliance matrix entries were provided in the retrieved evidence regarding High Voltage Interlock Loop (HVIL) disconnect latency verification.",
+        "ai_analysis": "No direct test evidence or compliance record found for High Voltage Interlock Loop (HVIL) Fast Disconnect Latency.",
         "ai_recommendation": "Upload the relevant test plan, test report, or compliance record covering this requirement.",
         "evidence_links_count": 5
       }
@@ -634,9 +634,9 @@
       "is_correct": true,
       "assessment": {
         "coverage_status": "Conflict",
-        "confidence": 100.0,
+        "confidence": 50.0,
         "review_state": "Needs review",
-        "ai_analysis": "The requirement specifies continuous operation up to +85.0 \u00b0C ambient temperature, but OEM component datasheet DS-NX-800 limits ambient operating temperature to +70.0 \u00b0C max (with shutdown above +70 \u00b0C), which is confirmed as a conflict in the compliance matrix.",
+        "ai_analysis": "Supplier datasheet derates/limits at +70.0 \u00b0C, which contradicts the required maximum ambient operating thermal limit of +85.0 \u00b0C.",
         "ai_recommendation": "Review contradictory technical documentation with engineering stakeholders.",
         "evidence_links_count": 5
       }
@@ -682,9 +682,9 @@
       "is_correct": true,
       "assessment": {
         "coverage_status": "Conflict",
-        "confidence": 100.0,
+        "confidence": 50.0,
         "review_state": "Needs review",
-        "ai_analysis": "The requirement mandates a 200.0 mA per channel active cell balancing discharge current, whereas the OEM ASIC datasheet restricts balancing current to a maximum of 100.0 mA continuous dissipation.",
+        "ai_analysis": "Datasheet limits balancing to 100.0 mA, which contradicts the required active cell balancing discharge current of 200.0 mA.",
         "ai_recommendation": "Review contradictory technical documentation with engineering stakeholders.",
         "evidence_links_count": 5
       }

@@ -11,6 +11,7 @@ import re
 import math
 import logging
 import hashlib
+import asyncio
 from typing import Optional
 
 import httpx
@@ -157,23 +158,34 @@ async def embed_batch(texts: list[str], task_type: str = "RETRIEVAL_DOCUMENT") -
             ]
         }
 
-        try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                resp = await client.post(url, json=payload)
-                resp.raise_for_status()
-                data = resp.json()
-                embeddings = data.get("embeddings", [])
+        # Try with exponential backoff on rate limits
+        for attempt in range(1, 4):
+            try:
+                async with httpx.AsyncClient(timeout=35.0) as client:
+                    resp = await client.post(url, json=payload)
+                    if resp.status_code == 429:
+                        wait_time = 2.0 * attempt
+                        logger.warning(f"Gemini batch embedding rate limit [429]. Waiting {wait_time}s (attempt {attempt}/3)...")
+                        await asyncio.sleep(wait_time)
+                        continue
+                    resp.raise_for_status()
+                    data = resp.json()
+                    embeddings = data.get("embeddings", [])
 
-                for j, emb_data in enumerate(embeddings):
-                    values = emb_data.get("values", [])
-                    if values and j < len(batch_indices):
-                        idx = batch_indices[j]
-                        results[idx] = values
-                        _embedding_cache[_content_hash(texts[idx])] = values
+                    for j, emb_data in enumerate(embeddings):
+                        values = emb_data.get("values", [])
+                        if values and j < len(batch_indices):
+                            idx = batch_indices[j]
+                            results[idx] = values
+                            _embedding_cache[_content_hash(texts[idx])] = values
 
-            logger.info(f"Embedded batch of {len(batch_texts)} texts via Gemini text-embedding-005")
-        except Exception as ex:
-            logger.warning(f"Gemini batch embedding call failed for batch starting at {batch_start}: {ex}")
+                logger.info(f"Embedded batch of {len(batch_texts)} texts via Gemini {GEMINI_EMBEDDING_MODEL}")
+                break
+            except Exception as ex:
+                if attempt == 3:
+                    logger.warning(f"Gemini batch embedding call failed for batch starting at {batch_start}: {ex}")
+                else:
+                    await asyncio.sleep(2.0 * attempt)
 
     return results
 

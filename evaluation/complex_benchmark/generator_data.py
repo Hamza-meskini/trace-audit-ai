@@ -1,0 +1,1205 @@
+"""Comprehensive Dataset Definition for the 100-Requirement Complex Benchmark.
+
+Contains exact specifications, multi-condition definitions, ground truth mapping,
+and document corpus text for all 100 automotive requirements.
+"""
+
+from typing import Any
+
+# ==============================================================================
+# 100 HIGHLY REALISTIC AUTOMOTIVE REQUIREMENTS
+# ==============================================================================
+
+BENCHMARK_REQUIREMENTS: list[dict[str, Any]] = [
+    # ── Domain 1: Battery Management & High-Voltage Systems (001 - 010) ───────────
+    {
+        "requirement_id": "REQ-AUT-001",
+        "title": "Cell Overvoltage Detection & Contactor Trip",
+        "category": "High-Voltage Battery",
+        "difficulty": "Hard",
+        "requirement_text": "The BMS shall detect cell overvoltage when any cell voltage exceeds 4.250 V ± 2 mV for at least 100 ms and shall command HV contactor opening within 20 ms.",
+        "conditions": [
+            {"condition_id": "C-001-1", "description": "Cell overvoltage threshold", "parameter": "cell_voltage", "operator": ">=", "threshold": 4.250, "unit": "V"},
+            {"condition_id": "C-001-2", "description": "Measurement tolerance", "parameter": "tolerance", "operator": "<=", "threshold": 0.002, "unit": "V"},
+            {"condition_id": "C-001-3", "description": "Fault persistence filter", "parameter": "persistence_time", "operator": ">=", "threshold": 100.0, "unit": "ms"},
+            {"condition_id": "C-001-4", "description": "HV contactor command trip latency", "parameter": "trip_latency", "operator": "<=", "threshold": 20.0, "unit": "ms"}
+        ],
+        "expected_status": "SUPPORTED"
+    },
+    {
+        "requirement_id": "REQ-AUT-002",
+        "title": "HV Pack Operating Voltage Range",
+        "category": "High-Voltage Battery",
+        "difficulty": "Difficult",
+        "requirement_text": "The BCU shall maintain continuous monitoring and communication across the high-voltage pack operating range of 400.0 V DC to 800.0 V DC.",
+        "conditions": [
+            {"condition_id": "C-002-1", "description": "Minimum pack operational voltage", "parameter": "voltage_min", "operator": "<=", "threshold": 400.0, "unit": "V DC"},
+            {"condition_id": "C-002-2", "description": "Maximum pack operational voltage", "parameter": "voltage_max", "operator": ">=", "threshold": 800.0, "unit": "V DC"}
+        ],
+        "expected_status": "SUPPORTED"
+    },
+    {
+        "requirement_id": "REQ-AUT-003",
+        "title": "Cell Operating Temperature Operating Envelope",
+        "category": "High-Voltage Battery",
+        "difficulty": "Very Hard",
+        "requirement_text": "The BMS cell monitoring system shall measure cell temperatures across the full operating range of -40.0°C to +85.0°C with an accuracy of ±1.0°C.",
+        "conditions": [
+            {"condition_id": "C-003-1", "description": "Cold temperature limit", "parameter": "temp_min", "operator": "<=", "threshold": -40.0, "unit": "°C"},
+            {"condition_id": "C-003-2", "description": "Hot temperature limit", "parameter": "temp_max", "operator": ">=", "threshold": 85.0, "unit": "°C"},
+            {"condition_id": "C-003-3", "description": "Temperature sensing accuracy", "parameter": "accuracy", "operator": "<=", "threshold": 1.0, "unit": "°C"}
+        ],
+        "expected_status": "PARTIAL"
+    },
+    {
+        "requirement_id": "REQ-AUT-004",
+        "title": "Continuous Current Sensing Dynamic Range & Accuracy",
+        "category": "High-Voltage Battery",
+        "difficulty": "Hard",
+        "requirement_text": "The pack current sensor shall measure continuous current between -600.0 A (regen) and +600.0 A (discharge) with total error <= 0.5% full scale.",
+        "conditions": [
+            {"condition_id": "C-004-1", "description": "Continuous regen current range", "parameter": "current_regen", "operator": "<=", "threshold": -600.0, "unit": "A"},
+            {"condition_id": "C-004-2", "description": "Continuous discharge current range", "parameter": "current_discharge", "operator": ">=", "threshold": 600.0, "unit": "A"},
+            {"condition_id": "C-004-3", "description": "Total measurement error", "parameter": "error", "operator": "<=", "threshold": 0.5, "unit": "%"}
+        ],
+        "expected_status": "PARTIAL"
+    },
+    {
+        "requirement_id": "REQ-AUT-005",
+        "title": "Front-End ASIC High-Voltage Standoff Limit",
+        "category": "High-Voltage Battery",
+        "difficulty": "Adversarial",
+        "requirement_text": "The BMS front-end cell acquisition circuitry shall withstand common-mode voltages up to 1000.0 V DC continuously without dielectric breakdown.",
+        "conditions": [
+            {"condition_id": "C-005-1", "description": "Maximum continuous common-mode voltage standoff", "parameter": "standoff_voltage", "operator": ">=", "threshold": 1000.0, "unit": "V DC"}
+        ],
+        "expected_status": "CONFLICT"
+    },
+    {
+        "requirement_id": "REQ-AUT-006",
+        "title": "Active Cell Balancing Balancing Current",
+        "category": "High-Voltage Battery",
+        "difficulty": "Hard",
+        "requirement_text": "The BMS active cell balancing subsystem shall deliver a minimum balancing current of 300.0 mA per cell during top-balancing mode.",
+        "conditions": [
+            {"condition_id": "C-006-1", "description": "Minimum balancing current per cell", "parameter": "balancing_current", "operator": ">=", "threshold": 300.0, "unit": "mA"}
+        ],
+        "expected_status": "CONFLICT"
+    },
+    {
+        "requirement_id": "REQ-AUT-007",
+        "title": "Secondary Redundant Over-Temperature Hardware Cutoff",
+        "category": "High-Voltage Battery",
+        "difficulty": "Difficult",
+        "requirement_text": "A completely independent hardwired secondary analog thermal comparator shall trigger the HV pyro-switch if pack temperature exceeds 95.0°C.",
+        "conditions": [
+            {"condition_id": "C-007-1", "description": "Analog over-temperature trip threshold", "parameter": "temp_cutoff", "operator": ">=", "threshold": 95.0, "unit": "°C"},
+            {"condition_id": "C-007-2", "description": "Actuator type", "parameter": "actuator", "operator": "==", "threshold": "pyro-switch", "unit": ""}
+        ],
+        "expected_status": "MISSING"
+    },
+    {
+        "requirement_id": "REQ-AUT-008",
+        "title": "High-Voltage Isolation Loss Detection Response Time",
+        "category": "High-Voltage Battery",
+        "difficulty": "Difficult",
+        "requirement_text": "When chassis isolation resistance drops below 100.0 Ω/V, the insulation monitor shall assert the ISO_FAULT signal within 2.0 seconds.",
+        "conditions": [
+            {"condition_id": "C-008-1", "description": "Isolation resistance warning threshold", "parameter": "isolation_resistance", "operator": "<=", "threshold": 100.0, "unit": "Ω/V"},
+            {"condition_id": "C-008-2", "description": "Fault assertion detection latency", "parameter": "response_time", "operator": "<=", "threshold": 2.0, "unit": "s"}
+        ],
+        "expected_status": "MISSING"
+    },
+    {
+        "requirement_id": "REQ-AUT-009",
+        "title": "Acoustic Gas Venting Detection Sensor Baseline",
+        "category": "High-Voltage Battery",
+        "difficulty": "Very Hard",
+        "requirement_text": "The battery enclosure acoustic sensor shall detect high-pressure cell venting acoustic signatures within 50 ms of membrane burst.",
+        "conditions": [
+            {"condition_id": "C-009-1", "description": "Acoustic signature detection latency", "parameter": "detection_latency", "operator": "<=", "threshold": 50.0, "unit": "ms"}
+        ],
+        "expected_status": "UNKNOWN"
+    },
+    {
+        "requirement_id": "REQ-AUT-010",
+        "title": "HV Interlock Loop (HVIL) Pulse Width Modulation Diagnostic",
+        "category": "High-Voltage Battery",
+        "difficulty": "Difficult",
+        "requirement_text": "The HVIL circuit shall operate on a 1.0 kHz ± 10 Hz PWM signal and detect an open-loop condition within 5.0 ms.",
+        "conditions": [
+            {"condition_id": "C-010-1", "description": "HVIL diagnostic PWM frequency", "parameter": "frequency", "operator": "==", "threshold": 1000.0, "unit": "Hz"},
+            {"condition_id": "C-010-2", "description": "Open loop fault detection latency", "parameter": "open_detection_time", "operator": "<=", "threshold": 5.0, "unit": "ms"}
+        ],
+        "expected_status": "UNKNOWN"
+    },
+
+    # ── Domain 2: Power Inverter & Traction Motor Control (011 - 020) ───────────
+    {
+        "requirement_id": "REQ-AUT-011",
+        "title": "Inverter Phase Overcurrent Hardware Shutdown",
+        "category": "Traction Inverter",
+        "difficulty": "Hard",
+        "requirement_text": "The traction inverter gate driver shall detect phase overcurrent exceeding 650.0 A peak and shut down all SiC power switches within 1.5 µs.",
+        "conditions": [
+            {"condition_id": "C-011-1", "description": "Phase peak overcurrent threshold", "parameter": "current_threshold", "operator": ">=", "threshold": 650.0, "unit": "A"},
+            {"condition_id": "C-011-2", "description": "Gate driver DESAT shutdown latency", "parameter": "shutdown_latency", "operator": "<=", "threshold": 1.5, "unit": "µs"}
+        ],
+        "expected_status": "SUPPORTED"
+    },
+    {
+        "requirement_id": "REQ-AUT-012",
+        "title": "DC-Link Capacitor Voltage Discharge Time",
+        "category": "Traction Inverter",
+        "difficulty": "Difficult",
+        "requirement_text": "Upon active discharge command, the inverter active discharge circuit shall reduce DC-link voltage from 800.0 V to below 60.0 V in less than 5.0 seconds.",
+        "conditions": [
+            {"condition_id": "C-012-1", "description": "Target safe touch voltage", "parameter": "voltage_target", "operator": "<=", "threshold": 60.0, "unit": "V"},
+            {"condition_id": "C-012-2", "description": "Maximum discharge duration", "parameter": "discharge_duration", "operator": "<=", "threshold": 5.0, "unit": "s"}
+        ],
+        "expected_status": "SUPPORTED"
+    },
+    {
+        "requirement_id": "REQ-AUT-013",
+        "title": "Inverter Operating Efficiency Map",
+        "category": "Traction Inverter",
+        "difficulty": "Very Hard",
+        "requirement_text": "The traction inverter efficiency shall exceed 97.5% across motor torque range of 50.0 Nm to 350.0 Nm from 2000 rpm to 10000 rpm.",
+        "conditions": [
+            {"condition_id": "C-013-1", "description": "Minimum electrical efficiency", "parameter": "efficiency", "operator": ">=", "threshold": 97.5, "unit": "%"},
+            {"condition_id": "C-013-2", "description": "Torque operating envelope", "parameter": "torque_range", "operator": "between", "threshold": "50.0-350.0", "unit": "Nm"},
+            {"condition_id": "C-013-3", "description": "Speed operating envelope", "parameter": "speed_range", "operator": "between", "threshold": "2000-10000", "unit": "rpm"}
+        ],
+        "expected_status": "PARTIAL"
+    },
+    {
+        "requirement_id": "REQ-AUT-014",
+        "title": "Resolver Position Sensor Angle Tracking Jitter",
+        "category": "Traction Inverter",
+        "difficulty": "Hard",
+        "requirement_text": "The motor resolver-to-digital converter shall track rotor electrical angle up to 20000 rpm with angular error less than ±0.25 degrees across -40°C to +105°C.",
+        "conditions": [
+            {"condition_id": "C-014-1", "description": "Maximum rotor mechanical speed", "parameter": "rotor_speed", "operator": ">=", "threshold": 20000.0, "unit": "rpm"},
+            {"condition_id": "C-014-2", "description": "Maximum angular tracking error", "parameter": "angular_error", "operator": "<=", "threshold": 0.25, "unit": "degrees"},
+            {"condition_id": "C-014-3", "description": "Operational thermal envelope", "parameter": "temperature_range", "operator": "between", "threshold": "-40.0 to 105.0", "unit": "°C"}
+        ],
+        "expected_status": "PARTIAL"
+    },
+    {
+        "requirement_id": "REQ-AUT-015",
+        "title": "SiC MOSFET Junction Temperature Derating Limit",
+        "category": "Traction Inverter",
+        "difficulty": "Adversarial",
+        "requirement_text": "The inverter control unit shall allow maximum continuous power output with SiC MOSFET junction temperature up to 175.0°C.",
+        "conditions": [
+            {"condition_id": "C-015-1", "description": "Maximum continuous junction operating temperature", "parameter": "junction_temp_max", "operator": ">=", "threshold": 175.0, "unit": "°C"}
+        ],
+        "expected_status": "CONFLICT"
+    },
+    {
+        "requirement_id": "REQ-AUT-016",
+        "title": "Phase Current Measurement Sensor Bandwidth",
+        "category": "Traction Inverter",
+        "difficulty": "Hard",
+        "requirement_text": "Inverter phase current Hall sensors shall have a minimum -3dB analog bandwidth of 250.0 kHz.",
+        "conditions": [
+            {"condition_id": "C-016-1", "description": "Sensor -3dB analog bandwidth", "parameter": "bandwidth", "operator": ">=", "threshold": 250.0, "unit": "kHz"}
+        ],
+        "expected_status": "CONFLICT"
+    },
+    {
+        "requirement_id": "REQ-AUT-017",
+        "title": "Emergency Traction Torque Derating on CAN Loss",
+        "category": "Traction Inverter",
+        "difficulty": "Difficult",
+        "requirement_text": "If torque request CAN message is lost for greater than 100 ms, the inverter shall ramp output torque to 0.0 Nm within 200 ms.",
+        "conditions": [
+            {"condition_id": "C-017-1", "description": "CAN message timeout limit", "parameter": "can_timeout", "operator": ">=", "threshold": 100.0, "unit": "ms"},
+            {"condition_id": "C-017-2", "description": "Torque zero-ramp rate duration", "parameter": "derate_duration", "operator": "<=", "threshold": 200.0, "unit": "ms"}
+        ],
+        "expected_status": "MISSING"
+    },
+    {
+        "requirement_id": "REQ-AUT-018",
+        "title": "Inverter Coolant Flow Rate vs Thermal Resistance",
+        "category": "Traction Inverter",
+        "difficulty": "Difficult",
+        "requirement_text": "At coolant flow rate of 10.0 L/min (50/50 water-glycol at 65°C), the inverter cold plate thermal resistance Rth_j-c shall not exceed 0.045 K/W.",
+        "conditions": [
+            {"condition_id": "C-018-1", "description": "Coolant nominal flow rate", "parameter": "flow_rate", "operator": "==", "threshold": 10.0, "unit": "L/min"},
+            {"condition_id": "C-018-2", "description": "Maximum thermal resistance junction-to-coolant", "parameter": "thermal_resistance", "operator": "<=", "threshold": 0.045, "unit": "K/W"}
+        ],
+        "expected_status": "MISSING"
+    },
+    {
+        "requirement_id": "REQ-AUT-019",
+        "title": "Space Vector PWM Harmonic Distortion (THD)",
+        "category": "Traction Inverter",
+        "difficulty": "Very Hard",
+        "requirement_text": "Under rated 150 kW load, total phase current harmonic distortion (THD) shall not exceed 3.0%.",
+        "conditions": [
+            {"condition_id": "C-019-1", "description": "Maximum current total harmonic distortion", "parameter": "thd", "operator": "<=", "threshold": 3.0, "unit": "%"}
+        ],
+        "expected_status": "UNKNOWN"
+    },
+    {
+        "requirement_id": "REQ-AUT-020",
+        "title": "Field Oriented Control (FOC) Flux Weakening Stability",
+        "category": "Traction Inverter",
+        "difficulty": "Difficult",
+        "requirement_text": "The inverter FOC algorithm shall maintain stable demagnetization current control without torque oscillations during deep flux weakening.",
+        "conditions": [
+            {"condition_id": "C-020-1", "description": "Algorithm stability criterion", "parameter": "foc_stability", "operator": "==", "threshold": "stable", "unit": ""}
+        ],
+        "expected_status": "UNKNOWN"
+    },
+
+    # ── Domain 3: DC-DC Converter & Low-Voltage Power Distribution (021 - 030) ───
+    {
+        "requirement_id": "REQ-AUT-021",
+        "title": "HV-to-LV DC-DC Output Voltage Regulation",
+        "category": "Power Distribution",
+        "difficulty": "Hard",
+        "requirement_text": "The bidirectional DC-DC converter shall regulate 12V output voltage to 13.80 V ± 0.15 V under step load changes from 10.0 A to 200.0 A in less than 500 µs.",
+        "conditions": [
+            {"condition_id": "C-021-1", "description": "Nominal output voltage target", "parameter": "voltage_target", "operator": "==", "threshold": 13.80, "unit": "V"},
+            {"condition_id": "C-021-2", "description": "Voltage regulation tolerance band", "parameter": "voltage_tolerance", "operator": "<=", "threshold": 0.15, "unit": "V"},
+            {"condition_id": "C-021-3", "description": "Step load recovery response time", "parameter": "recovery_time", "operator": "<=", "threshold": 500.0, "unit": "µs"}
+        ],
+        "expected_status": "SUPPORTED"
+    },
+    {
+        "requirement_id": "REQ-AUT-022",
+        "title": "DC-DC Converter Dielectric Withstand Isolation",
+        "category": "Power Distribution",
+        "difficulty": "Difficult",
+        "requirement_text": "Galvanic isolation barrier between HV (800V) and LV (12V) side shall withstand 3.0 kV AC rms at 50 Hz for 60 seconds with leakage current < 1.0 mA.",
+        "conditions": [
+            {"condition_id": "C-022-1", "description": "Hipot test withstand voltage", "parameter": "hipot_voltage", "operator": ">=", "threshold": 3.0, "unit": "kV AC"},
+            {"condition_id": "C-022-2", "description": "Hipot test duration", "parameter": "duration", "operator": ">=", "threshold": 60.0, "unit": "s"},
+            {"condition_id": "C-022-3", "description": "Maximum leakage current limit", "parameter": "leakage_current", "operator": "<=", "threshold": 1.0, "unit": "mA"}
+        ],
+        "expected_status": "SUPPORTED"
+    },
+    {
+        "requirement_id": "REQ-AUT-023",
+        "title": "DC-DC Conversion Efficiency Across Load Profile",
+        "category": "Power Distribution",
+        "difficulty": "Hard",
+        "requirement_text": "DC-DC conversion efficiency shall exceed 94.0% for all output power levels between 300.0 W and 3000.0 W at Vin = 650 V.",
+        "conditions": [
+            {"condition_id": "C-023-1", "description": "Minimum electrical efficiency", "parameter": "efficiency", "operator": ">=", "threshold": 94.0, "unit": "%"},
+            {"condition_id": "C-023-2", "description": "Load power envelope", "parameter": "load_range", "operator": "between", "threshold": "300.0 to 3000.0", "unit": "W"}
+        ],
+        "expected_status": "PARTIAL"
+    },
+    {
+        "requirement_id": "REQ-AUT-024",
+        "title": "12V Output Voltage Ripple and Noise",
+        "category": "Power Distribution",
+        "difficulty": "Hard",
+        "requirement_text": "Output peak-to-peak voltage ripple on the 12V bus shall not exceed 100.0 mVpp across temperature range of -40°C to +85°C.",
+        "conditions": [
+            {"condition_id": "C-024-1", "description": "Maximum peak-to-peak output ripple", "parameter": "ripple_voltage", "operator": "<=", "threshold": 100.0, "unit": "mVpp"},
+            {"condition_id": "C-024-2", "description": "Thermal qualification range", "parameter": "temp_range", "operator": "between", "threshold": "-40.0 to 85.0", "unit": "°C"}
+        ],
+        "expected_status": "PARTIAL"
+    },
+    {
+        "requirement_id": "REQ-AUT-025",
+        "title": "Low-Voltage Output Continuous Current Rating",
+        "category": "Power Distribution",
+        "difficulty": "Adversarial",
+        "requirement_text": "The DC-DC converter shall deliver continuous output current of at least 250.0 A at 14.0 V at ambient temperature up to 65.0°C.",
+        "conditions": [
+            {"condition_id": "C-025-1", "description": "Continuous current output", "parameter": "continuous_current", "operator": ">=", "threshold": 250.0, "unit": "A"},
+            {"condition_id": "C-025-2", "description": "Ambient operating temperature", "parameter": "ambient_temp", "operator": "==", "threshold": 65.0, "unit": "°C"}
+        ],
+        "expected_status": "CONFLICT"
+    },
+    {
+        "requirement_id": "REQ-AUT-026",
+        "title": "HV Input Under-Voltage Lockout Threshold",
+        "category": "Power Distribution",
+        "difficulty": "Hard",
+        "requirement_text": "The DC-DC converter shall shut down and enter safe standby when HV input voltage drops below 350.0 V DC.",
+        "conditions": [
+            {"condition_id": "C-026-1", "description": "Undervoltage lockout shutdown threshold", "parameter": "uvlo_threshold", "operator": "==", "threshold": 350.0, "unit": "V DC"}
+        ],
+        "expected_status": "CONFLICT"
+    },
+    {
+        "requirement_id": "REQ-AUT-027",
+        "title": "Low-Voltage Reverse Polarity Protection",
+        "category": "Power Distribution",
+        "difficulty": "Difficult",
+        "requirement_text": "The 12V battery terminal connection shall withstand continuous reverse polarity of -14.0 V for 60 seconds without blown fuse or component damage.",
+        "conditions": [
+            {"condition_id": "C-027-1", "description": "Reverse voltage magnitude", "parameter": "reverse_voltage", "operator": "==", "threshold": -14.0, "unit": "V"},
+            {"condition_id": "C-027-2", "description": "Withstand duration", "parameter": "duration", "operator": ">=", "threshold": 60.0, "unit": "s"}
+        ],
+        "expected_status": "MISSING"
+    },
+    {
+        "requirement_id": "REQ-AUT-028",
+        "title": "Over-Current Hiccup Mode Recovery Period",
+        "category": "Power Distribution",
+        "difficulty": "Difficult",
+        "requirement_text": "When short-circuit occurs on 12V output, the converter shall limit current in hiccup mode and attempt auto-restart every 500 ms ± 50 ms.",
+        "conditions": [
+            {"condition_id": "C-028-1", "description": "Hiccup auto-restart period", "parameter": "restart_period", "operator": "==", "threshold": 500.0, "unit": "ms"}
+        ],
+        "expected_status": "MISSING"
+    },
+    {
+        "requirement_id": "REQ-AUT-029",
+        "title": "Conducted Voltage Transients Suppression (ISO 7637-2)",
+        "category": "Power Distribution",
+        "difficulty": "Very Hard",
+        "requirement_text": "The DC-DC converter shall suppress ISO 7637-2 Pulse 2a (+50 V) without exceeding 18.0 V on the 12V output bus.",
+        "conditions": [
+            {"condition_id": "C-029-1", "description": "Maximum clamped output voltage during surge", "parameter": "clamped_voltage", "operator": "<=", "threshold": 18.0, "unit": "V"}
+        ],
+        "expected_status": "UNKNOWN"
+    },
+    {
+        "requirement_id": "REQ-AUT-030",
+        "title": "Pre-Charge Sequence Soft-Start Inrush Current",
+        "category": "Power Distribution",
+        "difficulty": "Difficult",
+        "requirement_text": "During startup pre-charge, the DC-DC input inrush current shall be limited to less than 5.0 A peak.",
+        "conditions": [
+            {"condition_id": "C-030-1", "description": "Peak inrush current limit", "parameter": "peak_inrush_current", "operator": "<=", "threshold": 5.0, "unit": "A"}
+        ],
+        "expected_status": "UNKNOWN"
+    },
+
+    # ── Domain 4: On-Board Charger & AC/DC Fast Charging (031 - 040) ─────────────
+    {
+        "requirement_id": "REQ-AUT-031",
+        "title": "Three-Phase AC Charging Power and Power Factor",
+        "category": "Charging Systems",
+        "difficulty": "Hard",
+        "requirement_text": "The OBC shall deliver 11.0 kW charging power on 400 V AC 3-phase supply with power factor >= 0.98 at rated load.",
+        "conditions": [
+            {"condition_id": "C-031-1", "description": "Continuous AC charging power", "parameter": "charging_power", "operator": ">=", "threshold": 11.0, "unit": "kW"},
+            {"condition_id": "C-031-2", "description": "Power factor at rated output", "parameter": "power_factor", "operator": ">=", "threshold": 0.98, "unit": ""}
+        ],
+        "expected_status": "SUPPORTED"
+    },
+    {
+        "requirement_id": "REQ-AUT-032",
+        "title": "Control Pilot (CP) Duty Cycle Detection Tolerance",
+        "category": "Charging Systems",
+        "difficulty": "Difficult",
+        "requirement_text": "The OBC shall measure IEC 61851 Control Pilot PWM duty cycle (1.0 kHz) with an accuracy of ±0.5% duty cycle.",
+        "conditions": [
+            {"condition_id": "C-032-1", "description": "PWM duty cycle measurement accuracy", "parameter": "duty_cycle_error", "operator": "<=", "threshold": 0.5, "unit": "%"}
+        ],
+        "expected_status": "SUPPORTED"
+    },
+    {
+        "requirement_id": "REQ-AUT-033",
+        "title": "AC Input Voltage Operating Range & Frequency Tolerance",
+        "category": "Charging Systems",
+        "difficulty": "Hard",
+        "requirement_text": "The OBC shall operate across AC voltage range of 85.0 V to 265.0 V AC single-phase and frequency 47.0 Hz to 63.0 Hz.",
+        "conditions": [
+            {"condition_id": "C-033-1", "description": "Low-line AC voltage limit", "parameter": "voltage_min", "operator": "<=", "threshold": 85.0, "unit": "V AC"},
+            {"condition_id": "C-033-2", "description": "High-line AC voltage limit", "parameter": "voltage_max", "operator": ">=", "threshold": 265.0, "unit": "V AC"},
+            {"condition_id": "C-033-3", "description": "Grid frequency tolerance range", "parameter": "frequency_range", "operator": "between", "threshold": "47.0 to 63.0", "unit": "Hz"}
+        ],
+        "expected_status": "PARTIAL"
+    },
+    {
+        "requirement_id": "REQ-AUT-034",
+        "title": "V2L (Vehicle-to-Load) Bidirectional Output Voltage & Distortion",
+        "category": "Charging Systems",
+        "difficulty": "Hard",
+        "requirement_text": "In V2L discharge mode, the OBC shall provide 230.0 V AC ± 5% at 50 Hz with THD < 2.5% for resistive and inductive loads up to 3.6 kW.",
+        "conditions": [
+            {"condition_id": "C-034-1", "description": "V2L output voltage regulation", "parameter": "output_voltage", "operator": "between", "threshold": "218.5 to 241.5", "unit": "V AC"},
+            {"condition_id": "C-034-2", "description": "Maximum voltage harmonic distortion", "parameter": "thd", "operator": "<=", "threshold": 2.5, "unit": "%"},
+            {"condition_id": "C-034-3", "description": "Maximum V2L continuous power output", "parameter": "power_output", "operator": ">=", "threshold": 3.6, "unit": "kW"}
+        ],
+        "expected_status": "PARTIAL"
+    },
+    {
+        "requirement_id": "REQ-AUT-035",
+        "title": "Maximum AC Input Leakage Current to Earth",
+        "category": "Charging Systems",
+        "difficulty": "Hard",
+        "requirement_text": "Under normal operating conditions at 230 V AC / 50 Hz, total AC leakage current to earth ground shall not exceed 3.5 mA rms.",
+        "conditions": [
+            {"condition_id": "C-035-1", "description": "Maximum touch earth leakage current", "parameter": "earth_leakage_current", "operator": "<=", "threshold": 3.5, "unit": "mA rms"}
+        ],
+        "expected_status": "CONFLICT"
+    },
+    {
+        "requirement_id": "REQ-AUT-036",
+        "title": "Charging Inlet Thermal Sensor Shutdown Limit",
+        "category": "Charging Systems",
+        "difficulty": "Hard",
+        "requirement_text": "The charging controller shall throttle charging current when inlet pin temperature reaches 80.0°C and stop charging completely at 90.0°C.",
+        "conditions": [
+            {"condition_id": "C-036-1", "description": "Inlet thermal throttling threshold", "parameter": "throttle_temp", "operator": "==", "threshold": 80.0, "unit": "°C"},
+            {"condition_id": "C-036-2", "description": "Inlet thermal hard cutoff threshold", "parameter": "cutoff_temp", "operator": "==", "threshold": 90.0, "unit": "°C"}
+        ],
+        "expected_status": "CONFLICT"
+    },
+    {
+        "requirement_id": "REQ-AUT-037",
+        "title": "DC Fast Charging CCS Combo 2 Isolation Check Sequence",
+        "category": "Charging Systems",
+        "difficulty": "Difficult",
+        "requirement_text": "Prior to contactor closure in CCS mode, the DC charging controller shall perform cable pre-charge isolation check within 100 ms.",
+        "conditions": [
+            {"condition_id": "C-037-1", "description": "Pre-charge isolation check latency", "parameter": "isolation_check_time", "operator": "<=", "threshold": 100.0, "unit": "ms"}
+        ],
+        "expected_status": "MISSING"
+    },
+    {
+        "requirement_id": "REQ-AUT-038",
+        "title": "Proximity Pilot (PP) Resistor Value Discrimination",
+        "category": "Charging Systems",
+        "difficulty": "Difficult",
+        "requirement_text": "The OBC shall distinguish charging cable current ratings (13A, 20A, 32A, 63A) by measuring PP resistance within ±3% tolerance.",
+        "conditions": [
+            {"condition_id": "C-038-1", "description": "Cable resistance measurement accuracy", "parameter": "pp_accuracy", "operator": "<=", "threshold": 3.0, "unit": "%"}
+        ],
+        "expected_status": "MISSING"
+    },
+    {
+        "requirement_id": "REQ-AUT-039",
+        "title": "Grid Surge Transient Protection (IEC 61000-4-5)",
+        "category": "Charging Systems",
+        "difficulty": "Very Hard",
+        "requirement_text": "The AC input stage shall withstand 4.0 kV line-to-earth and 2.0 kV line-to-line combination wave surge pulses.",
+        "conditions": [
+            {"condition_id": "C-039-1", "description": "Line-to-earth surge impulse voltage", "parameter": "surge_line_earth", "operator": ">=", "threshold": 4.0, "unit": "kV"},
+            {"condition_id": "C-039-2", "description": "Line-to-line surge impulse voltage", "parameter": "surge_line_line", "operator": ">=", "threshold": 2.0, "unit": "kV"}
+        ],
+        "expected_status": "UNKNOWN"
+    },
+    {
+        "requirement_id": "REQ-AUT-040",
+        "title": "Smart Grid ISO 15118-20 TLS Handshake Timing",
+        "category": "Charging Systems",
+        "difficulty": "Difficult",
+        "requirement_text": "The OBC HomePlug GreenPHY modem shall complete ISO 15118 TLS 1.3 handshake with EVSE within 4.0 seconds of plug insertion.",
+        "conditions": [
+            {"condition_id": "C-040-1", "description": "TLS cryptographic handshake completion time", "parameter": "tls_handshake_time", "operator": "<=", "threshold": 4.0, "unit": "s"}
+        ],
+        "expected_status": "UNKNOWN"
+    },
+
+    # ── Domain 5: Vehicle Thermal Management & Heat Pump (041 - 050) ─────────────
+    {
+        "requirement_id": "REQ-AUT-041",
+        "title": "Battery Pack Coolant Chiller Temperature Regulation",
+        "category": "Thermal Management",
+        "difficulty": "Hard",
+        "requirement_text": "The thermal management controller shall regulate battery inlet coolant temperature to 25.0°C ± 2.0°C under 5.0 kW pack heat load.",
+        "conditions": [
+            {"condition_id": "C-041-1", "description": "Inlet coolant setpoint target", "parameter": "coolant_temp_target", "operator": "==", "threshold": 25.0, "unit": "°C"},
+            {"condition_id": "C-041-2", "description": "Temperature regulation tolerance band", "parameter": "tolerance", "operator": "<=", "threshold": 2.0, "unit": "°C"},
+            {"condition_id": "C-041-3", "description": "Continuous thermal load condition", "parameter": "heat_load", "operator": ">=", "threshold": 5.0, "unit": "kW"}
+        ],
+        "expected_status": "SUPPORTED"
+    },
+    {
+        "requirement_id": "REQ-AUT-042",
+        "title": "HV Electric AC Compressor Speed Control",
+        "category": "Thermal Management",
+        "difficulty": "Difficult",
+        "requirement_text": "The electric AC compressor inverter shall control compressor speed between 1000 rpm and 8500 rpm with speed error < ±50 rpm.",
+        "conditions": [
+            {"condition_id": "C-042-1", "description": "Minimum compressor operating speed", "parameter": "speed_min", "operator": "<=", "threshold": 1000.0, "unit": "rpm"},
+            {"condition_id": "C-042-2", "description": "Maximum compressor operating speed", "parameter": "speed_max", "operator": ">=", "threshold": 8500.0, "unit": "rpm"},
+            {"condition_id": "C-042-3", "description": "Speed control closed-loop error", "parameter": "speed_error", "operator": "<=", "threshold": 50.0, "unit": "rpm"}
+        ],
+        "expected_status": "SUPPORTED"
+    },
+    {
+        "requirement_id": "REQ-AUT-043",
+        "title": "Cabin Heat Pump Heating Capacity at Low Ambient",
+        "category": "Thermal Management",
+        "difficulty": "Very Hard",
+        "requirement_text": "At ambient temperature of -15.0°C, the heat pump shall deliver at least 4.5 kW thermal heating capacity into the cabin air loop.",
+        "conditions": [
+            {"condition_id": "C-043-1", "description": "Extreme cold ambient temperature", "parameter": "ambient_temp", "operator": "==", "threshold": -15.0, "unit": "°C"},
+            {"condition_id": "C-043-2", "description": "Minimum heating capacity output", "parameter": "heating_capacity", "operator": ">=", "threshold": 4.5, "unit": "kW"}
+        ],
+        "expected_status": "PARTIAL"
+    },
+    {
+        "requirement_id": "REQ-AUT-044",
+        "title": "Electronic Expansion Valve (EXV) Positioning Steps",
+        "category": "Thermal Management",
+        "difficulty": "Hard",
+        "requirement_text": "The EXV stepper motor shall modulate across 500 discrete steps with zero loss of synchronization from -30°C to +85°C.",
+        "conditions": [
+            {"condition_id": "C-044-1", "description": "Total discrete positioning steps", "parameter": "steps_count", "operator": "==", "threshold": 500.0, "unit": "steps"},
+            {"condition_id": "C-044-2", "description": "Operational temperature span", "parameter": "temp_range", "operator": "between", "threshold": "-30.0 to 85.0", "unit": "°C"}
+        ],
+        "expected_status": "PARTIAL"
+    },
+    {
+        "requirement_id": "REQ-AUT-045",
+        "title": "Coolant Circuit Maximum Operating Pressure",
+        "category": "Thermal Management",
+        "difficulty": "Adversarial",
+        "requirement_text": "The battery cooling loop components shall maintain zero leakage under maximum continuous operating pressure of 2.50 bar.",
+        "conditions": [
+            {"condition_id": "C-045-1", "description": "Maximum continuous operating pressure", "parameter": "operating_pressure", "operator": ">=", "threshold": 2.50, "unit": "bar"}
+        ],
+        "expected_status": "CONFLICT"
+    },
+    {
+        "requirement_id": "REQ-AUT-046",
+        "title": "PTC Heater Ramp Rate to Rated Power",
+        "category": "Thermal Management",
+        "difficulty": "Hard",
+        "requirement_text": "The high-voltage PTC cabin heater shall reach 90% of rated 6.0 kW thermal power within 15.0 seconds from cold start.",
+        "conditions": [
+            {"condition_id": "C-046-1", "description": "Target power fraction", "parameter": "power_fraction", "operator": "==", "threshold": 90.0, "unit": "%"},
+            {"condition_id": "C-046-2", "description": "Rated maximum thermal power", "parameter": "rated_power", "operator": "==", "threshold": 6.0, "unit": "kW"},
+            {"condition_id": "C-046-3", "description": "Maximum rise time duration", "parameter": "rise_time", "operator": "<=", "threshold": 15.0, "unit": "s"}
+        ],
+        "expected_status": "CONFLICT"
+    },
+    {
+        "requirement_id": "REQ-AUT-047",
+        "title": "Coolant Degassing and Air Bubble Detection",
+        "category": "Thermal Management",
+        "difficulty": "Difficult",
+        "requirement_text": "The thermal controller shall detect coolant air entrainment > 5% volume fraction and trigger a de-aeration purge cycle within 30 seconds.",
+        "conditions": [
+            {"condition_id": "C-047-1", "description": "Air entrainment volume threshold", "parameter": "air_fraction", "operator": ">=", "threshold": 5.0, "unit": "%"},
+            {"condition_id": "C-047-2", "description": "Purge cycle activation latency", "parameter": "activation_time", "operator": "<=", "threshold": 30.0, "unit": "s"}
+        ],
+        "expected_status": "MISSING"
+    },
+    {
+        "requirement_id": "REQ-AUT-048",
+        "title": "Refrigerant Pressure Relief Valve Burst Pressure",
+        "category": "Thermal Management",
+        "difficulty": "Difficult",
+        "requirement_text": "The R1234yf refrigerant circuit mechanical relief valve shall burst at 32.0 bar ± 1.5 bar to prevent condenser over-pressurization.",
+        "conditions": [
+            {"condition_id": "C-048-1", "description": "Mechanical burst pressure setpoint", "parameter": "burst_pressure", "operator": "==", "threshold": 32.0, "unit": "bar"}
+        ],
+        "expected_status": "MISSING"
+    },
+    {
+        "requirement_id": "REQ-AUT-049",
+        "title": "Cabin Thermal Comfort Model (PMV/PPD)",
+        "category": "Thermal Management",
+        "difficulty": "Very Hard",
+        "requirement_text": "The climate control algorithm shall maintain cabin Predicted Mean Vote (PMV) within ±0.5 under steady-state cruising.",
+        "conditions": [
+            {"condition_id": "C-049-1", "description": "PMV thermal comfort index band", "parameter": "pmv_index", "operator": "between", "threshold": "-0.5 to 0.5", "unit": "PMV"}
+        ],
+        "expected_status": "UNKNOWN"
+    },
+    {
+        "requirement_id": "REQ-AUT-050",
+        "title": "Electric Water Pump Dry-Run Protection Response",
+        "category": "Thermal Management",
+        "difficulty": "Difficult",
+        "requirement_text": "If coolant flow is lost (dry run), the electric water pump shall detect cavitation and stop motor rotation within 500 ms.",
+        "conditions": [
+            {"condition_id": "C-050-1", "description": "Dry-run shutdown latency", "parameter": "dry_run_stop_time", "operator": "<=", "threshold": 500.0, "unit": "ms"}
+        ],
+        "expected_status": "UNKNOWN"
+    },
+
+    # ── Domain 6: CAN-FD, Automotive Ethernet & In-Vehicle Networking (051 - 060) ─
+    {
+        "requirement_id": "REQ-AUT-051",
+        "title": "CAN-FD Dual Bitrate Transmission Rate",
+        "category": "In-Vehicle Networking",
+        "difficulty": "Hard",
+        "requirement_text": "The powertrain CAN-FD node shall transmit with 500.0 kbps nominal arbitration bitrate and 5.0 Mbps data phase bitrate.",
+        "conditions": [
+            {"condition_id": "C-051-1", "description": "Nominal arbitration phase bitrate", "parameter": "bitrate_nominal", "operator": "==", "threshold": 500.0, "unit": "kbps"},
+            {"condition_id": "C-051-2", "description": "Data fast phase bitrate", "parameter": "bitrate_data", "operator": "==", "threshold": 5.0, "unit": "Mbps"}
+        ],
+        "expected_status": "SUPPORTED"
+    },
+    {
+        "requirement_id": "REQ-AUT-052",
+        "title": "CAN Bus-Off Recovery State Machine Timing",
+        "category": "In-Vehicle Networking",
+        "difficulty": "Difficult",
+        "requirement_text": "Following a bus-off condition, the CAN controller shall enter recovery and resume message transmission within 100 ms ± 10 ms.",
+        "conditions": [
+            {"condition_id": "C-052-1", "description": "Bus-off automatic recovery delay", "parameter": "recovery_delay", "operator": "between", "threshold": "90.0 to 110.0", "unit": "ms"}
+        ],
+        "expected_status": "SUPPORTED"
+    },
+    {
+        "requirement_id": "REQ-AUT-053",
+        "title": "CAN-FD End-to-End (E2E) Profile 01 Checksum & Counter",
+        "category": "In-Vehicle Networking",
+        "difficulty": "Hard",
+        "requirement_text": "All safety-critical CAN-FD messages shall implement AUTOSAR E2E Profile 01 with 8-bit CRC and 4-bit alive counter across all 16 transmission IDs.",
+        "conditions": [
+            {"condition_id": "C-053-1", "description": "E2E Profile specification", "parameter": "e2e_profile", "operator": "==", "threshold": "Profile 01", "unit": ""},
+            {"condition_id": "C-053-2", "description": "Total protected message IDs", "parameter": "message_ids_count", "operator": "==", "threshold": 16.0, "unit": "IDs"}
+        ],
+        "expected_status": "PARTIAL"
+    },
+    {
+        "requirement_id": "REQ-AUT-054",
+        "title": "100Base-T1 Automotive Ethernet Bit Error Rate (BER)",
+        "category": "In-Vehicle Networking",
+        "difficulty": "Hard",
+        "requirement_text": "The 100Base-T1 Ethernet PHY shall maintain Bit Error Rate < 10^-10 under full 100 Mbps throughput over 15 meters unshielded twisted pair.",
+        "conditions": [
+            {"condition_id": "C-054-1", "description": "Maximum bit error rate", "parameter": "ber", "operator": "<=", "threshold": 1e-10, "unit": ""},
+            {"condition_id": "C-054-2", "description": "Harness length", "parameter": "harness_length", "operator": ">=", "threshold": 15.0, "unit": "m"}
+        ],
+        "expected_status": "PARTIAL"
+    },
+    {
+        "requirement_id": "REQ-AUT-055",
+        "title": "CAN Transceiver Common Mode Bus Voltage Tolerance",
+        "category": "In-Vehicle Networking",
+        "difficulty": "Adversarial",
+        "requirement_text": "CAN-FD transceivers shall operate without communication errors under ground offset / common-mode shift of ±12.0 V DC.",
+        "conditions": [
+            {"condition_id": "C-055-1", "description": "Common mode voltage operating tolerance", "parameter": "common_mode_voltage", "operator": ">=", "threshold": 12.0, "unit": "V DC"}
+        ],
+        "expected_status": "CONFLICT"
+    },
+    {
+        "requirement_id": "REQ-AUT-056",
+        "title": "Ethernet SOME/IP Message Transmission Latency",
+        "category": "In-Vehicle Networking",
+        "difficulty": "Hard",
+        "requirement_text": "High-priority SOME/IP cyclic sensor data packets shall be transmitted over Ethernet with end-to-end latency <= 1.0 ms.",
+        "conditions": [
+            {"condition_id": "C-056-1", "description": "End-to-end packet transmission latency", "parameter": "latency", "operator": "<=", "threshold": 1.0, "unit": "ms"}
+        ],
+        "expected_status": "CONFLICT"
+    },
+    {
+        "requirement_id": "REQ-AUT-057",
+        "title": "LIN Bus Sleep Mode Quiescent Current Consumption",
+        "category": "In-Vehicle Networking",
+        "difficulty": "Difficult",
+        "requirement_text": "When LIN bus master sends go-to-sleep command, total LIN slave transceiver quiescent current shall drop below 15.0 µA within 50 ms.",
+        "conditions": [
+            {"condition_id": "C-057-1", "description": "Maximum quiescent sleep current", "parameter": "sleep_current", "operator": "<=", "threshold": 15.0, "unit": "µA"},
+            {"condition_id": "C-057-2", "description": "Sleep transition latency", "parameter": "transition_latency", "operator": "<=", "threshold": 50.0, "unit": "ms"}
+        ],
+        "expected_status": "MISSING"
+    },
+    {
+        "requirement_id": "REQ-AUT-058",
+        "title": "CAN Network Management (Autosar NM) Ring Synchronization",
+        "category": "In-Vehicle Networking",
+        "difficulty": "Difficult",
+        "requirement_text": "During network sleep negotiation, all nodes shall synchronize sleep state and enter low power mode within 250 ms of NM timeout.",
+        "conditions": [
+            {"condition_id": "C-058-1", "description": "NM sleep synchronization timeout", "parameter": "nm_sleep_time", "operator": "<=", "threshold": 250.0, "unit": "ms"}
+        ],
+        "expected_status": "MISSING"
+    },
+    {
+        "requirement_id": "REQ-AUT-059",
+        "title": "gPTP (IEEE 802.1AS) Time Synchronization Jitter",
+        "category": "In-Vehicle Networking",
+        "difficulty": "Very Hard",
+        "requirement_text": "The Ethernet audio-video bridging (AVB) clock master shall maintain gPTP time synchronization across all nodes with jitter < 1.0 µs.",
+        "conditions": [
+            {"condition_id": "C-059-1", "description": "gPTP time synchronization maximum jitter", "parameter": "clock_jitter", "operator": "<=", "threshold": 1.0, "unit": "µs"}
+        ],
+        "expected_status": "UNKNOWN"
+    },
+    {
+        "requirement_id": "REQ-AUT-060",
+        "title": "TCP/IP Stack Socket Resource Allocation",
+        "category": "In-Vehicle Networking",
+        "difficulty": "Difficult",
+        "requirement_text": "The embedded TCP/IP stack shall support at least 8 concurrent TCP socket connections without heap memory fragmentation.",
+        "conditions": [
+            {"condition_id": "C-060-1", "description": "Concurrent TCP sockets capacity", "parameter": "socket_count", "operator": ">=", "threshold": 8.0, "unit": "sockets"}
+        ],
+        "expected_status": "UNKNOWN"
+    },
+
+    # ── Domain 7: Diagnostics (UDS ISO 14229) & Bootloader/OTA (061 - 070) ────────
+    {
+        "requirement_id": "REQ-AUT-061",
+        "title": "UDS Diagnostic Session Control (0x10) P2 Server Timing",
+        "category": "Diagnostics & Bootloader",
+        "difficulty": "Hard",
+        "requirement_text": "The ECU diagnostic server shall respond to UDS Service 0x10 requests with P2_server response time <= 50.0 ms.",
+        "conditions": [
+            {"condition_id": "C-061-1", "description": "P2 server response latency", "parameter": "p2_server_time", "operator": "<=", "threshold": 50.0, "unit": "ms"}
+        ],
+        "expected_status": "SUPPORTED"
+    },
+    {
+        "requirement_id": "REQ-AUT-062",
+        "title": "Diagnostic Fault Code (DTC) Snapshot Freeze Frame Storage",
+        "category": "Diagnostics & Bootloader",
+        "difficulty": "Difficult",
+        "requirement_text": "Upon confirmation of a continuous fault, the ECU shall store a freeze frame containing vehicle speed, pack voltage, and timestamp within 20 ms.",
+        "conditions": [
+            {"condition_id": "C-062-1", "description": "Freeze frame write latency to NVRAM", "parameter": "freeze_frame_latency", "operator": "<=", "threshold": 20.0, "unit": "ms"}
+        ],
+        "expected_status": "SUPPORTED"
+    },
+    {
+        "requirement_id": "REQ-AUT-063",
+        "title": "UDS Security Access (Service 0x27) Seed-Key Authentication",
+        "category": "Diagnostics & Bootloader",
+        "difficulty": "Hard",
+        "requirement_text": "UDS Security Access (0x27) shall require 256-bit ECDSA seed-key authentication for Level 0x01 (Reprogramming) and Level 0x03 (Engineering Calibration).",
+        "conditions": [
+            {"condition_id": "C-063-1", "description": "Level 0x01 security authentication", "parameter": "level_01_auth", "operator": "==", "threshold": "ECDSA-256", "unit": ""},
+            {"condition_id": "C-063-2", "description": "Level 0x03 security authentication", "parameter": "level_03_auth", "operator": "==", "threshold": "ECDSA-256", "unit": ""}
+        ],
+        "expected_status": "PARTIAL"
+    },
+    {
+        "requirement_id": "REQ-AUT-064",
+        "title": "Firmware OTA Dual-Bank A/B Rollback Recovery",
+        "category": "Diagnostics & Bootloader",
+        "difficulty": "Hard",
+        "requirement_text": "In the event of corrupted firmware flash payload, the bootloader shall roll back to Bank A and boot golden image in less than 3.0 seconds.",
+        "conditions": [
+            {"condition_id": "C-064-1", "description": "Corrupted firmware rollback latency", "parameter": "rollback_time", "operator": "<=", "threshold": 3.0, "unit": "s"}
+        ],
+        "expected_status": "PARTIAL"
+    },
+    {
+        "requirement_id": "REQ-AUT-065",
+        "title": "Diagnostic Service Port Authentication Requirement",
+        "category": "Diagnostics & Bootloader",
+        "difficulty": "Adversarial",
+        "requirement_text": "All UDS diagnostic service sessions accessing ECU memory (0x23, 0x3D) shall require authenticated cryptographic credentials.",
+        "conditions": [
+            {"condition_id": "C-065-1", "description": "Authentication requirement on memory access", "parameter": "auth_required", "operator": "==", "threshold": True, "unit": ""}
+        ],
+        "expected_status": "CONFLICT"
+    },
+    {
+        "requirement_id": "REQ-AUT-066",
+        "title": "ECU Flash Reprogramming Erase & Write Throughput",
+        "category": "Diagnostics & Bootloader",
+        "difficulty": "Hard",
+        "requirement_text": "The flash bootloader shall achieve a sustained firmware download and write throughput of at least 80.0 kB/s over UDS Service 0x36.",
+        "conditions": [
+            {"condition_id": "C-066-1", "description": "Sustained flash download write throughput", "parameter": "throughput", "operator": ">=", "threshold": 80.0, "unit": "kB/s"}
+        ],
+        "expected_status": "CONFLICT"
+    },
+    {
+        "requirement_id": "REQ-AUT-067",
+        "title": "RoutineControl (0x31) Actuator Self-Test Timeout",
+        "category": "Diagnostics & Bootloader",
+        "difficulty": "Difficult",
+        "requirement_text": "UDS RoutineControl (0x31) for contactor welded detection self-test shall complete and return results within 5.0 seconds ± 100 ms.",
+        "conditions": [
+            {"condition_id": "C-067-1", "description": "Self-test maximum completion time", "parameter": "test_duration", "operator": "<=", "threshold": 5.1, "unit": "s"}
+        ],
+        "expected_status": "MISSING"
+    },
+    {
+        "requirement_id": "REQ-AUT-068",
+        "title": "UDS TesterPresent (0x3E) S3 Timer Expiration Recovery",
+        "category": "Diagnostics & Bootloader",
+        "difficulty": "Difficult",
+        "requirement_text": "If TesterPresent message is not received within S3_server timer (5.0 s), ECU shall exit extended diagnostic session and revert to default session.",
+        "conditions": [
+            {"condition_id": "C-068-1", "description": "S3 server timeout period", "parameter": "s3_timeout", "operator": "==", "threshold": 5.0, "unit": "s"}
+        ],
+        "expected_status": "MISSING"
+    },
+    {
+        "requirement_id": "REQ-AUT-069",
+        "title": "Non-Volatile Memory (NVRAM) Wear-Leveling Endurance",
+        "category": "Diagnostics & Bootloader",
+        "difficulty": "Very Hard",
+        "requirement_text": "The NVRAM storage subsystem shall support 100,000 DTC write cycles over vehicle lifetime without sector corruption.",
+        "conditions": [
+            {"condition_id": "C-069-1", "description": "Minimum NVRAM write cycles endurance", "parameter": "write_cycles", "operator": ">=", "threshold": 100000.0, "unit": "cycles"}
+        ],
+        "expected_status": "UNKNOWN"
+    },
+    {
+        "requirement_id": "REQ-AUT-070",
+        "title": "Diagnostic Response On Sub-Function Not Supported (NRC 0x12)",
+        "category": "Diagnostics & Bootloader",
+        "difficulty": "Difficult",
+        "requirement_text": "When an unsupported sub-function is requested, the ECU shall respond with Negative Response Code 0x12 within P2_server time.",
+        "conditions": [
+            {"condition_id": "C-070-1", "description": "NRC code value", "parameter": "nrc_code", "operator": "==", "threshold": "0x12", "unit": ""}
+        ],
+        "expected_status": "UNKNOWN"
+    },
+
+    # ── Domain 8: Functional Safety (ISO 26262 ASIL-C/D) & Watchdogs (071 - 080) ──
+    {
+        "requirement_id": "REQ-AUT-071",
+        "title": "External Window Watchdog Challenge-Response Timeout",
+        "category": "Functional Safety",
+        "difficulty": "Hard",
+        "requirement_text": "The safety microcontroller shall service the external hardware window watchdog via SPI challenge-response every 15.0 ms ± 2.0 ms.",
+        "conditions": [
+            {"condition_id": "C-071-1", "description": "Watchdog service window lower bound", "parameter": "window_min", "operator": ">=", "threshold": 13.0, "unit": "ms"},
+            {"condition_id": "C-071-2", "description": "Watchdog service window upper bound", "parameter": "window_max", "operator": "<=", "threshold": 17.0, "unit": "ms"}
+        ],
+        "expected_status": "SUPPORTED"
+    },
+    {
+        "requirement_id": "REQ-AUT-072",
+        "title": "Core Voltage Brownout Detection & Safe State Transition",
+        "category": "Functional Safety",
+        "difficulty": "Difficult",
+        "requirement_text": "If MCU internal core voltage drops below 3.00 V DC, the power management IC shall assert RESET and enter safe state in less than 5.0 µs.",
+        "conditions": [
+            {"condition_id": "C-072-1", "description": "Brownout voltage threshold", "parameter": "brownout_threshold", "operator": "==", "threshold": 3.00, "unit": "V DC"},
+            {"condition_id": "C-072-2", "description": "Reset assertion reaction time", "parameter": "reaction_time", "operator": "<=", "threshold": 5.0, "unit": "µs"}
+        ],
+        "expected_status": "SUPPORTED"
+    },
+    {
+        "requirement_id": "REQ-AUT-073",
+        "title": "Lockstep Dual-Core MCU Redundancy Fault Injection",
+        "category": "Functional Safety",
+        "difficulty": "Hard",
+        "requirement_text": "Dual-core lockstep processor shall detect single-bit CPU core divergence and assert safety alarm within 2 clock cycles across both Core 0 and Core 1.",
+        "conditions": [
+            {"condition_id": "C-073-1", "description": "Lockstep comparator latency", "parameter": "detection_cycles", "operator": "<=", "threshold": 2.0, "unit": "cycles"},
+            {"condition_id": "C-073-2", "description": "Core 0 fault coverage", "parameter": "core0_tested", "operator": "==", "threshold": True, "unit": ""},
+            {"condition_id": "C-073-3", "description": "Core 1 fault coverage", "parameter": "core1_tested", "operator": "==", "threshold": True, "unit": ""}
+        ],
+        "expected_status": "PARTIAL"
+    },
+    {
+        "requirement_id": "REQ-AUT-074",
+        "title": "Safety-Related ADC Redundant Cross-Check Discrepancy",
+        "category": "Functional Safety",
+        "difficulty": "Hard",
+        "requirement_text": "Redundant ADC channels measuring pack voltage shall cross-check readings every 10 ms and assert fault if delta exceeds 1.5% for > 50 ms.",
+        "conditions": [
+            {"condition_id": "C-074-1", "description": "Discrepancy tolerance limit", "parameter": "max_delta", "operator": "<=", "threshold": 1.5, "unit": "%"},
+            {"condition_id": "C-074-2", "description": "Fault persistence filter time", "parameter": "persistence_time", "operator": ">=", "threshold": 50.0, "unit": "ms"}
+        ],
+        "expected_status": "PARTIAL"
+    },
+    {
+        "requirement_id": "REQ-AUT-075",
+        "title": "Fault Reaction Time to Safe State for Overcurrent",
+        "category": "Functional Safety",
+        "difficulty": "Adversarial",
+        "requirement_text": "The safety mechanism shall transition the traction drive to safe torque off (STO) within 10.0 ms of overcurrent detection.",
+        "conditions": [
+            {"condition_id": "C-075-1", "description": "Total fault reaction time to STO", "parameter": "ftti_reaction_time", "operator": "<=", "threshold": 10.0, "unit": "ms"}
+        ],
+        "expected_status": "CONFLICT"
+    },
+    {
+        "requirement_id": "REQ-AUT-076",
+        "title": "Microcontroller Flash Memory ECC Single-Bit Correction",
+        "category": "Functional Safety",
+        "difficulty": "Hard",
+        "requirement_text": "Flash memory controller shall correct single-bit errors on-the-fly and detect double-bit errors, raising non-maskable interrupt within 100 ns.",
+        "conditions": [
+            {"condition_id": "C-076-1", "description": "NMI interrupt assertion latency on double-bit error", "parameter": "nmi_latency", "operator": "<=", "threshold": 100.0, "unit": "ns"}
+        ],
+        "expected_status": "CONFLICT"
+    },
+    {
+        "requirement_id": "REQ-AUT-077",
+        "title": "Plausibility Check on Dual Throttle Pedal Position Sensors",
+        "category": "Functional Safety",
+        "difficulty": "Difficult",
+        "requirement_text": "The ECU shall compare Sensor 1 and Sensor 2 throttle position voltages and enter limp-home mode if mismatch exceeds 5.0% for > 100 ms.",
+        "conditions": [
+            {"condition_id": "C-077-1", "description": "Throttle discrepancy plausibility limit", "parameter": "mismatch_limit", "operator": "<=", "threshold": 5.0, "unit": "%"},
+            {"condition_id": "C-077-2", "description": "Persistence time before limp-home mode", "parameter": "filter_time", "operator": ">=", "threshold": 100.0, "unit": "ms"}
+        ],
+        "expected_status": "MISSING"
+    },
+    {
+        "requirement_id": "REQ-AUT-078",
+        "title": "Hardware Built-In Self-Test (BIST) Startup Execution Time",
+        "category": "Functional Safety",
+        "difficulty": "Difficult",
+        "requirement_text": "Upon power-on, the MCU logic BIST (LBIST) and memory BIST (MBIST) shall execute and complete within 50.0 ms.",
+        "conditions": [
+            {"condition_id": "C-078-1", "description": "Maximum startup BIST execution duration", "parameter": "bist_duration", "operator": "<=", "threshold": 50.0, "unit": "ms"}
+        ],
+        "expected_status": "MISSING"
+    },
+    {
+        "requirement_id": "REQ-AUT-079",
+        "title": "Diagnostic Coverage (DC) for ASIL-D ISO 26262 Compliance",
+        "category": "Functional Safety",
+        "difficulty": "Very Hard",
+        "requirement_text": "The safety architecture shall achieve Single-Point Fault Metric (SPFM) >= 99.0% and Latent Fault Metric (LFM) >= 90.0%.",
+        "conditions": [
+            {"condition_id": "C-079-1", "description": "Single-Point Fault Metric (SPFM)", "parameter": "spfm", "operator": ">=", "threshold": 99.0, "unit": "%"},
+            {"condition_id": "C-079-2", "description": "Latent Fault Metric (LFM)", "parameter": "lfm", "operator": ">=", "threshold": 90.0, "unit": "%"}
+        ],
+        "expected_status": "UNKNOWN"
+    },
+    {
+        "requirement_id": "REQ-AUT-080",
+        "title": "Clock Monitor Oscillator Frequency Drift Detection",
+        "category": "Functional Safety",
+        "difficulty": "Difficult",
+        "requirement_text": "The internal clock monitoring unit shall detect external crystal oscillator frequency drift > ±5.0% and switch to internal PLL in < 10 µs.",
+        "conditions": [
+            {"condition_id": "C-080-1", "description": "Clock drift detection window", "parameter": "drift_limit", "operator": "<=", "threshold": 5.0, "unit": "%"},
+            {"condition_id": "C-080-2", "description": "Backup PLL switchover latency", "parameter": "switchover_time", "operator": "<=", "threshold": 10.0, "unit": "µs"}
+        ],
+        "expected_status": "UNKNOWN"
+    },
+
+    # ── Domain 9: Automotive Cybersecurity (ISO 21434 & HSM/SecOC) (081 - 090) ───
+    {
+        "requirement_id": "REQ-AUT-081",
+        "title": "Secure Boot Cryptographic Verification Latency",
+        "category": "Cybersecurity",
+        "difficulty": "Hard",
+        "requirement_text": "The Hardware Security Module (HSM) shall verify RSA-3072 firmware signature during secure boot in less than 150.0 ms.",
+        "conditions": [
+            {"condition_id": "C-081-1", "description": "Signature algorithm type", "parameter": "algorithm", "operator": "==", "threshold": "RSA-3072", "unit": ""},
+            {"condition_id": "C-081-2", "description": "Maximum verification latency", "parameter": "verification_time", "operator": "<=", "threshold": 150.0, "unit": "ms"}
+        ],
+        "expected_status": "SUPPORTED"
+    },
+    {
+        "requirement_id": "REQ-AUT-082",
+        "title": "AUTOSAR SecOC AES-128 CMAC Generation Time",
+        "category": "Cybersecurity",
+        "difficulty": "Difficult",
+        "requirement_text": "The HSM crypto engine shall generate AES-128 CMAC authentication tag for CAN-FD messages in less than 50.0 µs.",
+        "conditions": [
+            {"condition_id": "C-082-1", "description": "CMAC cryptographic calculation time", "parameter": "cmac_calc_time", "operator": "<=", "threshold": 50.0, "unit": "µs"}
+        ],
+        "expected_status": "SUPPORTED"
+    },
+    {
+        "requirement_id": "REQ-AUT-083",
+        "title": "Cryptographic Key Storage Hardware Isolation",
+        "category": "Cybersecurity",
+        "difficulty": "Hard",
+        "requirement_text": "All symmetric (AES) and asymmetric (ECC/RSA) root cryptographic keys shall be stored in dedicated HSM isolated flash with anti-tamper zeroization.",
+        "conditions": [
+            {"condition_id": "C-083-1", "description": "Symmetric AES root key isolation", "parameter": "aes_isolated", "operator": "==", "threshold": True, "unit": ""},
+            {"condition_id": "C-083-2", "description": "Asymmetric ECC root key isolation", "parameter": "ecc_isolated", "operator": "==", "threshold": True, "unit": ""}
+        ],
+        "expected_status": "PARTIAL"
+    },
+    {
+        "requirement_id": "REQ-AUT-084",
+        "title": "Cybersecurity Intrusion Detection System (IDS) Rate Limiting",
+        "category": "Cybersecurity",
+        "difficulty": "Hard",
+        "requirement_text": "The in-vehicle IDS shall detect CAN bus message injection rate anomalies and throttle suspicious frames within 50.0 ms across all 4 CAN buses.",
+        "conditions": [
+            {"condition_id": "C-084-1", "description": "Anomaly detection and frame throttling latency", "parameter": "ids_response_time", "operator": "<=", "threshold": 50.0, "unit": "ms"},
+            {"condition_id": "C-084-2", "description": "Monitored CAN bus network count", "parameter": "can_buses_count", "operator": "==", "threshold": 4.0, "unit": "buses"}
+        ],
+        "expected_status": "PARTIAL"
+    },
+    {
+        "requirement_id": "REQ-AUT-085",
+        "title": "Diagnostic JTAG / Debug Port Permanent Locking",
+        "category": "Cybersecurity",
+        "difficulty": "Adversarial",
+        "requirement_text": "Production ECU hardware shall permanently disable and lock JTAG and SWD hardware debug interfaces via internal e-fuses.",
+        "conditions": [
+            {"condition_id": "C-085-1", "description": "Hardware JTAG debug interface state", "parameter": "jtag_lock_state", "operator": "==", "threshold": "LOCKED", "unit": ""}
+        ],
+        "expected_status": "CONFLICT"
+    },
+    {
+        "requirement_id": "REQ-AUT-086",
+        "title": "True Random Number Generator (TRNG) Entropy Throughput",
+        "category": "Cybersecurity",
+        "difficulty": "Hard",
+        "requirement_text": "The hardware TRNG shall generate cryptographically secure entropy at a minimum throughput of 500.0 kbps for session key derivation.",
+        "conditions": [
+            {"condition_id": "C-086-1", "description": "Minimum TRNG entropy generation rate", "parameter": "entropy_rate", "operator": ">=", "threshold": 500.0, "unit": "kbps"}
+        ],
+        "expected_status": "CONFLICT"
+    },
+    {
+        "requirement_id": "REQ-AUT-087",
+        "title": "Diagnostic Certificate Revocation List (CRL) Verification",
+        "category": "Cybersecurity",
+        "difficulty": "Difficult",
+        "requirement_text": "When verifying diagnostic client X.509 certificate, the ECU shall check CRL validity and reject expired or revoked certificates within 200 ms.",
+        "conditions": [
+            {"condition_id": "C-087-1", "description": "Certificate revocation check latency", "parameter": "crl_check_time", "operator": "<=", "threshold": 200.0, "unit": "ms"}
+        ],
+        "expected_status": "MISSING"
+    },
+    {
+        "requirement_id": "REQ-AUT-088",
+        "title": "Side-Channel Attack DPA / SPA Resistance",
+        "category": "Cybersecurity",
+        "difficulty": "Difficult",
+        "requirement_text": "The crypto engine shall incorporate differential power analysis (DPA) countermeasures with signal-to-noise ratio < 0.05 during AES encryption.",
+        "conditions": [
+            {"condition_id": "C-088-1", "description": "Side-channel DPA leakage SNR", "parameter": "dpa_snr", "operator": "<=", "threshold": 0.05, "unit": ""}
+        ],
+        "expected_status": "MISSING"
+    },
+    {
+        "requirement_id": "REQ-AUT-089",
+        "title": "Threat Analysis and Risk Assessment (TARA) Residual Risk Score",
+        "category": "Cybersecurity",
+        "difficulty": "Very Hard",
+        "requirement_text": "Per ISO 21434, all identified vehicle cybersecurity threat scenarios shall have residual risk rating reduced to CAL-2 or lower.",
+        "conditions": [
+            {"condition_id": "C-089-1", "description": "Maximum allowed residual Cybersecurity Assurance Level", "parameter": "max_cal", "operator": "<=", "threshold": "CAL-2", "unit": ""}
+        ],
+        "expected_status": "UNKNOWN"
+    },
+    {
+        "requirement_id": "REQ-AUT-090",
+        "title": "Secure Logging of Security Events (SecEvent)",
+        "category": "Cybersecurity",
+        "difficulty": "Difficult",
+        "requirement_text": "The cybersecurity audit log shall record all unauthorized access attempts in tamper-evident append-only flash memory.",
+        "conditions": [
+            {"condition_id": "C-090-1", "description": "Log memory partition tamper-evident state", "parameter": "tamper_evident", "operator": "==", "threshold": True, "unit": ""}
+        ],
+        "expected_status": "UNKNOWN"
+    },
+
+    # ── Domain 10: Environmental, Mechanical Vibration & EMC (091 - 100) ─────────
+    {
+        "requirement_id": "REQ-AUT-091",
+        "title": "CISPR 25 Class 4 Radiated Emissions Margin",
+        "category": "Environmental & EMC",
+        "difficulty": "Hard",
+        "requirement_text": "The ECU shall comply with CISPR 25 Class 4 radiated emissions limits from 150.0 kHz to 2.50 GHz with at least 6.0 dB margin.",
+        "conditions": [
+            {"condition_id": "C-091-1", "description": "Frequency sweep range", "parameter": "frequency_range", "operator": "between", "threshold": "0.15 to 2500.0", "unit": "MHz"},
+            {"condition_id": "C-091-2", "description": "Minimum attenuation margin below Class 4 limit", "parameter": "emissions_margin", "operator": ">=", "threshold": 6.0, "unit": "dB"}
+        ],
+        "expected_status": "SUPPORTED"
+    },
+    {
+        "requirement_id": "REQ-AUT-092",
+        "title": "ISO 16750-2 Jump Start Overvoltage Withstand",
+        "category": "Environmental & EMC",
+        "difficulty": "Difficult",
+        "requirement_text": "The ECU shall withstand jump-start reverse voltage and overvoltage of 26.0 V DC for 60.0 seconds without degradation.",
+        "conditions": [
+            {"condition_id": "C-092-1", "description": "Jump start overvoltage magnitude", "parameter": "overvoltage", "operator": "==", "threshold": 26.0, "unit": "V DC"},
+            {"condition_id": "C-092-2", "description": "Overvoltage stress duration", "parameter": "duration", "operator": ">=", "threshold": 60.0, "unit": "s"}
+        ],
+        "expected_status": "SUPPORTED"
+    },
+    {
+        "requirement_id": "REQ-AUT-093",
+        "title": "3-Axis Random Vibration Endurance Profile (ISO 16750-3)",
+        "category": "Environmental & EMC",
+        "difficulty": "Very Hard",
+        "requirement_text": "The ECU enclosure shall withstand random vibration of 2.50 g RMS across X, Y, and Z axes for 8.0 hours per axis from 10 Hz to 2000 Hz.",
+        "conditions": [
+            {"condition_id": "C-093-1", "description": "Vibration intensity", "parameter": "rms_acceleration", "operator": "==", "threshold": 2.50, "unit": "g RMS"},
+            {"condition_id": "C-093-2", "description": "Vibration duration per axis", "parameter": "duration_per_axis", "operator": ">=", "threshold": 8.0, "unit": "hours"},
+            {"condition_id": "C-093-3", "description": "Axis X verification", "parameter": "axis_x", "operator": "==", "threshold": "VERIFIED", "unit": ""},
+            {"condition_id": "C-093-4", "description": "Axis Y verification", "parameter": "axis_y", "operator": "==", "threshold": "VERIFIED", "unit": ""},
+            {"condition_id": "C-093-5", "description": "Axis Z verification", "parameter": "axis_z", "operator": "==", "threshold": "VERIFIED", "unit": ""}
+        ],
+        "expected_status": "PARTIAL"
+    },
+    {
+        "requirement_id": "REQ-AUT-094",
+        "title": "Thermal Shock Cycling With Fast Transition (-40°C to +85°C)",
+        "category": "Environmental & EMC",
+        "difficulty": "Hard",
+        "requirement_text": "The unit shall withstand 500 thermal shock cycles from -40.0°C to +85.0°C with transition time < 30 seconds and 30 min dwell time.",
+        "conditions": [
+            {"condition_id": "C-094-1", "description": "Total shock cycles count", "parameter": "total_cycles", "operator": "==", "threshold": 500.0, "unit": "cycles"},
+            {"condition_id": "C-094-2", "description": "Cold extreme temperature", "parameter": "temp_cold", "operator": "<=", "threshold": -40.0, "unit": "°C"},
+            {"condition_id": "C-094-3", "description": "Hot extreme temperature", "parameter": "temp_hot", "operator": ">=", "threshold": 85.0, "unit": "°C"}
+        ],
+        "expected_status": "PARTIAL"
+    },
+    {
+        "requirement_id": "REQ-AUT-095",
+        "title": "IP Ingress Protection Enclosure Rating",
+        "category": "Environmental & EMC",
+        "difficulty": "Hard",
+        "requirement_text": "The ECU housing and electrical connectors shall achieve ingress protection rating of IP67 (dust tight and waterproof under 1 meter submersion for 30 min).",
+        "conditions": [
+            {"condition_id": "C-095-1", "description": "Enclosure ingress protection rating", "parameter": "ip_rating", "operator": "==", "threshold": "IP67", "unit": "IP"}
+        ],
+        "expected_status": "CONFLICT"
+    },
+    {
+        "requirement_id": "REQ-AUT-096",
+        "title": "ISO 7637-2 Pulse 3a / 3b Fast Transient Immunity",
+        "category": "Environmental & EMC",
+        "difficulty": "Hard",
+        "requirement_text": "The ECU shall maintain normal operation (Class A) during ISO 7637-2 fast transient pulses 3a (-150 V) and 3b (+100 V).",
+        "conditions": [
+            {"condition_id": "C-096-1", "description": "Pulse 3a voltage level", "parameter": "pulse_3a", "operator": "==", "threshold": -150.0, "unit": "V"},
+            {"condition_id": "C-096-2", "description": "Pulse 3b voltage level", "parameter": "pulse_3b", "operator": "==", "threshold": 100.0, "unit": "V"},
+            {"condition_id": "C-096-3", "description": "Functional status classification", "parameter": "functional_status", "operator": "==", "threshold": "Class A", "unit": ""}
+        ],
+        "expected_status": "CONFLICT"
+    },
+    {
+        "requirement_id": "REQ-AUT-097",
+        "title": "Salt Spray Corrosion Resistance (ISO 9227)",
+        "category": "Environmental & EMC",
+        "difficulty": "Difficult",
+        "requirement_text": "The metal enclosure and mounting brackets shall withstand 96 hours of neutral salt spray (NSS 5% NaCl at 35°C) without blistering or rust.",
+        "conditions": [
+            {"condition_id": "C-097-1", "description": "Salt spray exposure duration", "parameter": "exposure_duration", "operator": ">=", "threshold": 96.0, "unit": "hours"}
+        ],
+        "expected_status": "MISSING"
+    },
+    {
+        "requirement_id": "REQ-AUT-098",
+        "title": "High-Temperature Operating Life (HTOL) Reliability Test",
+        "category": "Environmental & EMC",
+        "difficulty": "Difficult",
+        "requirement_text": "The ECU shall operate continuously under electrical load at +85.0°C ambient temperature for 1000 hours with zero parametric failure.",
+        "conditions": [
+            {"condition_id": "C-098-1", "description": "HTOL stress duration", "parameter": "htol_duration", "operator": ">=", "threshold": 1000.0, "unit": "hours"},
+            {"condition_id": "C-098-2", "description": "HTOL test chamber ambient temperature", "parameter": "ambient_temp", "operator": "==", "threshold": 85.0, "unit": "°C"}
+        ],
+        "expected_status": "MISSING"
+    },
+    {
+        "requirement_id": "REQ-AUT-099",
+        "title": "Damp Heat Steady State Cyclic Humidity (ISO 16750-4)",
+        "category": "Environmental & EMC",
+        "difficulty": "Very Hard",
+        "requirement_text": "The ECU shall operate without insulation breakdown under 95% Relative Humidity at +40.0°C for 21 days.",
+        "conditions": [
+            {"condition_id": "C-099-1", "description": "Relative humidity level", "parameter": "humidity", "operator": ">=", "threshold": 95.0, "unit": "% RH"},
+            {"condition_id": "C-099-2", "description": "Exposure duration", "parameter": "duration", "operator": ">=", "threshold": 21.0, "unit": "days"}
+        ],
+        "expected_status": "UNKNOWN"
+    },
+    {
+        "requirement_id": "REQ-AUT-100",
+        "title": "Mechanical Shock Half-Sine Pulse Profile",
+        "category": "Environmental & EMC",
+        "difficulty": "Difficult",
+        "requirement_text": "The ECU shall survive 30 g half-sine mechanical shock pulses of 11.0 ms duration across all 6 spatial directions (±X, ±Y, ±Z).",
+        "conditions": [
+            {"condition_id": "C-100-1", "description": "Peak acceleration magnitude", "parameter": "peak_acceleration", "operator": "==", "threshold": 30.0, "unit": "g"},
+            {"condition_id": "C-100-2", "description": "Half-sine pulse duration", "parameter": "pulse_duration", "operator": "==", "threshold": 11.0, "unit": "ms"}
+        ],
+        "expected_status": "UNKNOWN"
+    }
+]

@@ -1,0 +1,1281 @@
+"""Evidence Corpus and Ground Truth Mapping for the 100-Requirement Benchmark.
+
+Defines the 20 technical documents (PDF, DOCX, XLSX, TXT) with precise provenance,
+evidence snippets, and exact ground truth linkage.
+"""
+
+from typing import Any
+
+# ==============================================================================
+# 20 TECHNICAL DOCUMENTS SPECIFICATION
+# ==============================================================================
+
+BENCHMARK_DOCUMENTS: list[dict[str, Any]] = [
+    {
+        "doc_id": "DOC-01",
+        "filename": "01_System_Requirements_Specification_SRS.docx",
+        "doc_type": "Technical specification",
+        "authority": "Tier-1 OEM Product Engineering",
+        "description": "Master product requirements specification defining all 100 functional, safety, and environmental clauses."
+    },
+    {
+        "doc_id": "DOC-02",
+        "filename": "02_System_Architecture_Interface_Spec.pdf",
+        "doc_type": "Architecture specification",
+        "authority": "Lead Systems Architect",
+        "description": "System architecture, pinout assignments, HVIL schematics, and functional block definitions."
+    },
+    {
+        "doc_id": "DOC-03",
+        "filename": "03_BMS_Cell_Supervisory_ASIC_Datasheet.pdf",
+        "doc_type": "Supplier documentation",
+        "authority": "Semiconductor Manufacturer Datasheet",
+        "description": "Component absolute maximum ratings, operating limits, and CAN/SPI transceiver specifications."
+    },
+    {
+        "doc_id": "DOC-04",
+        "filename": "04_High_Voltage_Contactor_Datasheet.pdf",
+        "doc_type": "Supplier documentation",
+        "authority": "Electromechanical Component Supplier",
+        "description": "HV contactor coil specifications, switching latency, coolant valve pressure limits."
+    },
+    {
+        "doc_id": "DOC-05",
+        "filename": "05_Pyro_Fuse_Actuator_Datasheet.pdf",
+        "doc_type": "Supplier documentation",
+        "authority": "Safety Actuator Supplier",
+        "description": "Pyrotechnic switch trigger pulses, firing energy, and deployment limits."
+    },
+    {
+        "doc_id": "DOC-06",
+        "filename": "06_Traction_Inverter_IGBT_Module_Datasheet.pdf",
+        "doc_type": "Supplier documentation",
+        "authority": "Power Semiconductor Supplier",
+        "description": "IGBT/Diode ratings, saturation voltage, thermal resistance, continuous current limits."
+    },
+    {
+        "doc_id": "DOC-07",
+        "filename": "07_Silicon_Carbide_MOSFET_Datasheet.pdf",
+        "doc_type": "Supplier documentation",
+        "authority": "Wide-Bandgap Semiconductor Supplier",
+        "description": "SiC power MOSFET junction temperature limits, gate charge, body diode recovery."
+    },
+    {
+        "doc_id": "DOC-08",
+        "filename": "08_BMS_Functional_Safety_Validation_Report.pdf",
+        "doc_type": "Test report",
+        "authority": "Accredited Safety & HIL Testing Laboratory",
+        "description": "Empirical HIL and dynamometer validation results for overvoltage, inverter, safety watchdogs, and fault reaction times."
+    },
+    {
+        "doc_id": "DOC-09",
+        "filename": "09_Environmental_Thermal_Shock_Report.pdf",
+        "doc_type": "Test report",
+        "authority": "Environmental Testing Laboratory",
+        "description": "Thermal chamber cycling, thermal shock profiles, and cell temperature measurement tests."
+    },
+    {
+        "doc_id": "DOC-10",
+        "filename": "10_Mechanical_Vibration_Shock_Report.pdf",
+        "doc_type": "Test report",
+        "authority": "Mechanical Dynamics Testing Laboratory",
+        "description": "3-axis random vibration, mechanical shock profiles, and IP67 water submersion test logs."
+    },
+    {
+        "doc_id": "DOC-11",
+        "filename": "11_EMC_Radiated_Immunity_Test_Report.pdf",
+        "doc_type": "Test report",
+        "authority": "Accredited Anechoic EMC Testing Laboratory",
+        "description": "CISPR 25 radiated emissions sweeps and RF bulk current injection immunity logs."
+    },
+    {
+        "doc_id": "DOC-12",
+        "filename": "12_Electrical_Transient_Overvoltage_Report.pdf",
+        "doc_type": "Test report",
+        "authority": "Automotive Electrical Test Laboratory",
+        "description": "ISO 7637-2 pulses 1, 2a, 3a, 3b, and ISO 16750-2 jump start overvoltage endurance logs."
+    },
+    {
+        "doc_id": "DOC-13",
+        "filename": "13_Thermal_Runaway_Venting_Validation_Report.pdf",
+        "doc_type": "Test report",
+        "authority": "Battery Safety & Thermal Lab",
+        "description": "Battery pack thermal runaway containment, heat pump chiller testing, and CFD simulations."
+    },
+    {
+        "doc_id": "DOC-14",
+        "filename": "14_CAN_FD_Network_Timing_Test_Report.pdf",
+        "doc_type": "Test report",
+        "authority": "Network Protocol Validation Lab",
+        "description": "CAN-FD dual bitrate measurements, bus-off recovery timing, and E2E checksum profiling."
+    },
+    {
+        "doc_id": "DOC-15",
+        "filename": "15_Automotive_Ethernet_100Base_T1_Report.pdf",
+        "doc_type": "Test report",
+        "authority": "In-Vehicle Networking Lab",
+        "description": "100Base-T1 physical layer BER measurements, SOME/IP latency logs, and gPTP clock drift."
+    },
+    {
+        "doc_id": "DOC-16",
+        "filename": "16_UDS_Diagnostics_Security_Access_Report.pdf",
+        "doc_type": "Test report",
+        "authority": "Diagnostics & Bootloader Test Lab",
+        "description": "ISO 14229 UDS services (0x10, 0x27, 0x19, 0x36) timing, freeze frame logging, and flash bootloader speed."
+    },
+    {
+        "doc_id": "DOC-17",
+        "filename": "17_Cybersecurity_HSM_SecOC_Validation_Report.pdf",
+        "doc_type": "Test report",
+        "authority": "Vehicle Cybersecurity Assessment Team",
+        "description": "Secure boot signature latency, SecOC CMAC benchmarks, JTAG inspection, and TRNG entropy rates."
+    },
+    {
+        "doc_id": "DOC-18",
+        "filename": "18_DC_DC_Converter_Efficiency_Test_Report.pdf",
+        "doc_type": "Test report",
+        "authority": "Power Electronics Test Lab",
+        "description": "DC-DC step load transient response, 3.0 kV dielectric isolation withstand, efficiency mapping, and UVLO trip."
+    },
+    {
+        "doc_id": "DOC-19",
+        "filename": "19_OnBoard_Charger_AC_Validation_Report.pdf",
+        "doc_type": "Test report",
+        "authority": "Electric Vehicle Supply Equipment (EVSE) Test Lab",
+        "description": "11 kW 3-phase charging power factor, control pilot duty cycle, touch leakage current, and thermal cutoffs."
+    },
+    {
+        "doc_id": "DOC-20",
+        "filename": "20_Master_Compliance_Verification_Matrix.xlsx",
+        "doc_type": "Compliance matrix",
+        "authority": "Quality Assurance & Regulatory Compliance",
+        "description": "Formal compliance tracking matrix detailing status, verdicts, and evidence references for all 100 requirements."
+    }
+]
+
+
+# ==============================================================================
+# GROUND TRUTH LINKAGE MAPPING (All 100 Requirements)
+# ==============================================================================
+
+BENCHMARK_GROUND_TRUTH: list[dict[str, Any]] = [
+    # ── Domain 1 (001 - 010)
+    {
+        "requirement_id": "REQ-AUT-001",
+        "expected_status": "SUPPORTED",
+        "supporting_evidence_ids": ["EV-DOC08-001"],
+        "contradicting_evidence_ids": [],
+        "missing_conditions": [],
+        "notes": "Cell overvoltage injected at 4.255 V; persistent for 100 ms triggered contactor trip in 14.2 ms (within <= 20 ms limit).",
+        "expected_evidence": [
+            {"document": "08_BMS_Functional_Safety_Validation_Report.pdf", "page": 1, "quote": "Overvoltage injected at 4.255 V; persistent for 100 ms triggered contactor trip in 14.2 ms. Verdict: PASS."}
+        ]
+    },
+    {
+        "requirement_id": "REQ-AUT-002",
+        "expected_status": "SUPPORTED",
+        "supporting_evidence_ids": ["EV-DOC08-002"],
+        "contradicting_evidence_ids": [],
+        "missing_conditions": [],
+        "notes": "Pack operating envelope validated from 380 V to 820 V DC (fully covers required 400 V to 800 V).",
+        "expected_evidence": [
+            {"document": "08_BMS_Functional_Safety_Validation_Report.pdf", "page": 1, "quote": "Validated continuous pack monitoring from 380.0 V DC to 820.0 V DC across full operational span. Verdict: PASS."}
+        ]
+    },
+    {
+        "requirement_id": "REQ-AUT-003",
+        "expected_status": "PARTIAL",
+        "supporting_evidence_ids": ["EV-DOC09-001"],
+        "contradicting_evidence_ids": [],
+        "missing_conditions": ["C-003-1 (-40°C lower bound)", "C-003-2 (+85°C upper bound)"],
+        "notes": "Tested only from -20°C to +70°C. Cold (-40°C) and hot (+85°C) limits pending qualification.",
+        "expected_evidence": [
+            {"document": "09_Environmental_Thermal_Shock_Report.pdf", "page": 1, "quote": "Cell temperature measurement verified across cold and warm chambers from -20.0°C to +70.0°C with accuracy of ±0.6°C. Full low-temp (-40°C) and high-temp (+85°C) qualification pending chamber availability."}
+        ]
+    },
+    {
+        "requirement_id": "REQ-AUT-004",
+        "expected_status": "PARTIAL",
+        "supporting_evidence_ids": ["EV-DOC08-003"],
+        "contradicting_evidence_ids": [],
+        "missing_conditions": ["C-004-1 (Regen -600A)", "C-004-2 (High discharge > 300A)"],
+        "notes": "Evaluated only at positive discharge points up to +300 A. Negative regen sweep and high current untested.",
+        "expected_evidence": [
+            {"document": "08_BMS_Functional_Safety_Validation_Report.pdf", "page": 2, "quote": "Current sensor evaluated at discrete discharge test points of +100.0 A, +200.0 A, and +300.0 A with error <= 0.3%. Negative regen sweep and high current (> 300 A) characterization not yet performed."}
+        ]
+    },
+    {
+        "requirement_id": "REQ-AUT-005",
+        "expected_status": "CONFLICT",
+        "supporting_evidence_ids": [],
+        "contradicting_evidence_ids": ["EV-DOC03-001"],
+        "missing_conditions": [],
+        "notes": "Supplier ASIC absolute maximum rating is 750 V DC, which contradicts the required 1000 V continuous standoff.",
+        "expected_evidence": [
+            {"document": "03_BMS_Cell_Supervisory_ASIC_Datasheet.pdf", "page": 1, "quote": "Absolute Maximum Ratings: Maximum continuous common-mode voltage rating is limited to 750.0 V DC. Operating above 750 V DC violates manufacturer warranty and risks junction punch-through."}
+        ]
+    },
+    {
+        "requirement_id": "REQ-AUT-006",
+        "expected_status": "CONFLICT",
+        "supporting_evidence_ids": [],
+        "contradicting_evidence_ids": ["EV-DOC08-004"],
+        "missing_conditions": [],
+        "notes": "Measured balancing current is clamped to 120 mA to avoid PCB overheating, failing the >= 300 mA requirement.",
+        "expected_evidence": [
+            {"document": "08_BMS_Functional_Safety_Validation_Report.pdf", "page": 2, "quote": "Thermal dissipation measurement on balancing circuitry: balancing current clamped to 120.0 mA max to prevent PCB hotspot exceeding 95°C. Does not meet 300 mA target."}
+        ]
+    },
+    {
+        "requirement_id": "REQ-AUT-007",
+        "expected_status": "MISSING",
+        "supporting_evidence_ids": [],
+        "contradicting_evidence_ids": [],
+        "missing_conditions": ["C-007-1", "C-007-2"],
+        "notes": "No test record or datasheet exists. Compliance matrix explicitly notes NOT STARTED - Hardware revision B pending.",
+        "expected_evidence": [
+            {"document": "20_Master_Compliance_Verification_Matrix.xlsx", "page": 1, "quote": "REQ-AUT-007; Secondary Analog Overtemperature Cutoff; Status: NOT STARTED - Hardware revision B pending."}
+        ]
+    },
+    {
+        "requirement_id": "REQ-AUT-008",
+        "expected_status": "MISSING",
+        "supporting_evidence_ids": [],
+        "contradicting_evidence_ids": [],
+        "missing_conditions": ["C-008-1", "C-008-2"],
+        "notes": "Only descriptive layout mention in report; test is scheduled for Phase 3 validation.",
+        "expected_evidence": [
+            {"document": "08_BMS_Functional_Safety_Validation_Report.pdf", "page": 3, "quote": "Section 4.1: Isolation monitoring circuit layout reviewed. Isolation fault response timing test scheduled for Phase 3 validation."}
+        ]
+    },
+    {
+        "requirement_id": "REQ-AUT-009",
+        "expected_status": "UNKNOWN",
+        "supporting_evidence_ids": [],
+        "contradicting_evidence_ids": [],
+        "missing_conditions": ["C-009-1"],
+        "notes": "Acoustic baseline characterized in bench test, but vehicle pack calibration remains unproven.",
+        "expected_evidence": [
+            {"document": "13_Thermal_Runaway_Venting_Validation_Report.pdf", "page": 1, "quote": "Acoustic sensor baseline signal characterized in bench chamber. Sensor response demonstrated under generic ultrasonic pulse, but acoustic signature discrimination in vehicle enclosure cannot be confirmed without pack-level calibration."}
+        ]
+    },
+    {
+        "requirement_id": "REQ-AUT-010",
+        "expected_status": "UNKNOWN",
+        "supporting_evidence_ids": [],
+        "contradicting_evidence_ids": [],
+        "missing_conditions": ["C-010-1", "C-010-2"],
+        "notes": "Architecture specification describes design intention only; empirical diagnostic test proof is absent.",
+        "expected_evidence": [
+            {"document": "02_System_Architecture_Interface_Spec.pdf", "page": 1, "quote": "HVIL signal generator is specified for 1 kHz PWM with 5 ms fault detector as described in architecture section 3.4."}
+        ]
+    },
+
+    # ── Domain 2 (011 - 020)
+    {
+        "requirement_id": "REQ-AUT-011",
+        "expected_status": "SUPPORTED",
+        "supporting_evidence_ids": ["EV-DOC08-005"],
+        "contradicting_evidence_ids": [],
+        "missing_conditions": [],
+        "notes": "Inverter phase overcurrent at 680 A peak triggered DESAT gate shutdown in 1.1 µs (<= 1.5 µs required).",
+        "expected_evidence": [
+            {"document": "08_BMS_Functional_Safety_Validation_Report.pdf", "page": 3, "quote": "Short-circuit test with DESAT protection: peak current 680 A detected and all gates disabled in 1100 ns (1.1 µs). Verdict: PASS."}
+        ]
+    },
+    {
+        "requirement_id": "REQ-AUT-012",
+        "expected_status": "SUPPORTED",
+        "supporting_evidence_ids": ["EV-DOC08-006"],
+        "contradicting_evidence_ids": [],
+        "missing_conditions": [],
+        "notes": "DC-link voltage decayed from 800 V to 42.5 V (< 60 V) in 3.4 s (< 5.0 s).",
+        "expected_evidence": [
+            {"document": "08_BMS_Functional_Safety_Validation_Report.pdf", "page": 3, "quote": "Active discharge test: DC-link voltage decayed from 800 V to 42.5 V in 3.4 seconds. Verdict: PASS."}
+        ]
+    },
+    {
+        "requirement_id": "REQ-AUT-013",
+        "expected_status": "PARTIAL",
+        "supporting_evidence_ids": ["EV-DOC08-007"],
+        "contradicting_evidence_ids": [],
+        "missing_conditions": ["C-013-2 (50Nm low torque)", "C-013-3 (10000 rpm high speed)"],
+        "notes": "Efficiency verified only at 4000 rpm from 100 Nm to 250 Nm. Extreme speed and torque points pending.",
+        "expected_evidence": [
+            {"document": "08_BMS_Functional_Safety_Validation_Report.pdf", "page": 4, "quote": "Dynamometer efficiency test conducted at 4000 rpm from 100 Nm to 250 Nm showed efficiency of 98.1%. High-speed (10000 rpm) and low-torque (50 Nm) mapping remains pending dynamometer test slot."}
+        ]
+    },
+    {
+        "requirement_id": "REQ-AUT-014",
+        "expected_status": "PARTIAL",
+        "supporting_evidence_ids": ["EV-DOC08-008"],
+        "contradicting_evidence_ids": [],
+        "missing_conditions": ["C-014-1 (20000 rpm speed)", "C-014-3 (+105°C temperature)"],
+        "notes": "Resolver angle error ±0.14° verified at room temp up to 15000 rpm. 20000 rpm and +105°C scheduled.",
+        "expected_evidence": [
+            {"document": "08_BMS_Functional_Safety_Validation_Report.pdf", "page": 4, "quote": "Resolver tracking error measured at +25°C ambient up to 15000 rpm was ±0.14 degrees. High temperature (+105°C) and max speed (20000 rpm) tests scheduled for next quarter."}
+        ]
+    },
+    {
+        "requirement_id": "REQ-AUT-015",
+        "expected_status": "CONFLICT",
+        "supporting_evidence_ids": [],
+        "contradicting_evidence_ids": ["EV-DOC07-001"],
+        "missing_conditions": [],
+        "notes": "Datasheet limits maximum junction temperature to 150°C, contradicting requirement of continuous operation up to 175°C.",
+        "expected_evidence": [
+            {"document": "07_Silicon_Carbide_MOSFET_Datasheet.pdf", "page": 1, "quote": "Absolute Maximum Ratings: Maximum allowable junction temperature Tj_max is 150.0°C. Continuous operation above 150°C causes irreversible gate oxide degradation."}
+        ]
+    },
+    {
+        "requirement_id": "REQ-AUT-016",
+        "expected_status": "CONFLICT",
+        "supporting_evidence_ids": [],
+        "contradicting_evidence_ids": ["EV-DOC08-009"],
+        "missing_conditions": [],
+        "notes": "Measured current sensor -3dB bandwidth is 160 kHz, failing the required >= 250 kHz.",
+        "expected_evidence": [
+            {"document": "08_BMS_Functional_Safety_Validation_Report.pdf", "page": 5, "quote": "Phase current sensor frequency response measured -3dB cutoff at 160.0 kHz. Bandwidth is insufficient for high-frequency PWM ripple observation."}
+        ]
+    },
+    {
+        "requirement_id": "REQ-AUT-017",
+        "expected_status": "MISSING",
+        "supporting_evidence_ids": [],
+        "contradicting_evidence_ids": [],
+        "missing_conditions": ["C-017-1", "C-017-2"],
+        "notes": "No test record; Compliance matrix marks NOT STARTED.",
+        "expected_evidence": [
+            {"document": "20_Master_Compliance_Verification_Matrix.xlsx", "page": 1, "quote": "REQ-AUT-017; Traction Torque Derating on CAN Loss; Status: NOT STARTED - Motor dyno CAN fault injection pending."}
+        ]
+    },
+    {
+        "requirement_id": "REQ-AUT-018",
+        "expected_status": "MISSING",
+        "supporting_evidence_ids": [],
+        "contradicting_evidence_ids": [],
+        "missing_conditions": ["C-018-1", "C-018-2"],
+        "notes": "Thermal bench awaiting flow meter calibration.",
+        "expected_evidence": [
+            {"document": "20_Master_Compliance_Verification_Matrix.xlsx", "page": 1, "quote": "REQ-AUT-018; Inverter Coolant Flow vs Thermal Resistance; Status: NOT STARTED - Thermal bench awaiting flow meter calibration."}
+        ]
+    },
+    {
+        "requirement_id": "REQ-AUT-019",
+        "expected_status": "UNKNOWN",
+        "supporting_evidence_ids": [],
+        "contradicting_evidence_ids": [],
+        "missing_conditions": ["C-019-1"],
+        "notes": "Simulation calculation only (THD 2.4%); physical dynamometer test required.",
+        "expected_evidence": [
+            {"document": "13_Thermal_Runaway_Venting_Validation_Report.pdf", "page": 2, "quote": "MATLAB/Simulink power stage simulation predicts current THD of 2.4% under ideal switching parameters."}
+        ]
+    },
+    {
+        "requirement_id": "REQ-AUT-020",
+        "expected_status": "UNKNOWN",
+        "supporting_evidence_ids": [],
+        "contradicting_evidence_ids": [],
+        "missing_conditions": ["C-020-1"],
+        "notes": "Architecture description only; empirical vector control test records absent.",
+        "expected_evidence": [
+            {"document": "02_System_Architecture_Interface_Spec.pdf", "page": 1, "quote": "Section 5.2 defines the FOC flux weakening vector control block architecture and current loop equations."}
+        ]
+    },
+
+    # ── Domain 3 (021 - 030)
+    {
+        "requirement_id": "REQ-AUT-021",
+        "expected_status": "SUPPORTED",
+        "supporting_evidence_ids": ["EV-DOC18-001"],
+        "contradicting_evidence_ids": [],
+        "missing_conditions": [],
+        "notes": "10A to 200A step load produced 13.84 V (target 13.80 ± 0.15 V) in 320 µs (<= 500 µs required).",
+        "expected_evidence": [
+            {"document": "18_DC_DC_Converter_Efficiency_Test_Report.pdf", "page": 1, "quote": "Transient step load test: 10 A to 200 A transient caused 13.84 V output, recovered within 320 µs. Verdict: PASS."}
+        ]
+    },
+    {
+        "requirement_id": "REQ-AUT-022",
+        "expected_status": "SUPPORTED",
+        "supporting_evidence_ids": ["EV-DOC18-002"],
+        "contradicting_evidence_ids": [],
+        "missing_conditions": [],
+        "notes": "3000 V AC rms applied for 60 s; leakage current 0.38 mA (< 1.0 mA).",
+        "expected_evidence": [
+            {"document": "18_DC_DC_Converter_Efficiency_Test_Report.pdf", "page": 1, "quote": "Hipot test between HV and LV domains applied 3000 V AC rms for 60 s; measured leakage current was 0.38 mA. Verdict: PASS."}
+        ]
+    },
+    {
+        "requirement_id": "REQ-AUT-023",
+        "expected_status": "PARTIAL",
+        "supporting_evidence_ids": ["EV-DOC18-003"],
+        "contradicting_evidence_ids": [],
+        "missing_conditions": ["C-023-2 (300W and 3000W endpoints)"],
+        "notes": "Efficiency verified at 1000 W and 2000 W; full load envelope endpoints unmeasured.",
+        "expected_evidence": [
+            {"document": "18_DC_DC_Converter_Efficiency_Test_Report.pdf", "page": 2, "quote": "Efficiency measured at 1000 W (95.2%) and 2000 W (94.8%). Low power (300 W) and full power (3000 W) efficiency points not yet measured."}
+        ]
+    },
+    {
+        "requirement_id": "REQ-AUT-024",
+        "expected_status": "PARTIAL",
+        "supporting_evidence_ids": ["EV-DOC18-004"],
+        "contradicting_evidence_ids": [],
+        "missing_conditions": ["C-024-2 (-40°C and +85°C thermal extremes)"],
+        "notes": "Ripple 68 mVpp measured at room temp; thermal extreme chamber measurements pending.",
+        "expected_evidence": [
+            {"document": "18_DC_DC_Converter_Efficiency_Test_Report.pdf", "page": 2, "quote": "Output ripple measured at 25°C ambient was 68.0 mVpp. Thermal chamber ripple measurements at -40°C and +85°C pending."}
+        ]
+    },
+    {
+        "requirement_id": "REQ-AUT-025",
+        "expected_status": "CONFLICT",
+        "supporting_evidence_ids": [],
+        "contradicting_evidence_ids": ["EV-DOC06-001"],
+        "missing_conditions": [],
+        "notes": "Datasheet continuous current limit is 180 A at 65°C, contradicting requirement of >= 250 A.",
+        "expected_evidence": [
+            {"document": "06_Traction_Inverter_IGBT_Module_Datasheet.pdf", "page": 1, "quote": "Maximum continuous rated LV current output is 180.0 A at 65°C ambient due to inductor thermal saturation limit."}
+        ]
+    },
+    {
+        "requirement_id": "REQ-AUT-026",
+        "expected_status": "CONFLICT",
+        "supporting_evidence_ids": [],
+        "contradicting_evidence_ids": ["EV-DOC18-005"],
+        "missing_conditions": [],
+        "notes": "Converter continues switching down to 290 V instead of required 350 V shutdown.",
+        "expected_evidence": [
+            {"document": "18_DC_DC_Converter_Efficiency_Test_Report.pdf", "page": 3, "quote": "Input voltage ramp test: DC-DC converter continued switching down to 290.0 V DC before tripping, failing the 350.0 V undervoltage threshold."}
+        ]
+    },
+    {
+        "requirement_id": "REQ-AUT-027",
+        "expected_status": "MISSING",
+        "supporting_evidence_ids": [],
+        "contradicting_evidence_ids": [],
+        "missing_conditions": ["C-027-1", "C-027-2"],
+        "notes": "Destructive bench test scheduled.",
+        "expected_evidence": [
+            {"document": "20_Master_Compliance_Verification_Matrix.xlsx", "page": 1, "quote": "REQ-AUT-027; LV Reverse Polarity Protection; Status: NOT STARTED - Destructive bench test scheduled."}
+        ]
+    },
+    {
+        "requirement_id": "REQ-AUT-028",
+        "expected_status": "MISSING",
+        "supporting_evidence_ids": [],
+        "contradicting_evidence_ids": [],
+        "missing_conditions": ["C-028-1"],
+        "notes": "Firmware short-circuit test pending.",
+        "expected_evidence": [
+            {"document": "20_Master_Compliance_Verification_Matrix.xlsx", "page": 1, "quote": "REQ-AUT-028; Overcurrent Hiccup Mode Recovery; Status: NOT STARTED - Firmware short-circuit test pending."}
+        ]
+    },
+    {
+        "requirement_id": "REQ-AUT-029",
+        "expected_status": "UNKNOWN",
+        "supporting_evidence_ids": [],
+        "contradicting_evidence_ids": [],
+        "missing_conditions": ["C-029-1"],
+        "notes": "SPICE circuit simulation only; physical transient generator test required.",
+        "expected_evidence": [
+            {"document": "13_Thermal_Runaway_Venting_Validation_Report.pdf", "page": 2, "quote": "SPICE circuit simulation shows clamping TVS diode limits pulse 2a peak to 16.2 V."}
+        ]
+    },
+    {
+        "requirement_id": "REQ-AUT-030",
+        "expected_status": "UNKNOWN",
+        "supporting_evidence_ids": [],
+        "contradicting_evidence_ids": [],
+        "missing_conditions": ["C-030-1"],
+        "notes": "Architecture calculation document only.",
+        "expected_evidence": [
+            {"document": "02_System_Architecture_Interface_Spec.pdf", "page": 1, "quote": "Section 4.3 defines the pre-charge resistor sizing (50 ohm) and soft-start timing diagram."}
+        ]
+    },
+
+    # ── Domain 4 (031 - 040)
+    {
+        "requirement_id": "REQ-AUT-031",
+        "expected_status": "SUPPORTED",
+        "supporting_evidence_ids": ["EV-DOC19-001"],
+        "contradicting_evidence_ids": [],
+        "missing_conditions": [],
+        "notes": "Delivered 11.05 kW on 400 V AC 3-phase with power factor 0.992 (>= 0.98 required).",
+        "expected_evidence": [
+            {"document": "19_OnBoard_Charger_AC_Validation_Report.pdf", "page": 1, "quote": "Grid test at 400 V AC 3-phase delivered 11.05 kW with measured power factor of 0.992. Verdict: PASS."}
+        ]
+    },
+    {
+        "requirement_id": "REQ-AUT-032",
+        "expected_status": "SUPPORTED",
+        "supporting_evidence_ids": ["EV-DOC19-002"],
+        "contradicting_evidence_ids": [],
+        "missing_conditions": [],
+        "notes": "Control pilot duty cycle measured with max error ±0.22% (<= ±0.5% required).",
+        "expected_evidence": [
+            {"document": "19_OnBoard_Charger_AC_Validation_Report.pdf", "page": 1, "quote": "Control pilot duty cycle sweep from 10.0% to 90.0% measured with maximum error of ±0.22% duty cycle. Verdict: PASS."}
+        ]
+    },
+    {
+        "requirement_id": "REQ-AUT-033",
+        "expected_status": "PARTIAL",
+        "supporting_evidence_ids": ["EV-DOC19-003"],
+        "contradicting_evidence_ids": [],
+        "missing_conditions": ["C-033-1 (85V low-line)", "C-033-3 (47Hz / 63Hz grid margins)"],
+        "notes": "Tested at 230 V / 50 Hz and 120 V / 60 Hz; low-line and frequency extremes pending.",
+        "expected_evidence": [
+            {"document": "19_OnBoard_Charger_AC_Validation_Report.pdf", "page": 2, "quote": "Tested at 230 V AC / 50 Hz and 120 V AC / 60 Hz. Low-line voltage limit (85 V) and frequency margin (47 Hz, 63 Hz) tests pending."}
+        ]
+    },
+    {
+        "requirement_id": "REQ-AUT-034",
+        "expected_status": "PARTIAL",
+        "supporting_evidence_ids": ["EV-DOC19-004"],
+        "contradicting_evidence_ids": [],
+        "missing_conditions": ["C-034-3 (3.6 kW inductive motor load)"],
+        "notes": "Tested with 1.8 kW resistive load; full 3.6 kW inductive load testing pending.",
+        "expected_evidence": [
+            {"document": "19_OnBoard_Charger_AC_Validation_Report.pdf", "page": 2, "quote": "V2L evaluated with 1.8 kW resistive heater: output 230.4 V, THD 1.8%. Inductive load testing (3.6 kW motor load) remains pending."}
+        ]
+    },
+    {
+        "requirement_id": "REQ-AUT-035",
+        "expected_status": "CONFLICT",
+        "supporting_evidence_ids": [],
+        "contradicting_evidence_ids": ["EV-DOC19-005"],
+        "missing_conditions": [],
+        "notes": "Measured earth leakage current is 5.2 mA rms, exceeding 3.5 mA requirement.",
+        "expected_evidence": [
+            {"document": "19_OnBoard_Charger_AC_Validation_Report.pdf", "page": 3, "quote": "Earth leakage current test: measured touch leakage current was 5.2 mA rms due to Y-capacitor filter sizing, exceeding 3.5 mA limit."}
+        ]
+    },
+    {
+        "requirement_id": "REQ-AUT-036",
+        "expected_status": "CONFLICT",
+        "supporting_evidence_ids": [],
+        "contradicting_evidence_ids": ["EV-DOC19-006"],
+        "missing_conditions": [],
+        "notes": "Charging cut off at 108°C instead of required 90°C.",
+        "expected_evidence": [
+            {"document": "19_OnBoard_Charger_AC_Validation_Report.pdf", "page": 3, "quote": "Inlet temperature override test: controller throttled at 95.0°C and did not terminate charging until 108.0°C."}
+        ]
+    },
+    {
+        "requirement_id": "REQ-AUT-037",
+        "expected_status": "MISSING",
+        "supporting_evidence_ids": [],
+        "contradicting_evidence_ids": [],
+        "missing_conditions": ["C-037-1"],
+        "notes": "Emulator firmware update pending.",
+        "expected_evidence": [
+            {"document": "20_Master_Compliance_Verification_Matrix.xlsx", "page": 1, "quote": "REQ-AUT-037; DC Fast Charging CCS Precharge Isolation; Status: NOT STARTED - DC fast charge emulator awaiting firmware update."}
+        ]
+    },
+    {
+        "requirement_id": "REQ-AUT-038",
+        "expected_status": "MISSING",
+        "supporting_evidence_ids": [],
+        "contradicting_evidence_ids": [],
+        "missing_conditions": ["C-038-1"],
+        "notes": "Cable resistance fixture pending.",
+        "expected_evidence": [
+            {"document": "20_Master_Compliance_Verification_Matrix.xlsx", "page": 1, "quote": "REQ-AUT-038; Proximity Pilot Resistor Discrimination; Status: NOT STARTED - Cable resistance fixture pending."}
+        ]
+    },
+    {
+        "requirement_id": "REQ-AUT-039",
+        "expected_status": "UNKNOWN",
+        "supporting_evidence_ids": [],
+        "contradicting_evidence_ids": [],
+        "missing_conditions": ["C-039-1", "C-039-2"],
+        "notes": "LTspice simulation only; physical surge generator test required.",
+        "expected_evidence": [
+            {"document": "13_Thermal_Runaway_Venting_Validation_Report.pdf", "page": 2, "quote": "Transient surge suppression modeled in LTspice with MOV + gas tube surge arrestor."}
+        ]
+    },
+    {
+        "requirement_id": "REQ-AUT-040",
+        "expected_status": "UNKNOWN",
+        "supporting_evidence_ids": [],
+        "contradicting_evidence_ids": [],
+        "missing_conditions": ["C-040-1"],
+        "notes": "Architecture definition only.",
+        "expected_evidence": [
+            {"document": "02_System_Architecture_Interface_Spec.pdf", "page": 1, "quote": "Section 6.1 specifies the HomePlug GreenPHY architecture and TLS 1.3 cipher suite requirements."}
+        ]
+    },
+
+    # ── Domain 5 (041 - 050)
+    {
+        "requirement_id": "REQ-AUT-041",
+        "expected_status": "SUPPORTED",
+        "supporting_evidence_ids": ["EV-DOC13-001"],
+        "contradicting_evidence_ids": [],
+        "missing_conditions": [],
+        "notes": "Battery inlet coolant stabilized at 25.4°C (target 25.0 ± 2.0°C) under 5.2 kW load.",
+        "expected_evidence": [
+            {"document": "13_Thermal_Runaway_Venting_Validation_Report.pdf", "page": 3, "quote": "Thermal bench test: inlet coolant temperature stabilized at 25.4°C under 5.2 kW steady thermal dissipation. Verdict: PASS."}
+        ]
+    },
+    {
+        "requirement_id": "REQ-AUT-042",
+        "expected_status": "SUPPORTED",
+        "supporting_evidence_ids": ["EV-DOC13-002"],
+        "contradicting_evidence_ids": [],
+        "missing_conditions": [],
+        "notes": "Compressor speed sweep from 1000 to 8500 rpm verified with error 28 rpm (< 50 rpm).",
+        "expected_evidence": [
+            {"document": "13_Thermal_Runaway_Venting_Validation_Report.pdf", "page": 3, "quote": "Compressor speed sweep from 1000 rpm to 8500 rpm verified; maximum observed speed error was 28 rpm. Verdict: PASS."}
+        ]
+    },
+    {
+        "requirement_id": "REQ-AUT-043",
+        "expected_status": "PARTIAL",
+        "supporting_evidence_ids": ["EV-DOC13-003"],
+        "contradicting_evidence_ids": [],
+        "missing_conditions": ["C-043-1 (-15°C cold chamber condition)"],
+        "notes": "Tested at 0°C and -5°C; -15°C ambient extreme test pending.",
+        "expected_evidence": [
+            {"document": "13_Thermal_Runaway_Venting_Validation_Report.pdf", "page": 4, "quote": "Heat pump tested at 0°C and -5°C ambient delivering 5.1 kW and 4.8 kW respectively. Extreme cold chamber test at -15.0°C pending."}
+        ]
+    },
+    {
+        "requirement_id": "REQ-AUT-044",
+        "expected_status": "PARTIAL",
+        "supporting_evidence_ids": ["EV-DOC13-004"],
+        "contradicting_evidence_ids": [],
+        "missing_conditions": ["C-044-2 (-30°C cold thermal extreme)"],
+        "notes": "Positioning verified at +25°C; -30°C extreme scheduled.",
+        "expected_evidence": [
+            {"document": "13_Thermal_Runaway_Venting_Validation_Report.pdf", "page": 4, "quote": "EXV positioning verified at +25°C ambient across full 500 steps. Cold step validation at -30°C scheduled for next test run."}
+        ]
+    },
+    {
+        "requirement_id": "REQ-AUT-045",
+        "expected_status": "CONFLICT",
+        "supporting_evidence_ids": [],
+        "contradicting_evidence_ids": ["EV-DOC04-001"],
+        "missing_conditions": [],
+        "notes": "Coolant valve datasheet maximum pressure rating is 1.80 bar, which contradicts the required 2.50 bar operating pressure.",
+        "expected_evidence": [
+            {"document": "04_High_Voltage_Contactor_Datasheet.pdf", "page": 1, "quote": "Component Maximum Pressure Rating: Maximum continuous rated pressure for 3-way coolant valve is 1.80 bar. Pressures above 1.8 bar risk seal deformation."}
+        ]
+    },
+    {
+        "requirement_id": "REQ-AUT-046",
+        "expected_status": "CONFLICT",
+        "supporting_evidence_ids": [],
+        "contradicting_evidence_ids": ["EV-DOC13-005"],
+        "missing_conditions": [],
+        "notes": "Measured rise time is 32.4 s, failing the <= 15.0 s requirement.",
+        "expected_evidence": [
+            {"document": "13_Thermal_Runaway_Venting_Validation_Report.pdf", "page": 5, "quote": "PTC heater step response test: measured 32.4 seconds to reach 90% power (5.4 kW) due to soft-start inrush current limiting."}
+        ]
+    },
+    {
+        "requirement_id": "REQ-AUT-047",
+        "expected_status": "MISSING",
+        "supporting_evidence_ids": [],
+        "contradicting_evidence_ids": [],
+        "missing_conditions": ["C-047-1", "C-047-2"],
+        "notes": "Optical bubble sensor integration pending.",
+        "expected_evidence": [
+            {"document": "20_Master_Compliance_Verification_Matrix.xlsx", "page": 1, "quote": "REQ-AUT-047; Coolant Degassing Air Bubble Purge; Status: NOT STARTED - Optical bubble sensor integration pending."}
+        ]
+    },
+    {
+        "requirement_id": "REQ-AUT-048",
+        "expected_status": "MISSING",
+        "supporting_evidence_ids": [],
+        "contradicting_evidence_ids": [],
+        "missing_conditions": ["C-048-1"],
+        "notes": "Destructive pressure relief valve test scheduled.",
+        "expected_evidence": [
+            {"document": "20_Master_Compliance_Verification_Matrix.xlsx", "page": 1, "quote": "REQ-AUT-048; Refrigerant Relief Valve Burst Pressure; Status: NOT STARTED - Destructive pressure test scheduled."}
+        ]
+    },
+    {
+        "requirement_id": "REQ-AUT-049",
+        "expected_status": "UNKNOWN",
+        "supporting_evidence_ids": [],
+        "contradicting_evidence_ids": [],
+        "missing_conditions": ["C-049-1"],
+        "notes": "CFD modeling calculation only; in-vehicle test mandatory.",
+        "expected_evidence": [
+            {"document": "13_Thermal_Runaway_Venting_Validation_Report.pdf", "page": 5, "quote": "CFD thermal cabin comfort modeling demonstrates PMV of +0.2 under simulated 22°C ambient."}
+        ]
+    },
+    {
+        "requirement_id": "REQ-AUT-050",
+        "expected_status": "UNKNOWN",
+        "supporting_evidence_ids": [],
+        "contradicting_evidence_ids": [],
+        "missing_conditions": ["C-050-1"],
+        "notes": "Architecture documentation only.",
+        "expected_evidence": [
+            {"document": "02_System_Architecture_Interface_Spec.pdf", "page": 2, "quote": "Section 7.4 describes water pump LIN diagnostic messages and dry-run fault detection algorithm."}
+        ]
+    },
+
+    # ── Domain 6 (051 - 060)
+    {
+        "requirement_id": "REQ-AUT-051",
+        "expected_status": "SUPPORTED",
+        "supporting_evidence_ids": ["EV-DOC14-001"],
+        "contradicting_evidence_ids": [],
+        "missing_conditions": [],
+        "notes": "Confirmed 500 kbps arbitration and 5.0 Mbps data phase.",
+        "expected_evidence": [
+            {"document": "14_CAN_FD_Network_Timing_Test_Report.pdf", "page": 1, "quote": "Oscilloscope bus timing analysis confirmed 500.0 kbps arbitration and 5.00 Mbps data phase with 75.0% sample point. Verdict: PASS."}
+        ]
+    },
+    {
+        "requirement_id": "REQ-AUT-052",
+        "expected_status": "SUPPORTED",
+        "supporting_evidence_ids": ["EV-DOC14-002"],
+        "contradicting_evidence_ids": [],
+        "missing_conditions": [],
+        "notes": "Node resumed transmission in 94.6 ms (within 90 to 110 ms window).",
+        "expected_evidence": [
+            {"document": "14_CAN_FD_Network_Timing_Test_Report.pdf", "page": 1, "quote": "Fault injection bus-off test: node resumed transmission on CAN bus at 94.6 ms following error frame burst. Verdict: PASS."}
+        ]
+    },
+    {
+        "requirement_id": "REQ-AUT-053",
+        "expected_status": "PARTIAL",
+        "supporting_evidence_ids": ["EV-DOC14-003"],
+        "contradicting_evidence_ids": [],
+        "missing_conditions": ["C-053-2 (IDs 0x109 to 0x110)"],
+        "notes": "E2E Profile 01 verified on 8 of 16 message IDs.",
+        "expected_evidence": [
+            {"document": "14_CAN_FD_Network_Timing_Test_Report.pdf", "page": 2, "quote": "E2E Profile 01 verified on BMS status messages (IDs 0x100 to 0x108). Inverter and DC-DC message IDs (0x109 to 0x110) E2E verification pending."}
+        ]
+    },
+    {
+        "requirement_id": "REQ-AUT-054",
+        "expected_status": "PARTIAL",
+        "supporting_evidence_ids": ["EV-DOC15-001"],
+        "contradicting_evidence_ids": [],
+        "missing_conditions": ["C-054-2 (15 meter harness length)"],
+        "notes": "Tested over 5m harness; 15m harness testing pending.",
+        "expected_evidence": [
+            {"document": "15_Automotive_Ethernet_100Base_T1_Report.pdf", "page": 1, "quote": "Ethernet BER tested over 5 meters cable length showed zero bit errors (BER < 10^-11). Full 15-meter harness length test pending harness fabrication."}
+        ]
+    },
+    {
+        "requirement_id": "REQ-AUT-055",
+        "expected_status": "CONFLICT",
+        "supporting_evidence_ids": [],
+        "contradicting_evidence_ids": ["EV-DOC03-002"],
+        "missing_conditions": [],
+        "notes": "Datasheet limits common mode voltage to ±7.0 V, contradicting required ±12.0 V tolerance.",
+        "expected_evidence": [
+            {"document": "03_BMS_Cell_Supervisory_ASIC_Datasheet.pdf", "page": 1, "quote": "Absolute Maximum Ratings: Maximum continuous common-mode voltage range is -7.0 V to +7.0 V DC. Operation beyond ±7 V causes bit decoding errors."}
+        ]
+    },
+    {
+        "requirement_id": "REQ-AUT-056",
+        "expected_status": "CONFLICT",
+        "supporting_evidence_ids": [],
+        "contradicting_evidence_ids": ["EV-DOC15-002"],
+        "missing_conditions": [],
+        "notes": "Measured SOME/IP packet latency is 2.8 ms, failing the <= 1.0 ms requirement.",
+        "expected_evidence": [
+            {"document": "15_Automotive_Ethernet_100Base_T1_Report.pdf", "page": 1, "quote": "Ethernet traffic analysis under 70% network load: measured SOME/IP packet latency was 2.8 ms due to queue buffer contention."}
+        ]
+    },
+    {
+        "requirement_id": "REQ-AUT-057",
+        "expected_status": "MISSING",
+        "supporting_evidence_ids": [],
+        "contradicting_evidence_ids": [],
+        "missing_conditions": ["C-057-1", "C-057-2"],
+        "notes": "Low-power sleep current bench test pending.",
+        "expected_evidence": [
+            {"document": "20_Master_Compliance_Verification_Matrix.xlsx", "page": 1, "quote": "REQ-AUT-057; LIN Slave Quiescent Sleep Current; Status: NOT STARTED - Low-power sleep current bench pending."}
+        ]
+    },
+    {
+        "requirement_id": "REQ-AUT-058",
+        "expected_status": "MISSING",
+        "supporting_evidence_ids": [],
+        "contradicting_evidence_ids": [],
+        "missing_conditions": ["C-058-1"],
+        "notes": "Multi-ECU test rack setup in progress.",
+        "expected_evidence": [
+            {"document": "20_Master_Compliance_Verification_Matrix.xlsx", "page": 1, "quote": "REQ-AUT-058; AUTOSAR Network Management Sleep Ring; Status: NOT STARTED - Multi-ECU test rack setup in progress."}
+        ]
+    },
+    {
+        "requirement_id": "REQ-AUT-059",
+        "expected_status": "UNKNOWN",
+        "supporting_evidence_ids": [],
+        "contradicting_evidence_ids": [],
+        "missing_conditions": ["C-059-1"],
+        "notes": "Simulation calculation only (420 ns drift); physical test required.",
+        "expected_evidence": [
+            {"document": "15_Automotive_Ethernet_100Base_T1_Report.pdf", "page": 2, "quote": "Network simulation in OMNeT++ predicts clock drift synchronization within 420 ns."}
+        ]
+    },
+    {
+        "requirement_id": "REQ-AUT-060",
+        "expected_status": "UNKNOWN",
+        "supporting_evidence_ids": [],
+        "contradicting_evidence_ids": [],
+        "missing_conditions": ["C-060-1"],
+        "notes": "Architectural configuration documentation only.",
+        "expected_evidence": [
+            {"document": "02_System_Architecture_Interface_Spec.pdf", "page": 2, "quote": "Section 8.1 defines the static socket buffer allocation tables in AUTOSAR BswM configuration."}
+        ]
+    },
+
+    # ── Domain 7 (061 - 070)
+    {
+        "requirement_id": "REQ-AUT-061",
+        "expected_status": "SUPPORTED",
+        "supporting_evidence_ids": ["EV-DOC16-001"],
+        "contradicting_evidence_ids": [],
+        "missing_conditions": [],
+        "notes": "UDS 0x10 response time was 18.4 ms (<= 50.0 ms required).",
+        "expected_evidence": [
+            {"document": "16_UDS_Diagnostics_Security_Access_Report.pdf", "page": 1, "quote": "UDS Service 0x10 diagnostic timing test: measured P2 server response time across 100 requests was 18.4 ms max. Verdict: PASS."}
+        ]
+    },
+    {
+        "requirement_id": "REQ-AUT-062",
+        "expected_status": "SUPPORTED",
+        "supporting_evidence_ids": ["EV-DOC16-002"],
+        "contradicting_evidence_ids": [],
+        "missing_conditions": [],
+        "notes": "DTC freeze frame written in 12.8 ms (<= 20.0 ms required).",
+        "expected_evidence": [
+            {"document": "16_UDS_Diagnostics_Security_Access_Report.pdf", "page": 1, "quote": "DTC snapshot validation test: freeze frame written to NVRAM in 12.8 ms with complete mandatory sensor records. Verdict: PASS."}
+        ]
+    },
+    {
+        "requirement_id": "REQ-AUT-063",
+        "expected_status": "PARTIAL",
+        "supporting_evidence_ids": ["EV-DOC16-003"],
+        "contradicting_evidence_ids": [],
+        "missing_conditions": ["C-063-2 (Level 0x03 Calibration Access)"],
+        "notes": "Level 0x01 verified; Level 0x03 engineering access test pending.",
+        "expected_evidence": [
+            {"document": "16_UDS_Diagnostics_Security_Access_Report.pdf", "page": 2, "quote": "Level 0x01 Reprogramming security access validated with ECDSA-256. Level 0x03 Engineering calibration access security test pending implementation."}
+        ]
+    },
+    {
+        "requirement_id": "REQ-AUT-064",
+        "expected_status": "PARTIAL",
+        "supporting_evidence_ids": ["EV-DOC16-004"],
+        "contradicting_evidence_ids": [],
+        "missing_conditions": ["C-064-1 (Golden image boot completion)"],
+        "notes": "Rollback triggered in 1.4 s; golden image boot verification scheduled.",
+        "expected_evidence": [
+            {"document": "16_UDS_Diagnostics_Security_Access_Report.pdf", "page": 2, "quote": "Corrupted image injected into Bank B; bootloader detected CRC mismatch and initiated rollback in 1.4 seconds. Golden image boot verification scheduled."}
+        ]
+    },
+    {
+        "requirement_id": "REQ-AUT-065",
+        "expected_status": "CONFLICT",
+        "supporting_evidence_ids": [],
+        "contradicting_evidence_ids": ["EV-DOC16-005"],
+        "missing_conditions": [],
+        "notes": "Service 0x23 is configured with open access with no login or authentication required.",
+        "expected_evidence": [
+            {"document": "16_UDS_Diagnostics_Security_Access_Report.pdf", "page": 3, "quote": "Section 3.2: Diagnostic port configuration revealed Service 0x23 ReadMemoryByAddress is configured with open access with no login or authentication required."}
+        ]
+    },
+    {
+        "requirement_id": "REQ-AUT-066",
+        "expected_status": "CONFLICT",
+        "supporting_evidence_ids": [],
+        "contradicting_evidence_ids": ["EV-DOC16-006"],
+        "missing_conditions": [],
+        "notes": "Measured flash write throughput is 38.5 kB/s, failing the required >= 80.0 kB/s.",
+        "expected_evidence": [
+            {"document": "16_UDS_Diagnostics_Security_Access_Report.pdf", "page": 3, "quote": "Flash throughput benchmark: measured write speed was 38.5 kB/s due to internal flash block erase wait states."}
+        ]
+    },
+    {
+        "requirement_id": "REQ-AUT-067",
+        "expected_status": "MISSING",
+        "supporting_evidence_ids": [],
+        "contradicting_evidence_ids": [],
+        "missing_conditions": ["C-067-1"],
+        "notes": "RoutineControl self-test script pending.",
+        "expected_evidence": [
+            {"document": "20_Master_Compliance_Verification_Matrix.xlsx", "page": 1, "quote": "REQ-AUT-067; RoutineControl 0x31 Contactor Welded Test; Status: NOT STARTED - RoutineControl self-test script pending."}
+        ]
+    },
+    {
+        "requirement_id": "REQ-AUT-068",
+        "expected_status": "MISSING",
+        "supporting_evidence_ids": [],
+        "contradicting_evidence_ids": [],
+        "missing_conditions": ["C-068-1"],
+        "notes": "Diagnostic timer test pending.",
+        "expected_evidence": [
+            {"document": "20_Master_Compliance_Verification_Matrix.xlsx", "page": 1, "quote": "REQ-AUT-068; TesterPresent S3 Timeout Session Recovery; Status: NOT STARTED - Diagnostic timer test pending."}
+        ]
+    },
+    {
+        "requirement_id": "REQ-AUT-069",
+        "expected_status": "UNKNOWN",
+        "supporting_evidence_ids": [],
+        "contradicting_evidence_ids": [],
+        "missing_conditions": ["C-069-1"],
+        "notes": "Theoretical calculation model only.",
+        "expected_evidence": [
+            {"document": "13_Thermal_Runaway_Venting_Validation_Report.pdf", "page": 2, "quote": "NVRAM endurance calculation model estimates 125,000 cycles based on Flash memory manufacturer cell fatigue curve."}
+        ]
+    },
+    {
+        "requirement_id": "REQ-AUT-070",
+        "expected_status": "UNKNOWN",
+        "supporting_evidence_ids": [],
+        "contradicting_evidence_ids": [],
+        "missing_conditions": ["C-070-1"],
+        "notes": "Architecture specification only.",
+        "expected_evidence": [
+            {"document": "02_System_Architecture_Interface_Spec.pdf", "page": 2, "quote": "Section 9.2 specifies negative response code handling tables for diagnostic stack."}
+        ]
+    },
+
+    # ── Domain 8 (071 - 080)
+    {
+        "requirement_id": "REQ-AUT-071",
+        "expected_status": "SUPPORTED",
+        "supporting_evidence_ids": ["EV-DOC08-010"],
+        "contradicting_evidence_ids": [],
+        "missing_conditions": [],
+        "notes": "Watchdog SPI serviced at 15.2 ms (within 13 to 17 ms window). Reset triggered on violation.",
+        "expected_evidence": [
+            {"document": "08_BMS_Functional_Safety_Validation_Report.pdf", "page": 5, "quote": "Watchdog timing verification: SPI challenge-response verified at 15.2 ms interval. Forced late response triggered hardware reset in 18.1 ms. Verdict: PASS."}
+        ]
+    },
+    {
+        "requirement_id": "REQ-AUT-072",
+        "expected_status": "SUPPORTED",
+        "supporting_evidence_ids": ["EV-DOC08-011"],
+        "contradicting_evidence_ids": [],
+        "missing_conditions": [],
+        "notes": "Core brownout at 2.94 V triggered PMIC hard reset in 2.1 µs (< 5.0 µs required).",
+        "expected_evidence": [
+            {"document": "08_BMS_Functional_Safety_Validation_Report.pdf", "page": 5, "quote": "Brownout injection test: Vcore reduced to 2.94 V triggered PMIC hard RESET in 2.1 µs. Verdict: PASS."}
+        ]
+    },
+    {
+        "requirement_id": "REQ-AUT-073",
+        "expected_status": "PARTIAL",
+        "supporting_evidence_ids": ["EV-DOC08-012"],
+        "contradicting_evidence_ids": [],
+        "missing_conditions": ["C-073-3 (Core 1 memory bus fault injection)"],
+        "notes": "Lockstep fault injection verified on Core 0 ALU; Core 1 bus test pending.",
+        "expected_evidence": [
+            {"document": "08_BMS_Functional_Safety_Validation_Report.pdf", "page": 6, "quote": "Lockstep error injection on Core 0 ALU registers triggered safety alarm in 1 clock cycle. Core 1 memory bus fault injection test pending."}
+        ]
+    },
+    {
+        "requirement_id": "REQ-AUT-074",
+        "expected_status": "PARTIAL",
+        "supporting_evidence_ids": ["EV-DOC08-013"],
+        "contradicting_evidence_ids": [],
+        "missing_conditions": ["C-074-1 (-40°C cold cross-check)"],
+        "notes": "ADC cross-check verified at room temp; cold temp cross-check pending.",
+        "expected_evidence": [
+            {"document": "08_BMS_Functional_Safety_Validation_Report.pdf", "page": 6, "quote": "Cross-check algorithm verified at room temperature with 2.0% injected delta, fault asserted at 52 ms. Cold temperature (-40°C) cross-check pending."}
+        ]
+    },
+    {
+        "requirement_id": "REQ-AUT-075",
+        "expected_status": "CONFLICT",
+        "supporting_evidence_ids": [],
+        "contradicting_evidence_ids": ["EV-DOC08-014"],
+        "missing_conditions": [],
+        "notes": "Measured fault reaction time to STO is 24.5 ms, exceeding the 10.0 ms requirement.",
+        "expected_evidence": [
+            {"document": "08_BMS_Functional_Safety_Validation_Report.pdf", "page": 7, "quote": "Fault injection test: measured total elapsed time from overcurrent trigger to STO state transition was 24.5 ms due to filter debounce delay."}
+        ]
+    },
+    {
+        "requirement_id": "REQ-AUT-076",
+        "expected_status": "CONFLICT",
+        "supporting_evidence_ids": [],
+        "contradicting_evidence_ids": ["EV-DOC08-015"],
+        "missing_conditions": [],
+        "notes": "Double-bit error triggered exception in 450 ns instead of required <= 100 ns NMI.",
+        "expected_evidence": [
+            {"document": "08_BMS_Functional_Safety_Validation_Report.pdf", "page": 7, "quote": "Memory fault injection: double-bit flash error triggered standard exception handler in 450 ns instead of required 100 ns NMI."}
+        ]
+    },
+    {
+        "requirement_id": "REQ-AUT-077",
+        "expected_status": "MISSING",
+        "supporting_evidence_ids": [],
+        "contradicting_evidence_ids": [],
+        "missing_conditions": ["C-077-1", "C-077-2"],
+        "notes": "Throttle pedal rig test pending.",
+        "expected_evidence": [
+            {"document": "20_Master_Compliance_Verification_Matrix.xlsx", "page": 1, "quote": "REQ-AUT-077; Dual Throttle Pedal Plausibility Check; Status: NOT STARTED - Throttle pedal sensor rig pending."}
+        ]
+    },
+    {
+        "requirement_id": "REQ-AUT-078",
+        "expected_status": "MISSING",
+        "supporting_evidence_ids": [],
+        "contradicting_evidence_ids": [],
+        "missing_conditions": ["C-078-1"],
+        "notes": "BIST startup profiling pending.",
+        "expected_evidence": [
+            {"document": "20_Master_Compliance_Verification_Matrix.xlsx", "page": 1, "quote": "REQ-AUT-078; Hardware Built-In Self-Test (BIST) Execution; Status: NOT STARTED - BIST startup profiling pending."}
+        ]
+    },
+    {
+        "requirement_id": "REQ-AUT-079",
+        "expected_status": "UNKNOWN",
+        "supporting_evidence_ids": [],
+        "contradicting_evidence_ids": [],
+        "missing_conditions": ["C-079-1", "C-079-2"],
+        "notes": "FMEDA theoretical calculation report only; physical fault injection required.",
+        "expected_evidence": [
+            {"document": "08_BMS_Functional_Safety_Validation_Report.pdf", "page": 8, "quote": "FMEDA quantitative calculation report indicates theoretical SPFM of 99.4% and LFM of 91.2%."}
+        ]
+    },
+    {
+        "requirement_id": "REQ-AUT-080",
+        "expected_status": "UNKNOWN",
+        "supporting_evidence_ids": [],
+        "contradicting_evidence_ids": [],
+        "missing_conditions": ["C-080-1", "C-080-2"],
+        "notes": "Architecture documentation only.",
+        "expected_evidence": [
+            {"document": "02_System_Architecture_Interface_Spec.pdf", "page": 2, "quote": "Section 10.1 defines the clock supervisor hardware architecture and backup oscillator configuration."}
+        ]
+    },
+
+    # ── Domain 9 (081 - 090)
+    {
+        "requirement_id": "REQ-AUT-081",
+        "expected_status": "SUPPORTED",
+        "supporting_evidence_ids": ["EV-DOC17-001"],
+        "contradicting_evidence_ids": [],
+        "missing_conditions": [],
+        "notes": "RSA-3072 signature verified in 112.4 ms (<= 150.0 ms required).",
+        "expected_evidence": [
+            {"document": "17_Cybersecurity_HSM_SecOC_Validation_Report.pdf", "page": 1, "quote": "Secure boot benchmark: RSA-3072 signature verification completed in 112.4 ms with valid public key. Verdict: PASS."}
+        ]
+    },
+    {
+        "requirement_id": "REQ-AUT-082",
+        "expected_status": "SUPPORTED",
+        "supporting_evidence_ids": ["EV-DOC17-002"],
+        "contradicting_evidence_ids": [],
+        "missing_conditions": [],
+        "notes": "AES-128 CMAC generated in 28.5 µs (<= 50.0 µs required).",
+        "expected_evidence": [
+            {"document": "17_Cybersecurity_HSM_SecOC_Validation_Report.pdf", "page": 1, "quote": "SecOC hardware acceleration benchmark: measured AES-128 CMAC generation time was 28.5 µs per message. Verdict: PASS."}
+        ]
+    },
+    {
+        "requirement_id": "REQ-AUT-083",
+        "expected_status": "PARTIAL",
+        "supporting_evidence_ids": ["EV-DOC17-003"],
+        "contradicting_evidence_ids": [],
+        "missing_conditions": ["C-083-2 (Asymmetric ECC Key Storage Isolation)"],
+        "notes": "AES keys stored in secure keystore; ECC key migration pending.",
+        "expected_evidence": [
+            {"document": "17_Cybersecurity_HSM_SecOC_Validation_Report.pdf", "page": 2, "quote": "AES symmetric root keys verified inside HSM secure storage. Asymmetric ECC private key migration to secure keystore pending firmware v2.1."}
+        ]
+    },
+    {
+        "requirement_id": "REQ-AUT-084",
+        "expected_status": "PARTIAL",
+        "supporting_evidence_ids": ["EV-DOC17-004"],
+        "contradicting_evidence_ids": [],
+        "missing_conditions": ["C-084-2 (CAN 3 Chassis and CAN 4 Infotainment)"],
+        "notes": "Evaluated on CAN 1 and CAN 2; CAN 3 and CAN 4 pending.",
+        "expected_evidence": [
+            {"document": "17_Cybersecurity_HSM_SecOC_Validation_Report.pdf", "page": 2, "quote": "IDS rate limiter evaluated on CAN 1 (Powertrain) and CAN 2 (Body); blocked injection in 32.0 ms. CAN 3 (Chassis) and CAN 4 (Infotainment) testing pending."}
+        ]
+    },
+    {
+        "requirement_id": "REQ-AUT-085",
+        "expected_status": "CONFLICT",
+        "supporting_evidence_ids": [],
+        "contradicting_evidence_ids": ["EV-DOC17-005"],
+        "missing_conditions": [],
+        "notes": "JTAG port pins remain accessible with debugging enabled due to unblown e-fuses.",
+        "expected_evidence": [
+            {"document": "17_Cybersecurity_HSM_SecOC_Validation_Report.pdf", "page": 3, "quote": "Hardware inspection: JTAG port pins remain accessible with debugging enabled on production sample lot #3 due to unblown e-fuses."}
+        ]
+    },
+    {
+        "requirement_id": "REQ-AUT-086",
+        "expected_status": "CONFLICT",
+        "supporting_evidence_ids": [],
+        "contradicting_evidence_ids": ["EV-DOC17-006"],
+        "missing_conditions": [],
+        "notes": "Measured TRNG throughput is 140 kbps, failing the required >= 500 kbps.",
+        "expected_evidence": [
+            {"document": "17_Cybersecurity_HSM_SecOC_Validation_Report.pdf", "page": 3, "quote": "NIST SP 800-22 random number test suite: measured TRNG output rate was 140.0 kbps, failing the 500.0 kbps throughput requirement."}
+        ]
+    },
+    {
+        "requirement_id": "REQ-AUT-087",
+        "expected_status": "MISSING",
+        "supporting_evidence_ids": [],
+        "contradicting_evidence_ids": [],
+        "missing_conditions": ["C-087-1"],
+        "notes": "PKI certificate server integration pending.",
+        "expected_evidence": [
+            {"document": "20_Master_Compliance_Verification_Matrix.xlsx", "page": 1, "quote": "REQ-AUT-087; Certificate Revocation List (CRL) Verification; Status: NOT STARTED - PKI certificate authority server integration pending."}
+        ]
+    },
+    {
+        "requirement_id": "REQ-AUT-088",
+        "expected_status": "MISSING",
+        "supporting_evidence_ids": [],
+        "contradicting_evidence_ids": [],
+        "missing_conditions": ["C-088-1"],
+        "notes": "Side-channel analysis test scheduled.",
+        "expected_evidence": [
+            {"document": "20_Master_Compliance_Verification_Matrix.xlsx", "page": 1, "quote": "REQ-AUT-088; Side-Channel DPA / SPA Resistance; Status: NOT STARTED - Side-channel analysis lab test scheduled."}
+        ]
+    },
+    {
+        "requirement_id": "REQ-AUT-089",
+        "expected_status": "UNKNOWN",
+        "supporting_evidence_ids": [],
+        "contradicting_evidence_ids": [],
+        "missing_conditions": ["C-089-1"],
+        "notes": "Analytical TARA assessment document only.",
+        "expected_evidence": [
+            {"document": "08_BMS_Functional_Safety_Validation_Report.pdf", "page": 8, "quote": "TARA analysis report section 4 evaluates 42 threat vectors and assigns theoretical CAL ratings."}
+        ]
+    },
+    {
+        "requirement_id": "REQ-AUT-090",
+        "expected_status": "UNKNOWN",
+        "supporting_evidence_ids": [],
+        "contradicting_evidence_ids": [],
+        "missing_conditions": ["C-090-1"],
+        "notes": "Architecture specification only.",
+        "expected_evidence": [
+            {"document": "02_System_Architecture_Interface_Spec.pdf", "page": 2, "quote": "Section 11.3 describes the secure logging event format and flash partition layout."}
+        ]
+    },
+
+    # ── Domain 10 (091 - 100)
+    {
+        "requirement_id": "REQ-AUT-091",
+        "expected_status": "SUPPORTED",
+        "supporting_evidence_ids": ["EV-DOC11-001"],
+        "contradicting_evidence_ids": [],
+        "missing_conditions": [],
+        "notes": "CISPR 25 Class 4 sweep 150 kHz–2.5 GHz maintained >= 6.4 dB margin (>= 6.0 dB required).",
+        "expected_evidence": [
+            {"document": "11_EMC_Radiated_Immunity_Test_Report.pdf", "page": 1, "quote": "Semi-anechoic chamber radiated emissions sweep 150 kHz–2.5 GHz: all frequency peaks remained >= 6.4 dB below CISPR 25 Class 4 limit. Verdict: PASS."}
+        ]
+    },
+    {
+        "requirement_id": "REQ-AUT-092",
+        "expected_status": "SUPPORTED",
+        "supporting_evidence_ids": ["EV-DOC12-001"],
+        "contradicting_evidence_ids": [],
+        "missing_conditions": [],
+        "notes": "26.0 V DC applied for 60.0 s with zero degradation.",
+        "expected_evidence": [
+            {"document": "12_Electrical_Transient_Overvoltage_Report.pdf", "page": 1, "quote": "Jump start simulation: 26.0 V DC applied for 60.0 seconds; no thermal runaway or parametric drift observed. Verdict: PASS."}
+        ]
+    },
+    {
+        "requirement_id": "REQ-AUT-093",
+        "expected_status": "PARTIAL",
+        "supporting_evidence_ids": ["EV-DOC10-001"],
+        "contradicting_evidence_ids": [],
+        "missing_conditions": ["C-093-5 (Z-axis vibration)"],
+        "notes": "X and Y axes completed; Z-axis vibration run pending shaker maintenance.",
+        "expected_evidence": [
+            {"document": "10_Mechanical_Vibration_Shock_Report.pdf", "page": 1, "quote": "Random vibration test completed on X-axis (8.0 h) and Y-axis (8.0 h) at 2.50 g RMS with zero mechanical failure. Z-axis vibration run pending shaker maintenance."}
+        ]
+    },
+    {
+        "requirement_id": "REQ-AUT-094",
+        "expected_status": "PARTIAL",
+        "supporting_evidence_ids": ["EV-DOC09-002"],
+        "contradicting_evidence_ids": [],
+        "missing_conditions": ["C-094-1 (Cycles 251 to 500)"],
+        "notes": "250 of 500 cycles completed with zero defects; remaining 250 in progress.",
+        "expected_evidence": [
+            {"document": "09_Environmental_Thermal_Shock_Report.pdf", "page": 2, "quote": "Thermal shock chamber test completed 250 cycles of 500 total cycles with zero solder joint cracking. Remaining 250 cycles currently in progress in chamber #2."}
+        ]
+    },
+    {
+        "requirement_id": "REQ-AUT-095",
+        "expected_status": "CONFLICT",
+        "supporting_evidence_ids": [],
+        "contradicting_evidence_ids": ["EV-DOC10-002"],
+        "missing_conditions": [],
+        "notes": "Water ingress of 4.2 mL observed during 1m submersion test; rated as IP65 only instead of IP67.",
+        "expected_evidence": [
+            {"document": "10_Mechanical_Vibration_Shock_Report.pdf", "page": 2, "quote": "Ingress protection test: housing passed IP6X dust test, but water ingress of 4.2 mL observed during 1m submersion test due to connector gasket leakage. Rated as IP65 only."}
+        ]
+    },
+    {
+        "requirement_id": "REQ-AUT-096",
+        "expected_status": "CONFLICT",
+        "supporting_evidence_ids": [],
+        "contradicting_evidence_ids": ["EV-DOC12-002"],
+        "missing_conditions": [],
+        "notes": "Pulse 3a (-150V) caused MCU reset (Class C), violating Class A normal operation requirement.",
+        "expected_evidence": [
+            {"document": "12_Electrical_Transient_Overvoltage_Report.pdf", "page": 1, "quote": "Electrical transient test: application of Pulse 3a (-150 V) caused microcontroller reset (Class C behavior), violating Class A requirement."}
+        ]
+    },
+    {
+        "requirement_id": "REQ-AUT-097",
+        "expected_status": "MISSING",
+        "supporting_evidence_ids": [],
+        "contradicting_evidence_ids": [],
+        "missing_conditions": ["C-097-1"],
+        "notes": "Salt spray chamber test scheduled.",
+        "expected_evidence": [
+            {"document": "20_Master_Compliance_Verification_Matrix.xlsx", "page": 1, "quote": "REQ-AUT-097; Salt Spray Corrosion Resistance; Status: NOT STARTED - Salt spray chamber testing scheduled."}
+        ]
+    },
+    {
+        "requirement_id": "REQ-AUT-098",
+        "expected_status": "MISSING",
+        "supporting_evidence_ids": [],
+        "contradicting_evidence_ids": [],
+        "missing_conditions": ["C-098-1", "C-098-2"],
+        "notes": "HTOL burn-in chamber test pending.",
+        "expected_evidence": [
+            {"document": "20_Master_Compliance_Verification_Matrix.xlsx", "page": 1, "quote": "REQ-AUT-098; High-Temperature Operating Life (HTOL); Status: NOT STARTED - HTOL burn-in chamber test pending."}
+        ]
+    },
+    {
+        "requirement_id": "REQ-AUT-099",
+        "expected_status": "UNKNOWN",
+        "supporting_evidence_ids": [],
+        "contradicting_evidence_ids": [],
+        "missing_conditions": ["C-099-1", "C-099-2"],
+        "notes": "Conformal coating moisture permeation calculation model only.",
+        "expected_evidence": [
+            {"document": "13_Thermal_Runaway_Venting_Validation_Report.pdf", "page": 2, "quote": "Conformal coating moisture permeation model calculates insulation resistance > 100 MΩ under 95% RH."}
+        ]
+    },
+    {
+        "requirement_id": "REQ-AUT-100",
+        "expected_status": "UNKNOWN",
+        "supporting_evidence_ids": [],
+        "contradicting_evidence_ids": [],
+        "missing_conditions": ["C-100-1", "C-100-2"],
+        "notes": "Architecture test fixture specification only.",
+        "expected_evidence": [
+            {"document": "02_System_Architecture_Interface_Spec.pdf", "page": 2, "quote": "Section 12.1 specifies mechanical shock test parameters and fixture mounting details per ISO 16750-3."}
+        ]
+    }
+]
