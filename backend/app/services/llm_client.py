@@ -8,6 +8,7 @@ Supports Thinking via thinkingConfig (https://ai.google.dev/gemini-api/docs/thin
 """
 
 import json
+import re
 import asyncio
 import logging
 from typing import Type, TypeVar, Optional, Any
@@ -21,6 +22,10 @@ logger = logging.getLogger("traceaudit.llm")
 T = TypeVar("T", bound=BaseModel)
 
 GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models"
+
+# Transient failures worth retrying: rate limit + gateway/capacity errors
+RETRYABLE_STATUS_CODES = {429, 502, 503, 504}
+MAX_ATTEMPTS = 3
 
 
 def _clean_json_text(text: Any) -> str:
@@ -62,16 +67,22 @@ def _clean_json_text(text: Any) -> str:
     return cleaned
 
 
+def _gemini_major_version(model_name: str) -> Optional[int]:
+    """Extract the Gemini major version (e.g. 'gemini-3.7-flash' -> 3), or None."""
+    m = re.search(r"gemini[-_]?(\d+)", model_name.lower())
+    return int(m.group(1)) if m else None
+
+
 def is_gemini_3_series(model_name: str) -> bool:
-    """Check if model belongs to the Gemini 3 series which uses thinkingLevel."""
-    m = model_name.lower()
-    return "3.7" in m or "3.1" in m or "3.5" in m or "3.0" in m or "gemini-3" in m
+    """Check if model belongs to the Gemini 3+ series which uses thinkingLevel."""
+    version = _gemini_major_version(model_name)
+    return version is not None and version >= 3
 
 
 def is_gemini_2_5_series(model_name: str) -> bool:
-    """Check if model belongs to Gemini 2.5 series which uses thinkingBudget."""
-    m = model_name.lower()
-    return "2.5" in m or "2.0" in m
+    """Check if model belongs to the pre-3 Gemini series which uses thinkingBudget."""
+    version = _gemini_major_version(model_name)
+    return version is not None and version < 3
 
 
 async def call_gemini_generate_content(
@@ -130,12 +141,12 @@ async def call_gemini_generate_content(
             "parts": [{"text": system_instruction}]
         }
 
-    for attempt in range(3):
+    for attempt in range(MAX_ATTEMPTS):
         try:
             async with httpx.AsyncClient(timeout=timeout) as client:
                 resp = await client.post(url, json=payload)
-                if resp.status_code == 503 or resp.status_code == 429:
-                    logger.warning(f"Gemini API rate/capacity [{resp.status_code}]. Retrying (attempt {attempt+1}/3)...")
+                if resp.status_code in RETRYABLE_STATUS_CODES:
+                    logger.warning(f"Gemini API rate/capacity [{resp.status_code}]. Retrying (attempt {attempt+1}/{MAX_ATTEMPTS})...")
                     await asyncio.sleep(1.5 * (attempt + 1))
                     continue
                 if resp.status_code != 200:
@@ -154,7 +165,7 @@ async def call_gemini_generate_content(
 
                 return parts[0].get("text", "")
         except Exception as ex:
-            if attempt == 2:
+            if attempt == MAX_ATTEMPTS - 1:
                 logger.error(f"Exception calling Gemini API ({clean_model}): {ex}")
                 return None
             await asyncio.sleep(1.0)
@@ -195,23 +206,37 @@ async def call_databricks_chat_completions(
         "Content-Type": "application/json",
     }
 
-    try:
-        async with httpx.AsyncClient(timeout=timeout) as client:
-            resp = await client.post(url, json=payload, headers=headers)
-            if resp.status_code != 200:
-                logger.error(f"Databricks API error [{resp.status_code}] for model {model}: {resp.text}")
-            data = resp.json()
-            choices = data.get("choices", [])
-            if not choices:
+    for attempt in range(MAX_ATTEMPTS):
+        try:
+            async with httpx.AsyncClient(timeout=timeout) as client:
+                resp = await client.post(url, json=payload, headers=headers)
+                if resp.status_code in RETRYABLE_STATUS_CODES:
+                    logger.warning(
+                        f"Databricks API rate/capacity [{resp.status_code}] for model {model}. "
+                        f"Retrying (attempt {attempt+1}/{MAX_ATTEMPTS})..."
+                    )
+                    await asyncio.sleep(1.5 * (attempt + 1))
+                    continue
+                if resp.status_code != 200:
+                    logger.error(f"Databricks API error [{resp.status_code}] for model {model}: {resp.text}")
+                    return None
+
+                data = resp.json()
+                choices = data.get("choices", [])
+                if not choices:
+                    logger.warning(f"Databricks API returned no choices for model {model}.")
+                    return None
+                content = choices[0].get("message", {}).get("content")
+                if isinstance(content, list):
+                    parts = [p.get("text", "") for p in content if isinstance(p, dict) and p.get("type") == "text"]
+                    return "\n".join(parts) if parts else str(content)
+                return content
+        except Exception as ex:
+            if attempt == MAX_ATTEMPTS - 1:
+                logger.error(f"Exception calling Databricks Model Serving ({model}): {ex}")
                 return None
-            content = choices[0].get("message", {}).get("content")
-            if isinstance(content, list):
-                parts = [p.get("text", "") for p in content if isinstance(p, dict) and p.get("type") == "text"]
-                return "\n".join(parts) if parts else str(content)
-            return content
-    except Exception as ex:
-        logger.error(f"Exception calling Databricks Model Serving ({model}): {ex}")
-        return None
+            await asyncio.sleep(1.0)
+    return None
 
 
 async def call_openai_chat_completions(

@@ -1,9 +1,6 @@
-"""Vector indexing and semantic embedding service."""
+"""Lexical (BM25) tokenization and scoring utilities for evidence retrieval."""
 
-import math
 import re
-from typing import Optional
-from app.config import settings
 
 
 def tokenize(text: str) -> list[str]:
@@ -32,19 +29,3 @@ def compute_bm25_score(query_tokens: list[str], doc_tokens: list[str], avg_doc_l
 
     return score
 
-
-async def get_embedding(text: str) -> Optional[list[float]]:
-    """Compute dense embedding using OpenAI if configured."""
-    if not settings.OPENAI_API_KEY:
-        return None
-
-    try:
-        from openai import AsyncOpenAI
-        client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
-        response = await client.embeddings.create(
-            model=settings.EMBEDDING_MODEL,
-            input=text[:4000],
-        )
-        return response.data[0].embedding
-    except Exception:
-        return None

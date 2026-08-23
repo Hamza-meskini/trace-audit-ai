@@ -16,13 +16,33 @@ from app.schemas.document import DocumentResponse, DocumentUploadResponse
 
 router = APIRouter(prefix="/projects/{project_id}/documents", tags=["Documents"])
 
-# Map file extensions to document types
+# Map file extensions and filename keywords to realistic engineering document types
 DOC_TYPE_MAP = {
     ".pdf": "Technical specification",
     ".docx": "Technical documentation",
-    ".xlsx": "Data / spreadsheet",
-    ".csv": "Data / spreadsheet",
+    ".xlsx": "Compliance matrix",
+    ".csv": "Compliance matrix",
 }
+
+
+def infer_doc_type(filename: str, ext: str) -> str:
+    """Infer realistic engineering document type based on filename keywords."""
+    fn = filename.lower()
+    if any(k in fn for k in ("srs", "requirement", "prd", "prs")):
+        return "Technical specification"
+    elif any(k in fn for k in ("test", "report", "lab", "validation", "tr-")):
+        return "Test report"
+    elif any(k in fn for k in ("datasheet", "ds-", "supplier", "oem")):
+        return "Supplier documentation"
+    elif any(k in fn for k in ("matrix", "compliance", "verification_matrix")):
+        return "Compliance matrix"
+    elif any(k in fn for k in ("risk", "hazard", "fmea")):
+        return "Risk assessment"
+    elif any(k in fn for k in ("manual", "guide", "user_manual")):
+        return "User manual"
+    elif any(k in fn for k in ("architecture", "system_architecture", "arch_spec")):
+        return "Architecture specification"
+    return DOC_TYPE_MAP.get(ext, "Technical documentation")
 
 
 @router.get("", response_model=list[DocumentResponse])
@@ -65,10 +85,15 @@ async def upload_document(
     file_path = project_dir / safe_filename
 
     content = await file.read()
+    if len(content) > MAX_UPLOAD_SIZE_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail=f"File too large ({len(content) // (1024 * 1024)} MB). Maximum upload size is {MAX_UPLOAD_SIZE_BYTES // (1024 * 1024)} MB.",
+        )
     file_path.write_bytes(content)
 
-    # Determine doc_type from extension if not provided
-    resolved_type = doc_type if doc_type else DOC_TYPE_MAP.get(ext, "Other")
+    # Determine doc_type from filename and extension if not explicitly provided
+    resolved_type = doc_type if doc_type else infer_doc_type(file.filename or "", ext)
 
     doc = Document(
         id=file_id,

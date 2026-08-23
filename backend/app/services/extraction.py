@@ -94,6 +94,12 @@ def fallback_extract_requirements(text_content: str, doc_name: str = "") -> list
     lines = text_content.splitlines()
     req_counter = 1
 
+    # First pass: check if document has explicit requirement codes (e.g. REQ-BCU-001, REQ-001)
+    has_explicit_codes = any(
+        re.match(r"^(REQ[-_]?[A-Za-z0-9_-]*\d+|R[-_]?[A-Za-z0-9_-]*\d+)\s*[:\-–]?\s*", l.strip(), re.IGNORECASE)
+        for l in lines if len(l.strip()) >= 10
+    )
+
     for line in lines:
         cleaned = line.strip()
         if not cleaned or len(cleaned) < 15:
@@ -114,8 +120,8 @@ def fallback_extract_requirements(text_content: str, doc_name: str = "") -> list
                 severity="High" if cat in ("Safety", "Electrical") else "Medium",
                 parameters=params,
             ))
-        elif any(verb in cleaned.lower() for verb in [" shall ", " must ", " required to ", " operates between ", " operating range"]):
-            # If the previous requirement has no description yet, append to it
+        elif not has_explicit_codes and any(verb in cleaned.lower() for verb in [" shall ", " must ", " required to ", " operates between ", " operating range"]):
+            # Only synthesize numbered REQ-00x codes if document has NO explicit requirement codes at all
             if reqs and (reqs[-1].description == reqs[-1].title or len(reqs[-1].description or "") < 80):
                 reqs[-1].description = f"{reqs[-1].title}. {cleaned}"
                 if not reqs[-1].parameters:
@@ -146,9 +152,9 @@ async def extract_requirements_from_text(
     model: Optional[str] = None,
     thinking_level: Optional[str] = None,
 ) -> list[ExtractedRequirement]:
-    """Extract structured requirements from document text using Gemini (with Thinking enabled) or OpenAI."""
+    """Extract structured requirements from document text using Gemini (with Thinking enabled) or Databricks/OpenAI."""
     active_model = model or settings.LLM_MODEL
-    has_keys = bool(settings.effective_gemini_api_key or settings.effective_openai_api_key)
+    has_keys = bool(settings.effective_gemini_api_key or settings.effective_databricks_token or settings.effective_openai_api_key)
 
     if not has_keys:
         return fallback_extract_requirements(text, doc_name)

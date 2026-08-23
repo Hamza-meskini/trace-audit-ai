@@ -1,7 +1,8 @@
 """End-to-end audit pipeline service.
 
 Executes document parsing, requirement extraction, evidence retrieval,
-deterministic verification, and findings generation for a project.
+hybrid verification (deterministic validators + batched LLM reasoning
+with deterministic fallback), and findings generation for a project.
 """
 
 import os
@@ -19,9 +20,12 @@ from app.models.finding import Finding
 from app.services.ingestion import parse_document
 from app.services.extraction import extract_requirements_from_text
 from app.services.retrieval import retrieve_candidate_evidence
-from app.services.classification import assess_requirement_coverage
+from app.services.classification import batch_assess_requirements
 
 logger = logging.getLogger("traceaudit.pipeline")
+
+# Filename keywords used to locate specification documents to extract requirements from
+SPEC_DOC_KEYWORDS = ("spec", "requirement", "srs", "user_manual")
 
 
 async def run_audit_pipeline(
@@ -104,9 +108,29 @@ async def run_audit_pipeline(
     requirements = req_result.scalars().all()
 
     if not requirements:
-        # Extract from any Technical Specification documents
-        spec_docs = [d for d in documents if "spec" in d.original_filename.lower() or "requirement" in d.original_filename.lower() or "user_manual" in d.original_filename.lower()]
+        # Select the primary requirement specification document(s)
+        # Priority 1: Primary SRS / Requirement specification files
+        srs_candidates = [
+            d for d in documents
+            if any(k in d.original_filename.lower() for k in ("srs", "requirement", "prd", "prs", "product_requirements"))
+            or ("requirement" in (d.doc_type or "").lower())
+        ]
+
+        if srs_candidates:
+            spec_docs = srs_candidates
+        else:
+            # Priority 2: General specification documents, explicitly excluding test reports, datasheets, matrices
+            spec_docs = [
+                d for d in documents
+                if ("spec" in d.original_filename.lower() or "spec" in (d.doc_type or "").lower())
+                and not any(k in d.original_filename.lower() for k in ("test", "report", "datasheet", "matrix", "compliance", "safety_report", "lab"))
+            ]
+
+        if not spec_docs and documents:
+            spec_docs = [documents[0]]
+
         extracted_count = 0
+        seen_req_codes = set()
 
         for doc in spec_docs:
             if os.path.exists(doc.storage_path):
@@ -118,6 +142,9 @@ async def run_audit_pipeline(
                     thinking_level=active_thinking,
                 )
                 for er in extracted:
+                    if er.req_code in seen_req_codes:
+                        continue
+                    seen_req_codes.add(er.req_code)
                     extracted_count += 1
                     req = Requirement(
                         id=str(uuid.uuid4()),
@@ -144,6 +171,8 @@ async def run_audit_pipeline(
         delete(Finding).where(Finding.project_id == project_id)
     )
 
+    # 4a. Retrieve candidate evidence per requirement
+    req_items = []
     for req in requirements:
         # Clear existing evidence links for this requirement
         await db.execute(
@@ -169,13 +198,29 @@ async def run_audit_pipeline(
             for r in retrieved
         ]
 
-        assessment = assess_requirement_coverage(
-            req_code=req.req_code,
-            title=req.title,
-            description=req.description,
-            category=req.category,
-            candidate_chunks=candidate_chunks,
-        )
+        req_items.append({
+            "req_code": req.req_code,
+            "title": req.title,
+            "description": req.description,
+            "category": req.category,
+            "candidate_chunks": candidate_chunks,
+        })
+
+    # 4b. Batched hybrid verification: deterministic validators first,
+    # LLM multi-condition reasoning (with Databricks cascade fallback) for
+    # inconclusive requirements — same engine as the evaluation benchmark.
+    assessments = await batch_assess_requirements(
+        req_items=req_items,
+        model=active_model,
+        thinking_level=active_thinking,
+    )
+
+    # 4c. Persist assessment results, evidence links, and findings
+    for req in requirements:
+        assessment = assessments.get(req.req_code)
+        if assessment is None:
+            logger.warning(f"No assessment produced for requirement {req.req_code}; skipping.")
+            continue
 
         # Update requirement fields
         req.coverage_status = assessment.coverage_status

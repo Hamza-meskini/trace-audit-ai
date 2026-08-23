@@ -51,8 +51,11 @@ async def update_ai_settings(body: UpdateAiSettingsRequest):
                 detail=f"Invalid model '{body.model}'. Supported: {', '.join(valid_model_ids)}",
             )
         settings.LLM_MODEL = body.model
-        if "gemini" in body.model.lower():
+        model_lower = body.model.lower()
+        if "gemini" in model_lower:
             settings.LLM_PROVIDER = "gemini"
+        elif model_lower.startswith("system.ai.") or "databricks" in model_lower:
+            settings.LLM_PROVIDER = "databricks"
         else:
             settings.LLM_PROVIDER = "openai"
 

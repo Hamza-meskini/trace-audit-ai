@@ -264,11 +264,6 @@ async def run_benchmark(
     # Failure Analysis
     # ──────────────────────────────────────────────────────────────────────────
     failures: list[dict[str, Any]] = []
-    # Map ground truth sources for lookup
-    gt_sources_map = {}
-    for link in gt_links:
-        code = normalize_code(link.get("req_code") or link.get("requirement_id"))
-        gt_sources_map.setdefault(code, []).append(link)
 
     for r in gt_reqs:
         req_code = normalize_code(r.get("req_code") or r.get("requirement_id"))

@@ -1,5 +1,6 @@
 """Audit API — trigger pipeline and check status."""
 
+import logging
 from typing import Optional
 from pydantic import BaseModel
 from fastapi import APIRouter, Depends, HTTPException
@@ -8,11 +9,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 from app.services.pipeline import run_audit_pipeline
 
+logger = logging.getLogger("traceaudit.api")
+
 router = APIRouter(prefix="/projects/{project_id}/audit", tags=["Audit"])
 
 
 class AuditRunRequest(BaseModel):
-    model: Optional[str] = None           # e.g. "gemini-3.7-flash", "gemini-3.1-pro-preview"
+    model: Optional[str] = None           # e.g. "gemini-3.7-flash", "system.ai.qwen35-122b-a10b"
     thinking_level: Optional[str] = None  # "HIGH", "MEDIUM", "LOW", "MINIMAL"
 
 
@@ -30,5 +33,6 @@ async def trigger_audit(
         return result
     except ValueError as ve:
         raise HTTPException(status_code=404, detail=str(ve))
-    except Exception as ex:
-        raise HTTPException(status_code=500, detail=f"Audit pipeline error: {ex}")
+    except Exception:
+        logger.exception(f"Audit pipeline failed for project '{project_id}'")
+        raise HTTPException(status_code=500, detail="Audit pipeline error. Check server logs for details.")

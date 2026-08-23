@@ -19,6 +19,13 @@ class Settings(BaseSettings):
     # File storage (local filesystem for MVP)
     UPLOAD_DIR: str = "./uploads"
 
+    # CORS — allowed frontend origins (JSON list in .env overrides this default)
+    CORS_ORIGINS: list[str] = [
+        "http://localhost:5173",
+        "http://localhost:3000",
+        "http://localhost:8080",
+    ]
+
     # LLM Settings — Google Gemini & OpenAI
     GEMINI_API_KEY: str = ""
     GOOGLE_API_KEY: str = ""
@@ -31,11 +38,6 @@ class Settings(BaseSettings):
     # Supported thinking levels for Gemini 3 series: "LOW", "MEDIUM", "HIGH", "MINIMAL"
     GEMINI_THINKING_LEVEL: str = "HIGH"
     GEMINI_THINKING_BUDGET: int = -1  # For Gemini 2.5 series (-1 = dynamic)
-
-    EMBEDDING_MODEL: str = "text-embedding-004"
-
-    # ChromaDB
-    CHROMA_PERSIST_DIR: str = "./chroma_data"
 
     # Databricks AI Gateway Settings (MLflow Model Serving)
     DATABRICKS_TOKEN: str = ""

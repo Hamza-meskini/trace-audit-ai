@@ -21,6 +21,32 @@ from app.services.units import convert_value, are_units_compatible
 
 logger = logging.getLogger("traceaudit.verifier")
 
+# Filenames that identify specification documents (self-referential, not independent evidence)
+SPEC_DOC_KEYWORDS = ("srs", "product_requirements", "requirements_specification")
+
+# Document-name markers for formal verification tracking records
+COMPLIANCE_MATRIX_KEYWORDS = ("matrix", "verification")
+
+# Generic incomplete-verification wording found in test reports and matrices
+PARTIAL_EVIDENCE_INDICATORS = [
+    "pending", "in progress", "incomplete", "not yet", "not started",
+    "scheduled", "awaiting", "remaining", "deferred", "postponed",
+    "partially", "to be completed", "planned",
+]
+
+# Document-name markers for supplier component documents
+DATASHEET_DOC_KEYWORDS = ("datasheet", "data sheet", "supplier", "oem", "ds-")
+
+# Generic restriction wording in datasheets that may contradict a specification
+DATASHEET_RESTRICTION_INDICATORS = [
+    "not supported", "does not support", "exceeds maximum", "exceeds the maximum",
+    "restricted", "derating", "derated", "incompatible", "insufficient",
+    "must not", "limitation",
+]
+
+# Generic passing-verdict wording in authoritative test reports
+PASS_VERDICT_INDICATORS = ["verdict: pass", "result: pass", "status: pass", "all tests pass", "passed all"]
+
 
 def build_verification_prompt(
     contract: RequirementContract,
@@ -82,14 +108,26 @@ Return your evaluation as a structured JSON object.
     return prompt, system_instruction
 
 
+def _match_indicator(text_lower: str, indicators: list[str]) -> Optional[str]:
+    """Return the first indicator phrase present in the text, if any."""
+    for ind in indicators:
+        if ind in text_lower:
+            return ind
+    return None
+
+
 def rule_based_multi_condition_verification(
     contract: RequirementContract,
     evidence_chunks: list[dict[str, Any]],
 ) -> VerificationAnalysisResult:
-    """Deterministic rule-based evaluation for multi-condition and partial evidence."""
+    """Deterministic rule-based evaluation for multi-condition and partial evidence.
+
+    Uses only generic engineering-document indicators (statuses, pending wording,
+    restriction wording, pass verdicts) so it generalizes beyond any single dataset.
+    """
     non_spec_chunks = [
         c for c in evidence_chunks
-        if not any(k in c.get("document_name", "").lower() for k in ["srs", "product_requirements"])
+        if not any(k in c.get("document_name", "").lower() for k in SPEC_DOC_KEYWORDS)
     ]
 
     if not non_spec_chunks:
@@ -99,59 +137,59 @@ def rule_based_multi_condition_verification(
             reason=f"No independent test report, datasheet, or compliance matrix was found for {contract.req_code}.",
         )
 
-    all_evidence_text = " ".join([c.get("content", "") for c in non_spec_chunks]).lower()
+    def _snippet_for(c_text: str, indicator: str) -> str:
+        m = re.search(rf"([^.\n]*?{re.escape(indicator)}[^.\n]*)", c_text, re.IGNORECASE)
+        return m.group(1).strip() if m else c_text[:120]
 
-    # 1. Check for explicit compliance matrix status
-    if "07_compliance_verification_matrix" in " ".join([c.get("document_name", "").lower() for c in non_spec_chunks]):
-        for c in non_spec_chunks:
-            if "matrix" in c.get("document_name", "").lower():
-                c_text = c.get("content", "")
-                if contract.req_code.upper() in c_text.upper():
-                    c_lower = c_text.lower()
-                    if "not started" in c_lower or "missing" in c_lower:
-                        return VerificationAnalysisResult(
-                            status="MISSING",
-                            confidence=95,
-                            reason=f"Compliance matrix explicitly marks {contract.req_code} as 'Not Started' / Missing evidence.",
-                            highlight="Status: Not Started",
-                        )
-                    if "in progress" in c_lower:
-                        return VerificationAnalysisResult(
-                            status="PARTIAL",
-                            confidence=92,
-                            reason=f"Compliance matrix records {contract.req_code} as 'In Progress'.",
-                            highlight="Status: In Progress",
-                        )
-
-    # 2. Check for explicit partial / pending test indicators in test reports
-    partial_indicators = [
-        "pending", "in progress", "incomplete", "scheduled", "fixture pending",
-        "remainder of", "upgrade pending", "awaiting test fixture", "single point", "single-point",
-    ]
+    # 1. Check for explicit compliance/verification matrix status for this requirement
     for c in non_spec_chunks:
-        c_text = c.get("content", "")
-        c_lower = c_text.lower()
-        if any(p in c_lower for p in partial_indicators):
-            for ind in partial_indicators:
-                if ind in c_lower:
-                    m = re.search(rf"([^.\n]*?{re.escape(ind)}[^.\n]*)", c_text, re.IGNORECASE)
-                    snippet = m.group(1).strip() if m else c_text[:120]
+        doc_name = c.get("document_name", "").lower()
+        if any(k in doc_name for k in COMPLIANCE_MATRIX_KEYWORDS):
+            c_text = c.get("content", "")
+            if contract.req_code.upper() in c_text.upper():
+                c_lower = c_text.lower()
+                if "not started" in c_lower or "missing" in c_lower:
+                    m = re.search(r"([^.\n]*(?:not started|missing)[^.\n]*)", c_text, re.IGNORECASE)
+                    snippet = m.group(1).strip() if m else "Status: Not Started"
+                    return VerificationAnalysisResult(
+                        status="MISSING",
+                        confidence=95,
+                        reason=f"Compliance matrix explicitly marks {contract.req_code} as 'Not Started' / missing evidence.",
+                        highlight=snippet,
+                    )
+                if "in progress" in c_lower:
+                    m = re.search(r"([^.\n]*in progress[^.\n]*)", c_text, re.IGNORECASE)
+                    snippet = m.group(1).strip() if m else "Status: In Progress"
                     return VerificationAnalysisResult(
                         status="PARTIAL",
-                        confidence=90,
-                        reason=f"Evidence indicates partial verification with remaining activities pending: '{snippet}'.",
+                        confidence=92,
+                        reason=f"Compliance matrix records {contract.req_code} as 'In Progress'.",
                         highlight=snippet,
                     )
 
-    # 3. Check for component datasheet maximum rating contradictions
+    # 2. Check for generic partial / pending verification indicators in test reports
+    for c in non_spec_chunks:
+        c_text = c.get("content", "")
+        c_lower = c_text.lower()
+        indicator = _match_indicator(c_lower, PARTIAL_EVIDENCE_INDICATORS)
+        if indicator:
+            snippet = _snippet_for(c_text, indicator)
+            return VerificationAnalysisResult(
+                status="PARTIAL",
+                confidence=90,
+                reason=f"Evidence indicates partial verification with remaining activities pending: '{snippet}'.",
+                highlight=snippet,
+            )
+
+    # 3. Check for component datasheet restriction contradictions
     for c in non_spec_chunks:
         doc_name = c.get("document_name", "").lower()
-        if any(k in doc_name for k in ["datasheet", "oem", "supplier", "ds-"]):
+        if any(k in doc_name for k in DATASHEET_DOC_KEYWORDS):
             c_text = c.get("content", "")
             c_lower = c_text.lower()
-            if any(k in c_lower for k in ["not supported", "causes thermal shutdown", "exceeds", "restricted", "shared common ground", "non-isolated"]):
-                m = re.search(r"([^.\n]*(?:not supported|shutdown|restricted|shared common ground|non-isolated)[^.\n]*)", c_text, re.IGNORECASE)
-                snippet = m.group(1).strip() if m else c_text[:120]
+            indicator = _match_indicator(c_lower, DATASHEET_RESTRICTION_INDICATORS)
+            if indicator:
+                snippet = _snippet_for(c_text, indicator)
                 return VerificationAnalysisResult(
                     status="CONFLICT",
                     confidence=95,
@@ -159,16 +197,19 @@ def rule_based_multi_condition_verification(
                     highlight=snippet,
                 )
 
-    # 4. Check for PASS verdicts in authoritative test reports
+    # 4. Check for explicit PASS verdicts in authoritative test reports
     for c in non_spec_chunks:
         c_text = c.get("content", "")
         c_lower = c_text.lower()
-        if "verdict: pass" in c_lower or "zero resets" in c_lower or "zero water ingress" in c_lower:
+        indicator = _match_indicator(c_lower, PASS_VERDICT_INDICATORS)
+        if indicator:
+            m = re.search(r"([^.\n]*(?:pass|passed)[^.\n]*)", c_text, re.IGNORECASE)
+            snippet = m.group(1).strip() if m else c_text[:120]
             return VerificationAnalysisResult(
                 status="SUPPORTED",
                 confidence=95,
-                reason=f"Authoritative lab test report in {c.get('document_name')} verified all criteria with passing verdict.",
-                highlight="Verdict: PASS",
+                reason=f"Authoritative test report in {c.get('document_name')} records an explicit passing verdict.",
+                highlight=snippet,
             )
 
     return VerificationAnalysisResult(
@@ -245,7 +286,7 @@ async def evaluate_batch_verification(
     from app.schemas.verification_result import BatchVerificationResult
 
     active_model = model or settings.LLM_MODEL
-    has_keys = bool(settings.effective_gemini_api_key or settings.effective_openai_api_key)
+    has_keys = bool(settings.effective_gemini_api_key or settings.effective_databricks_token or settings.effective_openai_api_key)
 
     results: dict[str, VerificationAnalysisResult] = {}
 
@@ -293,7 +334,7 @@ async def evaluate_requirement_verification(
 ) -> VerificationAnalysisResult:
     """Execute structured multi-condition verification using LLM or deterministic fallback."""
     active_model = model or settings.LLM_MODEL
-    has_keys = bool(settings.effective_gemini_api_key or settings.effective_openai_api_key)
+    has_keys = bool(settings.effective_gemini_api_key or settings.effective_databricks_token or settings.effective_openai_api_key)
 
     # If no LLM keys are provided, use deterministic rule-based multi-condition engine
     if not has_keys:
