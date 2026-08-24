@@ -4,6 +4,8 @@ from typing import Optional, Union, Literal
 from pydantic import BaseModel, Field
 import re
 
+from app.schemas.evidence_qualification import normalize_entity_scope
+
 
 RequirementType = Literal[
     "numeric_range",
@@ -98,29 +100,19 @@ def parse_requirement_contract(
 
     # Determine verification method
     v_method = "physical_test"
-    if any(k in full_lower for k in ["by simulation", "simulation with", "simulated in", "simulation model", "simulation analysis"]):
+    if any(k in full_lower for k in [
+        "by simulation", "simulation with", "simulated in", "simulation model",
+        "simulation analysis", "in simulation", "via simulation", "simulation result",
+        "matlab", "simulink", "spice", "ltspice", "cfd", "finite element",
+    ]):
         v_method = "simulation"
-    elif any(k in full_lower for k in ["by calculation", "analytical calculation", "calculated estimate", "calculation model"]):
+    elif any(k in full_lower for k in ["by calculation", "analytical calculation", "calculated estimate", "calculation model", "by analysis", "analytical estimation"]):
         v_method = "calculation"
     elif any(k in full_lower for k in ["by inspection", "visual inspection", "inspection of"]):
         v_method = "inspection"
 
-    # Determine scope / entity
-    scope = "System"
-    if "asic" in full_lower:
-        scope = "ASIC"
-    elif "inverter" in full_lower or "gate driver" in full_lower:
-        scope = "Inverter"
-    elif "bcu" in full_lower:
-        scope = "BCU"
-    elif "bms" in full_lower:
-        scope = "BMS"
-    elif "pack" in full_lower:
-        scope = "Pack"
-    elif "hvil" in full_lower:
-        scope = "HVIL"
-    elif "dc-dc" in full_lower or "dcdc" in full_lower:
-        scope = "DC-DC"
+    # Determine scope / entity (single shared normalization path)
+    scope = normalize_entity_scope(full_text)
 
     contract = RequirementContract(
         requirement_id=req_code,

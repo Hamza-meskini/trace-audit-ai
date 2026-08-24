@@ -1,8 +1,8 @@
 {
   "benchmark_name": "TraceAudit AI 100-Requirement Complex Automotive Benchmark",
-  "timestamp": "2026-08-23 19:02:13",
+  "timestamp": "2026-08-24 23:40:26",
   "total_requirements": 100,
-  "runtime_seconds": 707.08,
+  "runtime_seconds": 1077.85,
   "extraction_metrics": {
     "precision": 100.0,
     "recall": 100.0,
@@ -23,69 +23,69 @@
     "mean_reciprocal_rank": 0.5712
   },
   "verification_metrics": {
-    "accuracy": 84.0,
-    "macro_precision": 86.55,
-    "macro_recall": 84.0,
-    "macro_f1": 83.51,
+    "accuracy": 77.0,
+    "macro_precision": 79.19,
+    "macro_recall": 77.0,
+    "macro_f1": 77.28,
     "per_class": {
       "SUPPORTED": {
-        "precision": 73.08,
-        "recall": 95.0,
-        "f1": 82.61,
+        "precision": 57.69,
+        "recall": 75.0,
+        "f1": 65.22,
         "support": 20,
-        "true_positives": 19,
-        "false_positives": 7,
-        "false_negatives": 1
+        "true_positives": 15,
+        "false_positives": 11,
+        "false_negatives": 5
       },
       "PARTIAL": {
-        "precision": 72.73,
+        "precision": 84.21,
         "recall": 80.0,
-        "f1": 76.19,
+        "f1": 82.05,
         "support": 20,
         "true_positives": 16,
-        "false_positives": 6,
+        "false_positives": 3,
         "false_negatives": 4
       },
       "CONFLICT": {
-        "precision": 86.96,
+        "precision": 90.91,
         "recall": 100.0,
-        "f1": 93.02,
+        "f1": 95.24,
         "support": 20,
         "true_positives": 20,
-        "false_positives": 3,
+        "false_positives": 2,
         "false_negatives": 0
       },
       "MISSING": {
         "precision": 100.0,
-        "recall": 90.0,
-        "f1": 94.74,
+        "recall": 70.0,
+        "f1": 82.35,
         "support": 20,
-        "true_positives": 18,
+        "true_positives": 14,
         "false_positives": 0,
-        "false_negatives": 2
+        "false_negatives": 6
       },
       "UNKNOWN": {
-        "precision": 100.0,
-        "recall": 55.0,
-        "f1": 70.97,
+        "precision": 63.16,
+        "recall": 60.0,
+        "f1": 61.54,
         "support": 20,
-        "true_positives": 11,
-        "false_positives": 0,
-        "false_negatives": 9
+        "true_positives": 12,
+        "false_positives": 7,
+        "false_negatives": 8
       }
     },
     "confusion_matrix": {
       "SUPPORTED": {
-        "SUPPORTED": 19,
-        "PARTIAL": 0,
+        "SUPPORTED": 15,
+        "PARTIAL": 1,
         "CONFLICT": 1,
         "MISSING": 0,
-        "UNKNOWN": 0
+        "UNKNOWN": 3
       },
       "PARTIAL": {
-        "SUPPORTED": 3,
+        "SUPPORTED": 4,
         "PARTIAL": 16,
-        "CONFLICT": 1,
+        "CONFLICT": 0,
         "MISSING": 0,
         "UNKNOWN": 0
       },
@@ -100,52 +100,52 @@
         "SUPPORTED": 1,
         "PARTIAL": 0,
         "CONFLICT": 1,
-        "MISSING": 18,
-        "UNKNOWN": 0
+        "MISSING": 14,
+        "UNKNOWN": 4
       },
       "UNKNOWN": {
-        "SUPPORTED": 3,
-        "PARTIAL": 6,
+        "SUPPORTED": 6,
+        "PARTIAL": 2,
         "CONFLICT": 0,
         "MISSING": 0,
-        "UNKNOWN": 11
+        "UNKNOWN": 12
       }
     }
   },
   "condition_metrics": {
     "total_conditions": 172,
-    "correct_conditions": 149,
-    "condition_accuracy": 86.63,
-    "condition_precision": 88.73,
-    "condition_recall": 95.45,
-    "condition_f1": 91.97
+    "correct_conditions": 142,
+    "condition_accuracy": 82.56,
+    "condition_precision": 81.69,
+    "condition_recall": 87.88,
+    "condition_f1": 84.67
   },
   "specialty_metrics": {
-    "conflict_f1": 93.02,
-    "missing_f1": 94.74,
-    "partial_f1": 76.19,
-    "unknown_f1": 70.97,
+    "conflict_f1": 95.24,
+    "missing_f1": 82.35,
+    "partial_f1": 82.05,
+    "unknown_f1": 61.54,
     "unsupported_claim_rate": 5.0,
-    "condition_accuracy": 86.63,
-    "condition_f1": 91.97,
-    "numerical_range_accuracy": 84.0
+    "condition_accuracy": 82.56,
+    "condition_f1": 84.67,
+    "numerical_range_accuracy": 77.0
   },
-  "failures_count": 16,
+  "failures_count": 23,
   "failures": [
     {
-      "requirement_id": "REQ-AUT-009",
-      "title": "Acoustic Gas Venting Detection Sensor Baseline",
+      "requirement_id": "REQ-AUT-002",
+      "title": "HV Pack Operating Voltage Range",
       "category": "High-Voltage Battery",
-      "difficulty": "Very Hard",
-      "expected_status": "UNKNOWN",
+      "difficulty": "Difficult",
+      "expected_status": "SUPPORTED",
       "predicted_status": "PARTIAL",
-      "failure_category": "SOURCE_AUTHORITY_FAILURE",
-      "reason": "The requirement is partially supported by the provided evidence, but some conditions are still pending.",
+      "failure_category": "NUMERIC_REASONING_FAILURE",
+      "reason": "The BCU maintains continuous monitoring and communication across the high-voltage pack operating range, but the maximum limit is not fully verified.",
       "retrieved_evidence": [
-        "Requirement ID: REQ-AUT-009; Title: Acoustic Gas Venting Detection Sensor Baseline; Category: High-V",
-        "Thermal Management & Fluid Dynamics Validation Report\nEmpirical Chiller Testing, PTC Response, and T"
+        "Requirement ID: REQ-AUT-002; Title: HV Pack Operating Voltage Range; Category: High-Voltage Battery;",
+        "BMS-ASIC-8800 16-Channel Battery Monitoring IC Datasheet\nSemiconductor Component Specification & Abs"
       ],
-      "ground_truth_note": "Acoustic baseline characterized in bench test, but vehicle pack calibration remains unproven."
+      "ground_truth_note": "Pack operating envelope validated from 380 V to 820 V DC (fully covers required 400 V to 800 V)."
     },
     {
       "requirement_id": "REQ-AUT-010",
@@ -153,9 +153,9 @@
       "category": "High-Voltage Battery",
       "difficulty": "Difficult",
       "expected_status": "UNKNOWN",
-      "predicted_status": "PARTIAL",
+      "predicted_status": "SUPPORTED",
       "failure_category": "SOURCE_AUTHORITY_FAILURE",
-      "reason": "The requirement is partially supported by the provided evidence, but some conditions are still pending.",
+      "reason": "The HVIL circuit operates on a 1.0 kHz \u00b1 10 Hz PWM signal and detects an open-loop condition within the specified time limit.",
       "retrieved_evidence": [
         "Requirement ID: REQ-AUT-010; Title: HV Interlock Loop (HVIL) Pulse Width Modulation Diagnostic; Cate",
         "System Architecture & Interface Specification (v3.1)\nSystem Level High-Voltage, Networking, and Diag"
@@ -200,7 +200,7 @@
       "expected_status": "UNKNOWN",
       "predicted_status": "PARTIAL",
       "failure_category": "RETRIEVAL_FAILURE",
-      "reason": "The requirement is partially supported by the provided evidence, but some conditions are still pending.",
+      "reason": "The total phase current harmonic distortion (THD) is not fully verified.",
       "retrieved_evidence": [
         "Requirement ID: REQ-AUT-019; Title: Space Vector PWM Harmonic Distortion (THD); Category: Traction I",
         "Requirement ID: REQ-AUT-034; Title: V2L (Vehicle-to-Load) Bidirectional Output Voltage & Distortion;"
@@ -213,9 +213,9 @@
       "category": "Traction Inverter",
       "difficulty": "Difficult",
       "expected_status": "UNKNOWN",
-      "predicted_status": "PARTIAL",
+      "predicted_status": "SUPPORTED",
       "failure_category": "SOURCE_AUTHORITY_FAILURE",
-      "reason": "The requirement is partially supported by the provided evidence, but some conditions are still pending.",
+      "reason": "The inverter FOC algorithm maintains stable demagnetization current control without torque oscillations during deep flux weakening.",
       "retrieved_evidence": [
         "Requirement ID: REQ-AUT-020; Title: Field Oriented Control (FOC) Flux Weakening Stability; Category:",
         "System Architecture & Interface Specification (v3.1)\nSystem Level High-Voltage, Networking, and Diag"
@@ -223,94 +223,124 @@
       "ground_truth_note": "Architecture description only; empirical vector control test records absent."
     },
     {
-      "requirement_id": "REQ-AUT-024",
-      "title": "12V Output Voltage Ripple and Noise",
-      "category": "Power Distribution",
+      "requirement_id": "REQ-AUT-038",
+      "title": "Proximity Pilot (PP) Resistor Value Discrimination",
+      "category": "Charging Systems",
+      "difficulty": "Difficult",
+      "expected_status": "MISSING",
+      "predicted_status": "UNKNOWN",
+      "failure_category": "NUMERIC_REASONING_FAILURE",
+      "reason": "No evidence is available to support or reject the proximity pilot resistor value discrimination requirement. [Python aggregator overrode provisional status 'MISSING' based on condition-level results.]",
+      "retrieved_evidence": [
+        "Requirement ID: REQ-AUT-038; Title: Proximity Pilot (PP) Resistor Value Discrimination; Category: Ch",
+        "Requirement ID: REQ-AUT-032; Title: Control Pilot (CP) Duty Cycle Detection Tolerance; Category: Cha"
+      ],
+      "ground_truth_note": "Cable resistance fixture pending."
+    },
+    {
+      "requirement_id": "REQ-AUT-049",
+      "title": "Cabin Thermal Comfort Model (PMV/PPD)",
+      "category": "Thermal Management",
+      "difficulty": "Very Hard",
+      "expected_status": "UNKNOWN",
+      "predicted_status": "SUPPORTED",
+      "failure_category": "SOURCE_AUTHORITY_FAILURE",
+      "reason": "Physical test evidence available and condition is proven.",
+      "retrieved_evidence": [
+        "Requirement ID: REQ-AUT-049; Title: Cabin Thermal Comfort Model (PMV/PPD); Category: Thermal Managem",
+        "Thermal Management & Fluid Dynamics Validation Report\nEmpirical Chiller Testing, PTC Response, and T"
+      ],
+      "ground_truth_note": "CFD modeling calculation only; in-vehicle test mandatory."
+    },
+    {
+      "requirement_id": "REQ-AUT-063",
+      "title": "UDS Security Access (Service 0x27) Seed-Key Authentication",
+      "category": "Diagnostics & Bootloader",
       "difficulty": "Hard",
       "expected_status": "PARTIAL",
       "predicted_status": "SUPPORTED",
       "failure_category": "PARTIAL_COMPLIANCE_FAILURE",
-      "reason": "Tested points (-40 to 85 \u00b0C) fully span required range (-40 to 85 \u00b0C).",
+      "reason": "Partial evidence for UDS Security Access (0x27) seed-key authentication [Python aggregator overrode provisional status 'PARTIAL' based on condition-level results.]",
       "retrieved_evidence": [
-        "Requirement ID: REQ-AUT-024; Title: 12V Output Voltage Ripple and Noise; Category: Power Distributio",
-        "DC-DC Converter Electrical & Efficiency Test Report\nGalvanic Isolation Hipot, Step Load Dynamics, an"
+        "Requirement ID: REQ-AUT-063; Title: UDS Security Access (Service 0x27) Seed-Key Authentication; Cate",
+        "UDS Diagnostic Protocol & Flash Bootloader Validation Report\nISO 14229 Diagnostic Services (0x10, 0x"
       ],
-      "ground_truth_note": "Ripple 68 mVpp measured at room temp; thermal extreme chamber measurements pending."
+      "ground_truth_note": "Level 0x01 verified; Level 0x03 engineering access test pending."
     },
     {
-      "requirement_id": "REQ-AUT-029",
-      "title": "Conducted Voltage Transients Suppression (ISO 7637-2)",
-      "category": "Power Distribution",
+      "requirement_id": "REQ-AUT-064",
+      "title": "Firmware OTA Dual-Bank A/B Rollback Recovery",
+      "category": "Diagnostics & Bootloader",
+      "difficulty": "Hard",
+      "expected_status": "PARTIAL",
+      "predicted_status": "SUPPORTED",
+      "failure_category": "PARTIAL_COMPLIANCE_FAILURE",
+      "reason": "Partial evidence for Firmware OTA Dual-Bank A/B Rollback Recovery [Python aggregator overrode provisional status 'PARTIAL' based on condition-level results.]",
+      "retrieved_evidence": [
+        "Requirement ID: REQ-AUT-064; Title: Firmware OTA Dual-Bank A/B Rollback Recovery; Category: Diagnost",
+        "UDS Diagnostic Protocol & Flash Bootloader Validation Report\nISO 14229 Diagnostic Services (0x10, 0x"
+      ],
+      "ground_truth_note": "Rollback triggered in 1.4 s; golden image boot verification scheduled."
+    },
+    {
+      "requirement_id": "REQ-AUT-069",
+      "title": "Non-Volatile Memory (NVRAM) Wear-Leveling Endurance",
+      "category": "Diagnostics & Bootloader",
       "difficulty": "Very Hard",
       "expected_status": "UNKNOWN",
       "predicted_status": "PARTIAL",
-      "failure_category": "RETRIEVAL_FAILURE",
-      "reason": "Partial evidence supports the requirement, but additional testing is needed.",
-      "retrieved_evidence": [
-        "Requirement ID: REQ-AUT-029; Title: Conducted Voltage Transients Suppression (ISO 7637-2); Category:",
-        "Electrical Transient & Supply Voltage Overvoltage Test Report\nPulse Transients per ISO 7637-2 and Ju"
-      ],
-      "ground_truth_note": "SPICE circuit simulation only; physical transient generator test required."
-    },
-    {
-      "requirement_id": "REQ-AUT-033",
-      "title": "AC Input Voltage Operating Range & Frequency Tolerance",
-      "category": "Charging Systems",
-      "difficulty": "Hard",
-      "expected_status": "PARTIAL",
-      "predicted_status": "CONFLICT",
-      "failure_category": "CONTRADICTION_FAILURE",
-      "reason": "Direct parameter discrepancy identified between AC Input Voltage Operating Range & Frequency Tolerance and 03_BMS_Cell_Supervisory_ASIC_Datasheet.pdf. Specification mandates operation up to 265 V AC, but 03_BMS_Cell_Supervisory_ASIC_Datasheet.pdf restricts maximum rated operation to 7 V AC.",
-      "retrieved_evidence": [
-        "Requirement ID: REQ-AUT-033; Title: AC Input Voltage Operating Range & Frequency Tolerance; Category",
-        "On-Board Charger (OBC) AC Grid & Thermal Test Report\n11 kW Power Factor, Control Pilot PWM, Earth Le"
-      ],
-      "ground_truth_note": "Tested at 230 V / 50 Hz and 120 V / 60 Hz; low-line and frequency extremes pending."
-    },
-    {
-      "requirement_id": "REQ-AUT-040",
-      "title": "Smart Grid ISO 15118-20 TLS Handshake Timing",
-      "category": "Charging Systems",
-      "difficulty": "Difficult",
-      "expected_status": "UNKNOWN",
-      "predicted_status": "SUPPORTED",
       "failure_category": "SOURCE_AUTHORITY_FAILURE",
-      "reason": "Evidence range (15118 to 20 TLS Handshake) fully covers required bounds (15118 to 20 TLS Handshake).",
+      "reason": "Partial evidence for Non-Volatile Memory (NVRAM) Wear-Leveling Endurance",
       "retrieved_evidence": [
-        "Requirement ID: REQ-AUT-040; Title: Smart Grid ISO 15118-20 TLS Handshake Timing; Category: Charging",
-        "System Architecture & Interface Specification (v3.1)\nSystem Level High-Voltage, Networking, and Diag"
-      ],
-      "ground_truth_note": "Architecture definition only."
-    },
-    {
-      "requirement_id": "REQ-AUT-044",
-      "title": "Electronic Expansion Valve (EXV) Positioning Steps",
-      "category": "Thermal Management",
-      "difficulty": "Hard",
-      "expected_status": "PARTIAL",
-      "predicted_status": "SUPPORTED",
-      "failure_category": "PARTIAL_COMPLIANCE_FAILURE",
-      "reason": "Tested points (-40 to 85 \u00b0C) fully span required range (-30 to 85 \u00b0C).",
-      "retrieved_evidence": [
-        "Requirement ID: REQ-AUT-044; Title: Electronic Expansion Valve (EXV) Positioning Steps; Category: Th",
+        "Requirement ID: REQ-AUT-069; Title: Non-Volatile Memory (NVRAM) Wear-Leveling Endurance; Category: D",
         "Thermal Management & Fluid Dynamics Validation Report\nEmpirical Chiller Testing, PTC Response, and T"
       ],
-      "ground_truth_note": "Positioning verified at +25\u00b0C; -30\u00b0C extreme scheduled."
+      "ground_truth_note": "Theoretical calculation model only."
     },
     {
-      "requirement_id": "REQ-AUT-060",
-      "title": "TCP/IP Stack Socket Resource Allocation",
-      "category": "In-Vehicle Networking",
+      "requirement_id": "REQ-AUT-070",
+      "title": "Diagnostic Response On Sub-Function Not Supported (NRC 0x12)",
+      "category": "Diagnostics & Bootloader",
       "difficulty": "Difficult",
       "expected_status": "UNKNOWN",
       "predicted_status": "SUPPORTED",
       "failure_category": "SOURCE_AUTHORITY_FAILURE",
-      "reason": "Architecture specification confirms TCP/IP stack socket resource allocation",
+      "reason": "Partial evidence for Diagnostic Response On Sub-Function Not Supported (NRC 0x12) [Python aggregator overrode provisional status 'PARTIAL' based on condition-level results.]",
       "retrieved_evidence": [
-        "Requirement ID: REQ-AUT-060; Title: TCP/IP Stack Socket Resource Allocation; Category: In-Vehicle Ne",
+        "Requirement ID: REQ-AUT-070; Title: Diagnostic Response On Sub-Function Not Supported (NRC 0x12); Ca",
         "System Architecture & Interface Specification (v3.1)\nSystem Level High-Voltage, Networking, and Diag"
       ],
-      "ground_truth_note": "Architectural configuration documentation only."
+      "ground_truth_note": "Architecture specification only."
+    },
+    {
+      "requirement_id": "REQ-AUT-071",
+      "title": "External Window Watchdog Challenge-Response Timeout",
+      "category": "Functional Safety",
+      "difficulty": "Hard",
+      "expected_status": "SUPPORTED",
+      "predicted_status": "UNKNOWN",
+      "failure_category": "UNKNOWN_CLASSIFICATION_FAILURE",
+      "reason": "No evidence for External Window Watchdog Challenge-Response Timeout [Python aggregator overrode provisional status 'MISSING' based on condition-level results.]",
+      "retrieved_evidence": [
+        "Requirement ID: REQ-AUT-071; Title: External Window Watchdog Challenge-Response Timeout; Category: F",
+        "BMS & Inverter Functional Safety Validation Test Report\nHIL & Dynamometer Empirical Verification per"
+      ],
+      "ground_truth_note": "Watchdog SPI serviced at 15.2 ms (within 13 to 17 ms window). Reset triggered on violation."
+    },
+    {
+      "requirement_id": "REQ-AUT-072",
+      "title": "Core Voltage Brownout Detection & Safe State Transition",
+      "category": "Functional Safety",
+      "difficulty": "Difficult",
+      "expected_status": "SUPPORTED",
+      "predicted_status": "UNKNOWN",
+      "failure_category": "UNKNOWN_CLASSIFICATION_FAILURE",
+      "reason": "No evidence for Core Voltage Brownout Detection & Safe State Transition [Python aggregator overrode provisional status 'MISSING' based on condition-level results.]",
+      "retrieved_evidence": [
+        "Requirement ID: REQ-AUT-072; Title: Core Voltage Brownout Detection & Safe State Transition; Categor",
+        "BMS & Inverter Functional Safety Validation Test Report\nHIL & Dynamometer Empirical Verification per"
+      ],
+      "ground_truth_note": "Core brownout at 2.94 V triggered PMIC hard reset in 2.1 \u00b5s (< 5.0 \u00b5s required)."
     },
     {
       "requirement_id": "REQ-AUT-078",
@@ -328,69 +358,144 @@
       "ground_truth_note": "BIST startup profiling pending."
     },
     {
-      "requirement_id": "REQ-AUT-079",
-      "title": "Diagnostic Coverage (DC) for ASIL-D ISO 26262 Compliance",
+      "requirement_id": "REQ-AUT-080",
+      "title": "Clock Monitor Oscillator Frequency Drift Detection",
       "category": "Functional Safety",
-      "difficulty": "Very Hard",
+      "difficulty": "Difficult",
       "expected_status": "UNKNOWN",
       "predicted_status": "SUPPORTED",
       "failure_category": "SOURCE_AUTHORITY_FAILURE",
-      "reason": "Theoretical SPFM and LFM values exceed the required thresholds.",
+      "reason": "Partial evidence for Clock Monitor Oscillator Frequency Drift Detection [Python aggregator overrode provisional status 'PARTIAL' based on condition-level results.]",
       "retrieved_evidence": [
-        "Requirement ID: REQ-AUT-079; Title: Diagnostic Coverage (DC) for ASIL-D ISO 26262 Compliance; Catego",
-        "BMS & Inverter Functional Safety Validation Test Report\nHIL & Dynamometer Empirical Verification per"
+        "Requirement ID: REQ-AUT-080; Title: Clock Monitor Oscillator Frequency Drift Detection; Category: Fu",
+        "System Architecture & Interface Specification (v3.1)\nSystem Level High-Voltage, Networking, and Diag"
       ],
-      "ground_truth_note": "FMEDA theoretical calculation report only; physical fault injection required."
+      "ground_truth_note": "Architecture documentation only."
     },
     {
-      "requirement_id": "REQ-AUT-094",
-      "title": "Thermal Shock Cycling With Fast Transition (-40\u00b0C to +85\u00b0C)",
-      "category": "Environmental & EMC",
+      "requirement_id": "REQ-AUT-083",
+      "title": "Cryptographic Key Storage Hardware Isolation",
+      "category": "Cybersecurity",
       "difficulty": "Hard",
       "expected_status": "PARTIAL",
       "predicted_status": "SUPPORTED",
       "failure_category": "PARTIAL_COMPLIANCE_FAILURE",
-      "reason": "Tested points (-40 to 85 \u00b0C) fully span required range (-40 to 85 \u00b0C).",
+      "reason": "Partial evidence supports the requirement, but additional testing is needed for full verification. [Python aggregator overrode provisional status 'PARTIAL' based on condition-level results.]",
       "retrieved_evidence": [
-        "Requirement ID: REQ-AUT-094; Title: Thermal Shock Cycling With Fast Transition (-40\u00b0C to +85\u00b0C); Cat",
-        "Environmental Thermal Chamber Validation Test Report\nClimatic, Thermal Shock, and Temperature Sensor"
+        "Requirement ID: REQ-AUT-083; Title: Cryptographic Key Storage Hardware Isolation; Category: Cybersec",
+        "Vehicle Cybersecurity & Hardware Security Module Test Report\nISO 21434, Secure Boot, SecOC, JTAG Ins"
       ],
-      "ground_truth_note": "250 of 500 cycles completed with zero defects; remaining 250 in progress."
+      "ground_truth_note": "AES keys stored in secure keystore; ECC key migration pending."
     },
     {
-      "requirement_id": "REQ-AUT-099",
-      "title": "Damp Heat Steady State Cyclic Humidity (ISO 16750-4)",
-      "category": "Environmental & EMC",
-      "difficulty": "Very Hard",
-      "expected_status": "UNKNOWN",
-      "predicted_status": "PARTIAL",
-      "failure_category": "SOURCE_AUTHORITY_FAILURE",
-      "reason": "Conformal coating moisture permeation model calculates insulation resistance, but actual test results are pending.",
+      "requirement_id": "REQ-AUT-084",
+      "title": "Cybersecurity Intrusion Detection System (IDS) Rate Limiting",
+      "category": "Cybersecurity",
+      "difficulty": "Hard",
+      "expected_status": "PARTIAL",
+      "predicted_status": "SUPPORTED",
+      "failure_category": "PARTIAL_COMPLIANCE_FAILURE",
+      "reason": "Partial evidence supports the requirement, but additional testing is needed for full verification. [Python aggregator overrode provisional status 'PARTIAL' based on condition-level results.]",
       "retrieved_evidence": [
-        "Requirement ID: REQ-AUT-099; Title: Damp Heat Steady State Cyclic Humidity (ISO 16750-4); Category: ",
-        "Environmental Thermal Chamber Validation Test Report\nClimatic, Thermal Shock, and Temperature Sensor"
+        "Requirement ID: REQ-AUT-084; Title: Cybersecurity Intrusion Detection System (IDS) Rate Limiting; Ca",
+        "Vehicle Cybersecurity & Hardware Security Module Test Report\nISO 21434, Secure Boot, SecOC, JTAG Ins"
       ],
-      "ground_truth_note": "Conformal coating moisture permeation calculation model only."
+      "ground_truth_note": "Evaluated on CAN 1 and CAN 2; CAN 3 and CAN 4 pending."
+    },
+    {
+      "requirement_id": "REQ-AUT-088",
+      "title": "Side-Channel Attack DPA / SPA Resistance",
+      "category": "Cybersecurity",
+      "difficulty": "Difficult",
+      "expected_status": "MISSING",
+      "predicted_status": "UNKNOWN",
+      "failure_category": "NUMERIC_REASONING_FAILURE",
+      "reason": "No evidence is available to support this requirement. [Python aggregator overrode provisional status 'MISSING' based on condition-level results.]",
+      "retrieved_evidence": [
+        "Requirement ID: REQ-AUT-088; Title: Side-Channel Attack DPA / SPA Resistance; Category: Cybersecurit",
+        "Requirement ID: REQ-AUT-031; Title: Three-Phase AC Charging Power and Power Factor; Category: Chargi"
+      ],
+      "ground_truth_note": "Side-channel analysis test scheduled."
+    },
+    {
+      "requirement_id": "REQ-AUT-090",
+      "title": "Secure Logging of Security Events (SecEvent)",
+      "category": "Cybersecurity",
+      "difficulty": "Difficult",
+      "expected_status": "UNKNOWN",
+      "predicted_status": "SUPPORTED",
+      "failure_category": "SOURCE_AUTHORITY_FAILURE",
+      "reason": "Partial evidence supports the requirement, but physical test evidence is needed for full verification. [Python aggregator overrode provisional status 'PARTIAL' based on condition-level results.]",
+      "retrieved_evidence": [
+        "Requirement ID: REQ-AUT-090; Title: Secure Logging of Security Events (SecEvent); Category: Cybersec",
+        "Vehicle Cybersecurity & Hardware Security Module Test Report\nISO 21434, Secure Boot, SecOC, JTAG Ins"
+      ],
+      "ground_truth_note": "Architecture specification only."
+    },
+    {
+      "requirement_id": "REQ-AUT-091",
+      "title": "CISPR 25 Class 4 Radiated Emissions Margin",
+      "category": "Environmental & EMC",
+      "difficulty": "Hard",
+      "expected_status": "SUPPORTED",
+      "predicted_status": "UNKNOWN",
+      "failure_category": "UNKNOWN_CLASSIFICATION_FAILURE",
+      "reason": "Evidence supports the requirement, and all conditions are proven. [Python aggregator overrode provisional status 'SUPPORTED' based on condition-level results.]",
+      "retrieved_evidence": [
+        "Requirement ID: REQ-AUT-091; Title: CISPR 25 Class 4 Radiated Emissions Margin; Category: Environmen",
+        "Electromagnetic Compatibility (EMC) Test Report\nAnechoic Chamber Radiated Emissions & Immunity per C"
+      ],
+      "ground_truth_note": "CISPR 25 Class 4 sweep 150 kHz\u20132.5 GHz maintained >= 6.4 dB margin (>= 6.0 dB required)."
+    },
+    {
+      "requirement_id": "REQ-AUT-097",
+      "title": "Salt Spray Corrosion Resistance (ISO 9227)",
+      "category": "Environmental & EMC",
+      "difficulty": "Difficult",
+      "expected_status": "MISSING",
+      "predicted_status": "UNKNOWN",
+      "failure_category": "NUMERIC_REASONING_FAILURE",
+      "reason": "No physical test evidence available [Python aggregator overrode provisional status 'MISSING' based on condition-level results.]",
+      "retrieved_evidence": [
+        "Requirement ID: REQ-AUT-097; Title: Salt Spray Corrosion Resistance (ISO 9227); Category: Environmen",
+        "System Architecture & Interface Specification (v3.1)\nSystem Level High-Voltage, Networking, and Diag"
+      ],
+      "ground_truth_note": "Salt spray chamber test scheduled."
+    },
+    {
+      "requirement_id": "REQ-AUT-098",
+      "title": "High-Temperature Operating Life (HTOL) Reliability Test",
+      "category": "Environmental & EMC",
+      "difficulty": "Difficult",
+      "expected_status": "MISSING",
+      "predicted_status": "UNKNOWN",
+      "failure_category": "NUMERIC_REASONING_FAILURE",
+      "reason": "No physical test evidence available [Python aggregator overrode provisional status 'MISSING' based on condition-level results.]",
+      "retrieved_evidence": [
+        "Requirement ID: REQ-AUT-098; Title: High-Temperature Operating Life (HTOL) Reliability Test; Categor",
+        "Requirement ID: REQ-AUT-003; Title: Cell Operating Temperature Operating Envelope; Category: High-Vo"
+      ],
+      "ground_truth_note": "HTOL burn-in chamber test pending."
     }
   ],
   "predictions": {
     "REQ-AUT-001": {
       "expected": "SUPPORTED",
       "predicted": "SUPPORTED",
-      "confidence": 100.0,
-      "reason": "The requirement is fully supported by the provided evidence."
+      "confidence": 95.0,
+      "reason": "The BMS detects cell overvoltage and commands HV contactor opening within the specified time limit."
     },
     "REQ-AUT-002": {
       "expected": "SUPPORTED",
-      "predicted": "SUPPORTED",
-      "confidence": 95.0,
-      "reason": "Tested points (380 to 820 V DC) fully span required range (400 to 800 V DC)."
+      "predicted": "PARTIAL",
+      "confidence": 90.0,
+      "reason": "The BCU maintains continuous monitoring and communication across the high-voltage pack operating range, but the maximum limit is not fully verified."
     },
     "REQ-AUT-003": {
       "expected": "PARTIAL",
       "predicted": "PARTIAL",
-      "confidence": 90.0,
-      "reason": "Test evidence covers only part of the declared operating range: tested from -20 to 70 \u00b0C with, leaving a verification gap against required bounds (-40 to 85 \u00b0C with)."
+      "confidence": 88.0,
+      "reason": "The BMS cell monitoring system measures cell temperatures, but the full operating range is not fully verified."
     },
     "REQ-AUT-004": {
       "expected": "PARTIAL",
@@ -424,15 +529,15 @@
     },
     "REQ-AUT-009": {
       "expected": "UNKNOWN",
-      "predicted": "PARTIAL",
-      "confidence": 50.0,
-      "reason": "The requirement is partially supported by the provided evidence, but some conditions are still pending."
+      "predicted": "UNKNOWN",
+      "confidence": 80.0,
+      "reason": "No evidence is available for the Acoustic Gas Venting Detection Sensor Baseline requirement. [Python aggregator overrode provisional status 'MISSING' based on condition-level results.]"
     },
     "REQ-AUT-010": {
       "expected": "UNKNOWN",
-      "predicted": "PARTIAL",
-      "confidence": 50.0,
-      "reason": "The requirement is partially supported by the provided evidence, but some conditions are still pending."
+      "predicted": "SUPPORTED",
+      "confidence": 95.0,
+      "reason": "The HVIL circuit operates on a 1.0 kHz \u00b1 10 Hz PWM signal and detects an open-loop condition within the specified time limit."
     },
     "REQ-AUT-011": {
       "expected": "SUPPORTED",
@@ -443,8 +548,8 @@
     "REQ-AUT-012": {
       "expected": "SUPPORTED",
       "predicted": "SUPPORTED",
-      "confidence": 100.0,
-      "reason": "The requirement is fully supported by the provided evidence."
+      "confidence": 95.0,
+      "reason": "The inverter active discharge circuit reduces DC-link voltage within the specified time limit."
     },
     "REQ-AUT-013": {
       "expected": "PARTIAL",
@@ -455,8 +560,8 @@
     "REQ-AUT-014": {
       "expected": "PARTIAL",
       "predicted": "PARTIAL",
-      "confidence": 50.0,
-      "reason": "The requirement is partially supported by the provided evidence, but some conditions are still pending."
+      "confidence": 88.0,
+      "reason": "The motor resolver-to-digital converter tracks rotor electrical angle, but the full operating range is not fully verified."
     },
     "REQ-AUT-015": {
       "expected": "CONFLICT",
@@ -485,38 +590,38 @@
     "REQ-AUT-019": {
       "expected": "UNKNOWN",
       "predicted": "PARTIAL",
-      "confidence": 50.0,
-      "reason": "The requirement is partially supported by the provided evidence, but some conditions are still pending."
+      "confidence": 88.0,
+      "reason": "The total phase current harmonic distortion (THD) is not fully verified."
     },
     "REQ-AUT-020": {
       "expected": "UNKNOWN",
-      "predicted": "PARTIAL",
-      "confidence": 50.0,
-      "reason": "The requirement is partially supported by the provided evidence, but some conditions are still pending."
+      "predicted": "SUPPORTED",
+      "confidence": 95.0,
+      "reason": "The inverter FOC algorithm maintains stable demagnetization current control without torque oscillations during deep flux weakening."
     },
     "REQ-AUT-021": {
       "expected": "SUPPORTED",
       "predicted": "SUPPORTED",
-      "confidence": 100.0,
-      "reason": "The requirement is fully supported by the provided evidence."
+      "confidence": 95.0,
+      "reason": "The bidirectional DC-DC converter regulates 12V output voltage within the specified limits under step load changes."
     },
     "REQ-AUT-022": {
       "expected": "SUPPORTED",
       "predicted": "SUPPORTED",
-      "confidence": 100.0,
-      "reason": "The requirement is fully supported by the provided evidence."
+      "confidence": 95.0,
+      "reason": "The DC-DC converter dielectric withstand isolation requirement is supported by evidence from E1 and E2."
     },
     "REQ-AUT-023": {
       "expected": "PARTIAL",
       "predicted": "PARTIAL",
-      "confidence": 50.0,
-      "reason": "The requirement is partially supported by the provided evidence, but some conditions are still pending."
+      "confidence": 88.0,
+      "reason": "The DC-DC conversion efficiency requirement is partially supported by evidence from E1 and E2, but some efficiency points are still pending measurement."
     },
     "REQ-AUT-024": {
       "expected": "PARTIAL",
-      "predicted": "SUPPORTED",
-      "confidence": 95.0,
-      "reason": "Tested points (-40 to 85 \u00b0C) fully span required range (-40 to 85 \u00b0C)."
+      "predicted": "PARTIAL",
+      "confidence": 88.0,
+      "reason": "The 12V output voltage ripple and noise requirement is partially supported by evidence from E1, but thermal chamber ripple measurements are still pending."
     },
     "REQ-AUT-025": {
       "expected": "CONFLICT",
@@ -544,39 +649,39 @@
     },
     "REQ-AUT-029": {
       "expected": "UNKNOWN",
-      "predicted": "PARTIAL",
+      "predicted": "UNKNOWN",
       "confidence": 80.0,
-      "reason": "Partial evidence supports the requirement, but additional testing is needed."
+      "reason": "No evidence is available to support or reject the conducted voltage transients suppression requirement."
     },
     "REQ-AUT-030": {
       "expected": "UNKNOWN",
       "predicted": "UNKNOWN",
-      "confidence": 50.0,
-      "reason": "No physical test evidence available, only theoretical simulation and architecture specification."
+      "confidence": 80.0,
+      "reason": "No evidence is available to support or reject the pre-charge sequence soft-start inrush current requirement."
     },
     "REQ-AUT-031": {
       "expected": "SUPPORTED",
       "predicted": "SUPPORTED",
       "confidence": 95.0,
-      "reason": "Evidence supports the requirement."
+      "reason": "The three-phase AC charging power and power factor requirement is supported by evidence from E1 and E2."
     },
     "REQ-AUT-032": {
       "expected": "SUPPORTED",
       "predicted": "SUPPORTED",
       "confidence": 95.0,
-      "reason": "Evidence supports the requirement."
+      "reason": "The control pilot duty cycle detection tolerance requirement is supported by evidence from E1 and E2."
     },
     "REQ-AUT-033": {
       "expected": "PARTIAL",
-      "predicted": "CONFLICT",
-      "confidence": 92.0,
-      "reason": "Direct parameter discrepancy identified between AC Input Voltage Operating Range & Frequency Tolerance and 03_BMS_Cell_Supervisory_ASIC_Datasheet.pdf. Specification mandates operation up to 265 V AC, but 03_BMS_Cell_Supervisory_ASIC_Datasheet.pdf restricts maximum rated operation to 7 V AC."
+      "predicted": "PARTIAL",
+      "confidence": 88.0,
+      "reason": "The AC input voltage operating range and frequency tolerance requirement is partially supported by evidence from E1, but some tests are still pending."
     },
     "REQ-AUT-034": {
       "expected": "PARTIAL",
       "predicted": "PARTIAL",
-      "confidence": 70.0,
-      "reason": "Partial evidence supports the requirement, but additional testing is needed."
+      "confidence": 88.0,
+      "reason": "The V2L bidirectional output voltage and distortion requirement is partially supported by evidence from E1 and E2, but inductive load testing is still pending."
     },
     "REQ-AUT-035": {
       "expected": "CONFLICT",
@@ -598,33 +703,33 @@
     },
     "REQ-AUT-038": {
       "expected": "MISSING",
-      "predicted": "MISSING",
-      "confidence": 0.0,
-      "reason": "No evidence available."
+      "predicted": "UNKNOWN",
+      "confidence": 80.0,
+      "reason": "No evidence is available to support or reject the proximity pilot resistor value discrimination requirement. [Python aggregator overrode provisional status 'MISSING' based on condition-level results.]"
     },
     "REQ-AUT-039": {
       "expected": "UNKNOWN",
       "predicted": "UNKNOWN",
-      "confidence": 50.0,
-      "reason": "No physical test evidence available, only theoretical simulation."
+      "confidence": 80.0,
+      "reason": "No physical test evidence available."
     },
     "REQ-AUT-040": {
       "expected": "UNKNOWN",
-      "predicted": "SUPPORTED",
-      "confidence": 95.0,
-      "reason": "Evidence range (15118 to 20 TLS Handshake) fully covers required bounds (15118 to 20 TLS Handshake)."
+      "predicted": "UNKNOWN",
+      "confidence": 80.0,
+      "reason": "No physical test evidence available."
     },
     "REQ-AUT-041": {
       "expected": "SUPPORTED",
       "predicted": "SUPPORTED",
       "confidence": 95.0,
-      "reason": "Evidence supports the requirement."
+      "reason": "Physical test evidence available and condition is proven."
     },
     "REQ-AUT-042": {
       "expected": "SUPPORTED",
       "predicted": "SUPPORTED",
       "confidence": 95.0,
-      "reason": "Evidence supports the requirement."
+      "reason": "Physical test evidence available and condition is proven."
     },
     "REQ-AUT-043": {
       "expected": "PARTIAL",
@@ -634,9 +739,9 @@
     },
     "REQ-AUT-044": {
       "expected": "PARTIAL",
-      "predicted": "SUPPORTED",
-      "confidence": 95.0,
-      "reason": "Tested points (-40 to 85 \u00b0C) fully span required range (-30 to 85 \u00b0C)."
+      "predicted": "PARTIAL",
+      "confidence": 88.0,
+      "reason": "Some conditions are proven, but others are pending."
     },
     "REQ-AUT-045": {
       "expected": "CONFLICT",
@@ -664,21 +769,21 @@
     },
     "REQ-AUT-049": {
       "expected": "UNKNOWN",
-      "predicted": "UNKNOWN",
-      "confidence": 50.0,
-      "reason": "No physical test evidence available, only theoretical simulation."
+      "predicted": "SUPPORTED",
+      "confidence": 95.0,
+      "reason": "Physical test evidence available and condition is proven."
     },
     "REQ-AUT-050": {
       "expected": "UNKNOWN",
       "predicted": "UNKNOWN",
-      "confidence": 0.0,
-      "reason": "No physical test evidence available for dry-run protection response latency"
+      "confidence": 80.0,
+      "reason": "No physical test evidence available."
     },
     "REQ-AUT-051": {
       "expected": "SUPPORTED",
       "predicted": "SUPPORTED",
-      "confidence": 100.0,
-      "reason": "Physical test evidence confirms CAN-FD dual bitrate transmission rate"
+      "confidence": 95.0,
+      "reason": "Physical test evidence available and condition is proven."
     },
     "REQ-AUT-052": {
       "expected": "SUPPORTED",
@@ -725,14 +830,14 @@
     "REQ-AUT-059": {
       "expected": "UNKNOWN",
       "predicted": "UNKNOWN",
-      "confidence": 0.0,
-      "reason": "No physical test evidence available for gPTP time synchronization jitter"
+      "confidence": 80.0,
+      "reason": "No physical test evidence available."
     },
     "REQ-AUT-060": {
       "expected": "UNKNOWN",
-      "predicted": "SUPPORTED",
-      "confidence": 100.0,
-      "reason": "Architecture specification confirms TCP/IP stack socket resource allocation"
+      "predicted": "UNKNOWN",
+      "confidence": 80.0,
+      "reason": "No physical test evidence available."
     },
     "REQ-AUT-061": {
       "expected": "SUPPORTED",
@@ -748,15 +853,15 @@
     },
     "REQ-AUT-063": {
       "expected": "PARTIAL",
-      "predicted": "PARTIAL",
-      "confidence": 50.0,
-      "reason": "Partial evidence available for UDS security access seed-key authentication"
+      "predicted": "SUPPORTED",
+      "confidence": 95.0,
+      "reason": "Partial evidence for UDS Security Access (0x27) seed-key authentication [Python aggregator overrode provisional status 'PARTIAL' based on condition-level results.]"
     },
     "REQ-AUT-064": {
       "expected": "PARTIAL",
-      "predicted": "PARTIAL",
-      "confidence": 50.0,
-      "reason": "Partial evidence available for firmware OTA dual-bank A/B rollback recovery"
+      "predicted": "SUPPORTED",
+      "confidence": 95.0,
+      "reason": "Partial evidence for Firmware OTA Dual-Bank A/B Rollback Recovery [Python aggregator overrode provisional status 'PARTIAL' based on condition-level results.]"
     },
     "REQ-AUT-065": {
       "expected": "CONFLICT",
@@ -784,27 +889,27 @@
     },
     "REQ-AUT-069": {
       "expected": "UNKNOWN",
-      "predicted": "UNKNOWN",
-      "confidence": 0.0,
-      "reason": "No physical test evidence available for non-volatile memory wear-leveling endurance"
+      "predicted": "PARTIAL",
+      "confidence": 88.0,
+      "reason": "Partial evidence for Non-Volatile Memory (NVRAM) Wear-Leveling Endurance"
     },
     "REQ-AUT-070": {
       "expected": "UNKNOWN",
-      "predicted": "UNKNOWN",
-      "confidence": 0.0,
-      "reason": "No physical test evidence available for diagnostic response on sub-function not supported"
+      "predicted": "SUPPORTED",
+      "confidence": 95.0,
+      "reason": "Partial evidence for Diagnostic Response On Sub-Function Not Supported (NRC 0x12) [Python aggregator overrode provisional status 'PARTIAL' based on condition-level results.]"
     },
     "REQ-AUT-071": {
       "expected": "SUPPORTED",
-      "predicted": "SUPPORTED",
-      "confidence": 100.0,
-      "reason": "Physical test evidence confirms external window watchdog challenge-response timeout"
+      "predicted": "UNKNOWN",
+      "confidence": 80.0,
+      "reason": "No evidence for External Window Watchdog Challenge-Response Timeout [Python aggregator overrode provisional status 'MISSING' based on condition-level results.]"
     },
     "REQ-AUT-072": {
       "expected": "SUPPORTED",
-      "predicted": "SUPPORTED",
-      "confidence": 100.0,
-      "reason": "Physical test evidence confirms core voltage brownout detection and safe state transition"
+      "predicted": "UNKNOWN",
+      "confidence": 80.0,
+      "reason": "No evidence for Core Voltage Brownout Detection & Safe State Transition [Python aggregator overrode provisional status 'MISSING' based on condition-level results.]"
     },
     "REQ-AUT-073": {
       "expected": "PARTIAL",
@@ -844,39 +949,39 @@
     },
     "REQ-AUT-079": {
       "expected": "UNKNOWN",
-      "predicted": "SUPPORTED",
-      "confidence": 95.0,
-      "reason": "Theoretical SPFM and LFM values exceed the required thresholds."
+      "predicted": "UNKNOWN",
+      "confidence": 80.0,
+      "reason": "Partial evidence for Diagnostic Coverage (DC) for ASIL-D ISO 26262 Compliance [Python aggregator overrode provisional status 'PARTIAL' based on condition-level results.]"
     },
     "REQ-AUT-080": {
       "expected": "UNKNOWN",
-      "predicted": "UNKNOWN",
-      "confidence": 0.0,
-      "reason": "No physical test evidence available to support the requirement."
+      "predicted": "SUPPORTED",
+      "confidence": 95.0,
+      "reason": "Partial evidence for Clock Monitor Oscillator Frequency Drift Detection [Python aggregator overrode provisional status 'PARTIAL' based on condition-level results.]"
     },
     "REQ-AUT-081": {
       "expected": "SUPPORTED",
       "predicted": "SUPPORTED",
       "confidence": 95.0,
-      "reason": "RSA-3072 signature verification time is within the required limit."
+      "reason": "Evidence supports Secure Boot Cryptographic Verification Latency requirement"
     },
     "REQ-AUT-082": {
       "expected": "SUPPORTED",
       "predicted": "SUPPORTED",
       "confidence": 95.0,
-      "reason": "AES-128 CMAC generation time is within the required limit."
+      "reason": "Evidence supports AUTOSAR SecOC AES-128 CMAC Generation Time requirement"
     },
     "REQ-AUT-083": {
       "expected": "PARTIAL",
-      "predicted": "PARTIAL",
-      "confidence": 50.0,
-      "reason": "Asymmetric ECC private key migration is pending."
+      "predicted": "SUPPORTED",
+      "confidence": 95.0,
+      "reason": "Partial evidence supports the requirement, but additional testing is needed for full verification. [Python aggregator overrode provisional status 'PARTIAL' based on condition-level results.]"
     },
     "REQ-AUT-084": {
       "expected": "PARTIAL",
-      "predicted": "PARTIAL",
-      "confidence": 50.0,
-      "reason": "CAN 3 and CAN 4 testing is pending."
+      "predicted": "SUPPORTED",
+      "confidence": 95.0,
+      "reason": "Partial evidence supports the requirement, but additional testing is needed for full verification. [Python aggregator overrode provisional status 'PARTIAL' based on condition-level results.]"
     },
     "REQ-AUT-085": {
       "expected": "CONFLICT",
@@ -898,51 +1003,51 @@
     },
     "REQ-AUT-088": {
       "expected": "MISSING",
-      "predicted": "MISSING",
-      "confidence": 0.0,
-      "reason": "No evidence available to support the requirement."
+      "predicted": "UNKNOWN",
+      "confidence": 80.0,
+      "reason": "No evidence is available to support this requirement. [Python aggregator overrode provisional status 'MISSING' based on condition-level results.]"
     },
     "REQ-AUT-089": {
       "expected": "UNKNOWN",
       "predicted": "UNKNOWN",
-      "confidence": 0.0,
-      "reason": "No physical test evidence available to support the requirement."
+      "confidence": 80.0,
+      "reason": "No relevant evidence is available to support this requirement."
     },
     "REQ-AUT-090": {
       "expected": "UNKNOWN",
-      "predicted": "UNKNOWN",
-      "confidence": 0.0,
-      "reason": "No physical test evidence available to support the requirement."
+      "predicted": "SUPPORTED",
+      "confidence": 95.0,
+      "reason": "Partial evidence supports the requirement, but physical test evidence is needed for full verification. [Python aggregator overrode provisional status 'PARTIAL' based on condition-level results.]"
     },
     "REQ-AUT-091": {
       "expected": "SUPPORTED",
-      "predicted": "SUPPORTED",
-      "confidence": 95.0,
-      "reason": "Radiated emissions are within the required limits."
+      "predicted": "UNKNOWN",
+      "confidence": 80.0,
+      "reason": "Evidence supports the requirement, and all conditions are proven. [Python aggregator overrode provisional status 'SUPPORTED' based on condition-level results.]"
     },
     "REQ-AUT-092": {
       "expected": "SUPPORTED",
       "predicted": "SUPPORTED",
       "confidence": 95.0,
-      "reason": "Evidence range (16750 to 2 Jump Start) fully covers required bounds (16750 to 2 Jump Start)."
+      "reason": "Evidence supports the requirement, and all conditions are proven."
     },
     "REQ-AUT-093": {
       "expected": "PARTIAL",
       "predicted": "PARTIAL",
-      "confidence": 80.0,
-      "reason": "Random vibration test completed on X-axis and Y-axis, but Z-axis vibration run is pending."
+      "confidence": 90.0,
+      "reason": "Partial evidence supports the requirement, but additional testing is needed for full verification."
     },
     "REQ-AUT-094": {
       "expected": "PARTIAL",
-      "predicted": "SUPPORTED",
-      "confidence": 95.0,
-      "reason": "Tested points (-40 to 85 \u00b0C) fully span required range (-40 to 85 \u00b0C)."
+      "predicted": "PARTIAL",
+      "confidence": 90.0,
+      "reason": "Partial evidence supports the requirement, but additional testing is needed for full verification."
     },
     "REQ-AUT-095": {
       "expected": "CONFLICT",
       "predicted": "CONFLICT",
-      "confidence": 90.0,
-      "reason": "Water ingress observed during submersion test, failing to meet IP67 requirement."
+      "confidence": 95.0,
+      "reason": "Evidence conflicts with the requirement, as the ECU housing does not meet the required IP67 ingress protection rating."
     },
     "REQ-AUT-096": {
       "expected": "CONFLICT",
@@ -952,27 +1057,27 @@
     },
     "REQ-AUT-097": {
       "expected": "MISSING",
-      "predicted": "MISSING",
-      "confidence": 0.0,
-      "reason": "No evidence provided for salt spray corrosion resistance test."
+      "predicted": "UNKNOWN",
+      "confidence": 80.0,
+      "reason": "No physical test evidence available [Python aggregator overrode provisional status 'MISSING' based on condition-level results.]"
     },
     "REQ-AUT-098": {
       "expected": "MISSING",
-      "predicted": "MISSING",
-      "confidence": 0.0,
-      "reason": "No evidence provided for high-temperature operating life reliability test."
+      "predicted": "UNKNOWN",
+      "confidence": 80.0,
+      "reason": "No physical test evidence available [Python aggregator overrode provisional status 'MISSING' based on condition-level results.]"
     },
     "REQ-AUT-099": {
       "expected": "UNKNOWN",
-      "predicted": "PARTIAL",
-      "confidence": 70.0,
-      "reason": "Conformal coating moisture permeation model calculates insulation resistance, but actual test results are pending."
+      "predicted": "UNKNOWN",
+      "confidence": 80.0,
+      "reason": "Only simulation evidence available"
     },
     "REQ-AUT-100": {
       "expected": "UNKNOWN",
       "predicted": "UNKNOWN",
-      "confidence": 0.0,
-      "reason": "Only architecture specification clause provided, no physical test evidence."
+      "confidence": 80.0,
+      "reason": "No physical test evidence available [Python aggregator overrode provisional status 'MISSING' based on condition-level results.]"
     }
   }
 }

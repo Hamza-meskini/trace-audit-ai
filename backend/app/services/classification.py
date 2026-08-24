@@ -339,9 +339,12 @@ async def assess_requirement_coverage_async(
 
     evidence_items, non_spec_items, claims = context
 
-    validation_outcome = _run_deterministic_validators(contract, claims)
-
     # If deterministic validation did not produce an authoritative answer, escalate to the LLM reasoner
+    if len(contract.atomic_conditions) <= 1:
+        validation_outcome = _run_deterministic_validators(contract, claims)
+    else:
+        validation_outcome = None
+
     if validation_outcome is None or validation_outcome.status == "UNKNOWN":
         from app.services.verification_reasoner import evaluate_requirement_verification
         reasoner_result = await evaluate_requirement_verification(
@@ -396,19 +399,22 @@ async def batch_assess_requirements(
 
         evidence_items, non_spec_items, claims = context
 
-        val_outcome = _run_deterministic_validators(contract, claims)
-        if val_outcome and val_outcome.status != "UNKNOWN":
-            # Deterministic validators reached an authoritative conclusion
-            assessments[req_code] = _finalize_assessment(contract, non_spec_items, val_outcome)
-            continue
+        # For single condition requirements, allow deterministic validators
+        if len(contract.atomic_conditions) <= 1:
+            val_outcome = _run_deterministic_validators(contract, claims)
+            if val_outcome and val_outcome.status != "UNKNOWN":
+                # Deterministic validators reached an authoritative conclusion
+                assessments[req_code] = _finalize_assessment(contract, non_spec_items, val_outcome)
+                continue
 
-        # Not resolved deterministically -> queue for batched LLM reasoning
+        # Compound or inconclusive -> queue for batched LLM reasoning
         pre_processed.append({
             "req_code": req_code,
             "contract": contract,
             "candidate_chunks": candidate_chunks,
             "non_spec_items": non_spec_items,
         })
+
 
     # Step 2: process queued requirements in batches
     for i in range(0, len(pre_processed), batch_size):

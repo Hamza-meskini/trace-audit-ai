@@ -6,6 +6,7 @@ import re
 import uuid
 
 from app.schemas.contract import RequirementContract, RANGE_REGEX, THRESHOLD_LE_REGEX, THRESHOLD_GE_REGEX, IP_REGEX
+from app.schemas.evidence_qualification import normalize_entity_scope
 
 
 REQ_CODE_REGEX = re.compile(r"\b(REQ[-_]?[A-Za-z0-9_-]*\d+)\b", re.IGNORECASE)
@@ -156,22 +157,8 @@ def extract_claims_from_chunk(
 
     source_auth = classify_source_authority(doc_name, text, doc_type)
 
-    # Determine entity scope of chunk
-    entity_scope = "System"
-    if "asic" in text_lower or "asic" in doc_name.lower():
-        entity_scope = "ASIC"
-    elif "inverter" in text_lower or "inverter" in doc_name.lower() or "gate driver" in text_lower:
-        entity_scope = "Inverter"
-    elif "bcu" in text_lower or "bcu" in doc_name.lower():
-        entity_scope = "BCU"
-    elif "bms" in text_lower or "bms" in doc_name.lower():
-        entity_scope = "BMS"
-    elif "pack" in text_lower or "pack" in doc_name.lower():
-        entity_scope = "Pack"
-    elif "hvil" in text_lower or "hvil" in doc_name.lower():
-        entity_scope = "HVIL"
-    elif "dc-dc" in text_lower or "dcdc" in text_lower or "dc-dc" in doc_name.lower():
-        entity_scope = "DC-DC"
+    # Determine entity scope of chunk (single shared normalization path)
+    entity_scope = normalize_entity_scope(text, doc_name)
 
     # If the chunk explicitly lists requirement codes, ensure it applies to this contract
     target_text = text

@@ -26,6 +26,19 @@ from app.schemas.verification_result import (
 )
 from app.services.llm_client import generate_structured
 from app.services.units import convert_value, are_units_compatible
+from app.schemas.evidence_qualification import EvidenceQualification
+from app.services.evidence_qualification import (
+    qualify_evidence,
+    qualify_evidence_chunks,
+    format_qualification_annotation,
+    has_qualified_evidence,
+)
+from app.services.verdict_aggregator import (
+    aggregate_condition_statuses,
+    finalize_verdict,
+    condition_results_from_claims,
+    mandatory_conditions,
+)
 
 logger = logging.getLogger("traceaudit.verifier")
 
@@ -83,61 +96,29 @@ def _format_source_authority_tag(auth: SourceAuthority, doc_name: str) -> str:
     return tag_map.get(auth, "[SOURCE: UNCLASSIFIED DOCUMENT]")
 
 
-def aggregate_condition_statuses(
-    conditions: list[Any],
-    condition_results: list[ConditionVerificationResult],
-    has_empirical_evidence: bool = True,
-    is_non_authoritative: bool = False,
-) -> tuple[str, float, str]:
-    """Deterministically aggregate atomic condition evaluation results into a final requirement status."""
-    if not conditions:
-        return "UNKNOWN", 70.0, "No atomic conditions defined for aggregation."
-
-    if is_non_authoritative:
-        return "UNKNOWN", 85.0, "Evidence modality is non-authoritative for physical testing requirements."
-
-    status_counts = {"PROVEN": 0, "FAILED": 0, "PENDING": 0, "UNTESTED": 0, "NOT_APPLICABLE": 0, "INCONCLUSIVE": 0}
-    for cr in condition_results:
-        st = cr.status.upper() if cr.status else "UNTESTED"
-        status_counts[st] = status_counts.get(st, 0) + 1
-
-    total_mandatory = len(conditions)
-
-    if status_counts["FAILED"] > 0:
-        return "CONFLICT", 95.0, f"Mandatory condition failure or violation detected ({status_counts['FAILED']}/{total_mandatory} conditions failed)."
-
-    if status_counts["PROVEN"] == total_mandatory:
-        return "SUPPORTED", 95.0, f"All {total_mandatory} mandatory requirement conditions verified by empirical evidence."
-
-    if status_counts["PROVEN"] > 0 and (status_counts["PENDING"] > 0 or status_counts["UNTESTED"] > 0 or status_counts["INCONCLUSIVE"] > 0):
-        return "PARTIAL", 90.0, f"Partial compliance: {status_counts['PROVEN']}/{total_mandatory} conditions verified, remaining pending or unverified."
-
-    if not has_empirical_evidence:
-        return "UNKNOWN", 80.0, "Evidence is inconclusive or lacks authoritative empirical validation."
-
-    return "PARTIAL" if status_counts["PENDING"] > 0 else "UNKNOWN", 75.0, "Condition evaluation is incomplete or inconclusive."
-
-
 def build_verification_prompt(
     contract: RequirementContract,
     evidence_chunks: list[dict[str, Any]],
 ) -> tuple[str, str]:
-    """Construct a rigorous, structured compliance auditing prompt with source authority tags."""
+    """Construct a rigorous, structured compliance auditing prompt with qualification annotations."""
     system_instruction = (
         "You are a formal compliance and quality assurance auditor for safety-critical automotive systems. "
         "Evaluate technical requirements against evidence excerpts with zero assumptions, strict condition checking, "
         "and exact parameter comparisons."
     )
 
+    quals = qualify_evidence_chunks(contract, evidence_chunks)
     formatted_evidence = []
-    for i, c in enumerate(evidence_chunks, 1):
+    for i, (q, c) in enumerate(zip(quals, evidence_chunks), 1):
         doc_name = c.get("document_name", "Document")
-        doc_type = c.get("doc_type")
         page = c.get("page_number")
         page_str = f", Page {page}" if page else ""
         content = (c.get("content") or c.get("quote") or "").strip()
-        auth = classify_source_authority(doc_name, content, doc_type)
-        auth_tag = _format_source_authority_tag(auth, doc_name)
+        anno = format_qualification_annotation(q)
+        formatted_evidence.append(
+            f"--- [Evidence Excerpt #{i} ({q.evidence_id}): {doc_name}{page_str}] ---\n{anno}\n{content}\n"
+        )
+
         formatted_evidence.append(
             f"--- [Evidence Excerpt #{i}: {doc_name}{page_str}] ---\n{auth_tag}\n{content}\n"
         )
@@ -199,7 +180,7 @@ def rule_based_multi_condition_verification(
     evidence_chunks: list[dict[str, Any]],
     spec_doc_names: Optional[set[str]] = None,
 ) -> VerificationAnalysisResult:
-    """Deterministic rule-based evaluation for multi-condition, source authority, and partial evidence."""
+    """Deterministic rule-based evaluation using evidence qualification and python-owned verdict aggregation."""
     non_spec_chunks = [
         c for c in evidence_chunks
         if (not spec_doc_names or c.get("document_name") not in spec_doc_names)
@@ -216,11 +197,8 @@ def rule_based_multi_condition_verification(
             condition_results=[],
         )
 
-    def _snippet_for(c_text: str, indicator: str) -> str:
-        m = re.search(rf"([^.\n]*?{re.escape(indicator)}[^.\n]*)", c_text, re.IGNORECASE)
-        return m.group(1).strip() if m else c_text[:120]
-
     # 2. Check for explicit compliance matrix status for this requirement
+    evidence_absent = False
     for c in non_spec_chunks:
         doc_name = c.get("document_name", "").lower()
         if any(k in doc_name for k in COMPLIANCE_MATRIX_KEYWORDS):
@@ -230,6 +208,7 @@ def rule_based_multi_condition_verification(
                 if "not started" in c_lower or "missing" in c_lower or "not tested" in c_lower:
                     m = re.search(r"([^.\n]*(?:not started|missing|not tested)[^.\n]*)", c_text, re.IGNORECASE)
                     snippet = m.group(1).strip() if m else "Status: Not Started"
+                    evidence_absent = True
                     return VerificationAnalysisResult(
                         status="MISSING",
                         confidence=95,
@@ -253,117 +232,24 @@ def rule_based_multi_condition_verification(
                         highlight="FAIL",
                     )
 
-    # 3. Classify Source Authorities of all retrieved chunks
-    chunk_authorities = [
-        classify_source_authority(c.get("document_name", ""), c.get("content", ""), c.get("doc_type"))
-        for c in non_spec_chunks
-    ]
+    quals = qualify_evidence_chunks(contract, non_spec_chunks)
+    claims = extract_all_evidence_claims(non_spec_chunks)
+    cond_results = condition_results_from_claims(contract, claims, quals)
+    has_relevant = len(non_spec_chunks) > 0
 
-    has_empirical = any(a in ("EMPIRICAL_TEST", "QUALIFICATION_TEST", "VALIDATION_REPORT") for a in chunk_authorities)
-    is_only_simulation_or_arch = all(
-        a in ("SIMULATION", "CALCULATION", "ARCHITECTURE_SPEC", "INSPECTION", "UNKNOWN")
-        for a in chunk_authorities
+    status, confidence, reason = aggregate_condition_statuses(
+        contract=contract,
+        condition_results=cond_results,
+        evidence_qualification=quals,
+        has_relevant_evidence=has_relevant,
+        evidence_absent=evidence_absent,
     )
 
-    # If requirement requires physical test and ONLY simulation/calc/arch exists -> UNKNOWN
-    is_physical_req = contract.verification_method != "simulation" and contract.verification_method != "calculation"
-    if is_physical_req and is_only_simulation_or_arch and not has_empirical:
-        bench_uncalibrated = any(
-            "unproven" in c.get("content", "").lower() or "cannot be confirmed without" in c.get("content", "").lower() or "baseline" in c.get("content", "").lower()
-            for c in non_spec_chunks
-        )
-        reason_str = (
-            f"Evidence for {contract.req_code} consists only of theoretical simulations, analytical calculations, "
-            f"or architecture specifications without empirical test data."
-        )
-        if bench_uncalibrated:
-            reason_str = f"Bench test characterization is preliminary; full pack-level calibration and verification remains unproven."
-
-        return VerificationAnalysisResult(
-            status="UNKNOWN",
-            confidence=88,
-            reason=reason_str,
-        )
-
-    # 4. Check for explicit test failures or incompatible component limits at matching scope -> CONFLICT
-    for c in non_spec_chunks:
-        c_text = c.get("content", "")
-        c_lower = c_text.lower()
-        auth = classify_source_authority(c.get("document_name", ""), c_text, c.get("doc_type"))
-
-        # Explicit test failure in empirical report
-        if auth in ("EMPIRICAL_TEST", "QUALIFICATION_TEST", "VALIDATION_REPORT"):
-            if "verdict: fail" in c_lower or "result: fail" in c_lower or ("failed" in c_lower and "gate driver failed" in c_lower):
-                m = re.search(r"([^.\n]*(?:fail|failed)[^.\n]*)", c_text, re.IGNORECASE)
-                snippet = m.group(1).strip() if m else "Verdict: FAIL"
-                return VerificationAnalysisResult(
-                    status="CONFLICT",
-                    confidence=95,
-                    reason=f"Authoritative test report records a verification failure for {contract.req_code}: '{snippet}'.",
-                    highlight=snippet,
-                )
-
-        # Datasheet restriction at matching scope (e.g. ASIC standoff voltage)
-        if auth == "DATASHEET":
-            ind = _match_indicator(c_lower, DATASHEET_RESTRICTION_INDICATORS)
-            if ind:
-                contract_scope = (contract.scope or "System").lower()
-                is_asic_req = "asic" in contract_scope or "asic" in contract.title.lower() or "cell supervisory asic" in contract.raw_text.lower()
-                if is_asic_req or "violates manufacturer warranty" in c_lower or "exceeds maximum" in c_lower:
-                    snippet = _snippet_for(c_text, ind)
-                    return VerificationAnalysisResult(
-                        status="CONFLICT",
-                        confidence=95,
-                        reason=f"Component datasheet restriction directly contradicts specification requirements: '{snippet}'.",
-                        highlight=snippet,
-                    )
-
-    # 5. Check for partial/pending indicators in EMPIRICAL test reports
-    for c, auth in zip(non_spec_chunks, chunk_authorities):
-        if auth in ("EMPIRICAL_TEST", "QUALIFICATION_TEST", "VALIDATION_REPORT"):
-            c_text = c.get("content", "")
-            c_lower = c_text.lower()
-            ind = _match_indicator(c_lower, PARTIAL_EVIDENCE_INDICATORS)
-            if ind:
-                snippet = _snippet_for(c_text, ind)
-                return VerificationAnalysisResult(
-                    status="PARTIAL",
-                    confidence=90,
-                    reason=f"Empirical test evidence indicates partial verification with remaining activities pending: '{snippet}'.",
-                    highlight=snippet,
-                )
-
-    # 6. Check for PASS verdicts and envelope coverage in empirical reports
-    pass_chunks = [
-        c for c, a in zip(non_spec_chunks, chunk_authorities)
-        if a in ("EMPIRICAL_TEST", "QUALIFICATION_TEST", "VALIDATION_REPORT") and
-        any(p in c.get("content", "").lower() for p in PASS_VERDICT_INDICATORS)
-    ]
-
-    if pass_chunks:
-        c = pass_chunks[0]
-        c_text = c.get("content", "")
-        m = re.search(r"([^.\n]*(?:pass|passed)[^.\n]*)", c_text, re.IGNORECASE)
-        snippet = m.group(1).strip() if m else c_text[:120]
-        return VerificationAnalysisResult(
-            status="SUPPORTED",
-            confidence=95,
-            reason=f"Authoritative test report in {c.get('document_name')} records an explicit passing verdict covering required parameters.",
-            highlight=snippet,
-        )
-
-    # If simulation was explicitly allowed and has simulation pass
-    if not is_physical_req and any(a == "SIMULATION" for a in chunk_authorities):
-        return VerificationAnalysisResult(
-            status="SUPPORTED",
-            confidence=90,
-            reason=f"Simulation model analysis satisfies verification criteria for {contract.req_code}.",
-        )
-
     return VerificationAnalysisResult(
-        status="UNKNOWN",
-        confidence=70,
-        reason="Evidence is qualitative without deterministic numeric or passing verdict proof.",
+        status=status,
+        confidence=confidence,
+        condition_results=cond_results,
+        reason=reason,
     )
 
 
@@ -382,17 +268,16 @@ def build_batch_verification_prompt(
         contract: RequirementContract = item["contract"]
         evidence_chunks: list[dict] = item["candidate_chunks"]
 
+        quals = qualify_evidence_chunks(contract, evidence_chunks)
         formatted_evidence = []
-        for j, c in enumerate(evidence_chunks, 1):
+        for j, (q, c) in enumerate(zip(quals, evidence_chunks), 1):
             doc_name = c.get("document_name", "Document")
-            doc_type = c.get("doc_type")
             page = c.get("page_number")
             page_str = f", Page {page}" if page else ""
             content = (c.get("content") or c.get("quote") or "").strip()
-            auth = classify_source_authority(doc_name, content, doc_type)
-            auth_tag = _format_source_authority_tag(auth, doc_name)
+            anno = format_qualification_annotation(q)
             formatted_evidence.append(
-                f"  [Excerpt #{j}: {doc_name}{page_str}]\n  {auth_tag}\n  {content}"
+                f"  [Excerpt #{j} ({q.evidence_id}): {doc_name}{page_str}]\n  {anno}\n  {content}"
             )
         evidence_str = "\n".join(formatted_evidence) if formatted_evidence else "  [No independent evidence retrieved]"
 
@@ -442,7 +327,7 @@ async def evaluate_batch_verification(
     model: Optional[str] = None,
     thinking_level: Optional[str] = None,
 ) -> dict[str, VerificationAnalysisResult]:
-    """Execute batched multi-condition verification with Gemini 3.7 Flash."""
+    """Execute batched multi-condition verification with Gemini 3.7 Flash, recomputed in Python."""
     active_model = model or settings.LLM_MODEL
     has_keys = bool(settings.effective_gemini_api_key or settings.effective_databricks_token or settings.effective_openai_api_key)
 
@@ -465,14 +350,31 @@ async def evaluate_batch_verification(
             thinking_level=thinking_level or settings.GEMINI_THINKING_LEVEL,
         )
         if batch_resp and batch_resp.batch_results:
+            item_by_code = {it["contract"].req_code: it for it in batch_items}
             for item_res in batch_resp.batch_results:
-                results[item_res.req_code] = VerificationAnalysisResult(
-                    status=item_res.status,
-                    confidence=item_res.confidence,
-                    condition_results=item_res.condition_results,
-                    reason=item_res.reason,
-                    highlight=item_res.highlight,
-                )
+                it = item_by_code.get(item_res.req_code)
+                if it:
+                    contract: RequirementContract = it["contract"]
+                    cand_chunks: list[dict] = it.get("candidate_chunks", [])
+                    quals = qualify_evidence_chunks(contract, cand_chunks)
+                    qual_contents = {q.evidence_id: (c.get("content") or c.get("quote") or "") for q, c in zip(quals, cand_chunks)}
+                    has_relevant = any(not any(k in c.get("document_name", "").lower() for k in SPEC_DOC_KEYWORDS) for c in cand_chunks)
+
+                    provisional = VerificationAnalysisResult(
+                        status=item_res.status,
+                        confidence=item_res.confidence,
+                        condition_results=item_res.condition_results,
+                        reason=item_res.reason,
+                        highlight=item_res.highlight,
+                    )
+                    # Always recompute final verdict in Python
+                    results[item_res.req_code] = finalize_verdict(
+                        contract=contract,
+                        analysis=provisional,
+                        qualifications=quals,
+                        qualified_contents=qual_contents,
+                        has_relevant_evidence=has_relevant,
+                    )
     except Exception as ex:
         logger.warning(f"Batch verification LLM call failed: {ex}. Falling back to rule-based verification.")
 
@@ -492,7 +394,7 @@ async def evaluate_requirement_verification(
     thinking_level: Optional[str] = None,
     spec_doc_names: Optional[set[str]] = None,
 ) -> VerificationAnalysisResult:
-    """Execute structured multi-condition verification using LLM or deterministic fallback."""
+    """Execute structured multi-condition verification using LLM, finalized deterministically in Python."""
     active_model = model or settings.LLM_MODEL
     has_keys = bool(settings.effective_gemini_api_key or settings.effective_databricks_token or settings.effective_openai_api_key)
 
@@ -511,8 +413,19 @@ async def evaluate_requirement_verification(
             thinking_level=thinking_level or settings.GEMINI_THINKING_LEVEL,
         )
         if result and result.status in ("SUPPORTED", "PARTIAL", "MISSING", "UNKNOWN", "CONFLICT"):
-            return result
+            quals = qualify_evidence_chunks(contract, evidence_chunks, spec_doc_names=spec_doc_names)
+            qual_contents = {q.evidence_id: (c.get("content") or c.get("quote") or "") for q, c in zip(quals, evidence_chunks)}
+            has_relevant = any(not any(k in c.get("document_name", "").lower() for k in SPEC_DOC_KEYWORDS) for c in evidence_chunks)
+            # Python recomputes and owns final status
+            return finalize_verdict(
+                contract=contract,
+                analysis=result,
+                qualifications=quals,
+                qualified_contents=qual_contents,
+                has_relevant_evidence=has_relevant,
+            )
     except Exception as ex:
         logger.warning(f"Structured LLM verification call failed: {ex}. Falling back to deterministic engine.")
 
     return rule_based_multi_condition_verification(contract, evidence_chunks, spec_doc_names=spec_doc_names)
+

@@ -8,15 +8,15 @@ pnpm-debug.log*
 lerna-debug.log*
 
 # Dependencies
-node_modules
+node_modules/
 
 # Build output
-dist
-dist-ssr
-.output
-.vinxi
+dist/
+dist-ssr/
+.output/
+.vinxi/
 .tanstack/**
-.nitro
+.nitro/
 *.local
 
 # Wrangler / Cloudflare
@@ -26,23 +26,34 @@ dist-ssr
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
-.idea
+.idea/
 .DS_Store
+Thumbs.db
+Desktop.ini
 *.suo
 *.ntvs*
 *.njsproj
 *.sln
 *.sw?
+*.swp
+*.bak
+*.tmp
 
-# ── Backend runtime & secrets ────────────────────────────────
+# ── Backend runtime, cache & secrets ────────────────────────
 backend/venv/
 backend/__pycache__/
 backend/traceaudit.db
 backend/uploads/
 backend/chroma_data/
 backend/.env
+backend/.env.*
+.env
+.env.*
+!.env.example
 traceaudit.db
 uploads/
+.cache/
+backend/.cache/
 
 # Python bytecode & test caches (anywhere in tree)
 __pycache__/
@@ -53,7 +64,12 @@ __pycache__/
 .coverage
 htmlcov/
 *.sqlite3
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+build/
 
 # ── Generated / local-only files ─────────────────────────────
 sample_documents/
 TraceAudit_AI_Product_Strategy_Report.docx
+

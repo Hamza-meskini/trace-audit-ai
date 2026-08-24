@@ -6,8 +6,8 @@ parser when no API key is provided or when running offline.
 """
 
 import re
-from typing import Optional
-from pydantic import BaseModel, Field
+from typing import Optional, Union, Any
+from pydantic import BaseModel, Field, field_validator
 from app.config import settings
 from app.services.llm_client import generate_structured
 
@@ -15,9 +15,25 @@ from app.services.llm_client import generate_structured
 class ExtractedParameter(BaseModel):
     name: str = Field(description="Parameter name, e.g. 'voltage', 'temperature', 'rating'")
     value: Optional[str] = Field(None, description="Exact value string, e.g. '18-32 V DC'")
-    min_val: Optional[float] = Field(None, description="Minimum numeric value if applicable")
-    max_val: Optional[float] = Field(None, description="Maximum numeric value if applicable")
+    min_val: Optional[Union[float, str]] = Field(None, description="Minimum numeric value if applicable")
+    max_val: Optional[Union[float, str]] = Field(None, description="Maximum numeric value if applicable")
     unit: Optional[str] = Field(None, description="Unit of measurement, e.g. 'V', '°C', 'kV'")
+
+    @field_validator("min_val", "max_val", mode="before")
+    @classmethod
+    def parse_numeric(cls, v: Any) -> Optional[float]:
+        if v is None:
+            return None
+        if isinstance(v, (int, float)):
+            return float(v)
+        if isinstance(v, str):
+            clean = re.sub(r"[^\d.+-]", "", v.strip())
+            try:
+                return float(clean) if clean else None
+            except ValueError:
+                return None
+        return None
+
 
 
 class ExtractedRequirement(BaseModel):
