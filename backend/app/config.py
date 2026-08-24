@@ -41,7 +41,7 @@ class Settings(BaseSettings):
 
     # Databricks AI Gateway Settings (MLflow Model Serving)
     DATABRICKS_TOKEN: str = ""
-    DATABRICKS_BASE_URL: str = "https://dbc-4973b3f3-18e4.cloud.databricks.com/ai-gateway/mlflow/v1"
+    DATABRICKS_BASE_URL: str = ""  # e.g. "https://<workspace-id>.cloud.databricks.com/ai-gateway/mlflow/v1"
     DATABRICKS_MODEL: str = "system.ai.qwen35-122b-a10b"
     DATABRICKS_FALLBACK_MODELS: list[str] = [
         "system.ai.qwen35-122b-a10b",

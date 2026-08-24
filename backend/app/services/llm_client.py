@@ -181,7 +181,7 @@ async def call_databricks_chat_completions(
 ) -> Optional[str]:
     """Call Databricks Model Serving AI Gateway via OpenAI-compatible endpoint."""
     token = settings.effective_databricks_token
-    if not token:
+    if not token or not settings.DATABRICKS_BASE_URL:
         return None
 
     base_url = settings.DATABRICKS_BASE_URL.rstrip("/")

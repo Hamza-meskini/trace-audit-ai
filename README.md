@@ -167,7 +167,7 @@ GEMINI_THINKING_LEVEL="HIGH"
 
 # Option B: Databricks Model Serving AI Gateway
 DATABRICKS_TOKEN="dapi..."
-DATABRICKS_BASE_URL="https://dbc-4973b3f3-18e4.cloud.databricks.com/ai-gateway/mlflow/v1"
+DATABRICKS_BASE_URL="https://<workspace-id>.cloud.databricks.com/ai-gateway/mlflow/v1"
 DATABRICKS_MODEL="system.ai.qwen35-122b-a10b"
 ```
 
