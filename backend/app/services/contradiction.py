@@ -5,6 +5,7 @@ from typing import Optional
 from dataclasses import dataclass
 from app.schemas.contract import RequirementContract, RANGE_REGEX
 from app.schemas.claim import EvidenceClaim, extract_all_evidence_claims
+from app.schemas.evidence_qualification import scopes_compatible
 from app.services.units import are_units_compatible, convert_value, normalize_unit_str
 
 
@@ -67,16 +68,18 @@ def detect_contract_contradiction(
         is_datasheet = any(k in claim_doc_lower for k in ["datasheet", "ds-", "oem", "supplier", "component", "spec"])
         claim_scope = (claim.entity_scope or "System").lower()
 
-        # Scope Check: If claim is from a component datasheet (e.g. ASIC) but requirement is system/pack level (e.g. BCU/Pack)
-        # and not specifically about the ASIC component, do not create a false conflict if system test passes or scope mismatch
-        if is_datasheet and claim_scope != "system" and contract_scope != "system":
-            if claim_scope != contract_scope and not (claim_scope in contract_title_lower or claim_scope in contract_raw_lower):
-                continue
-
-        if is_datasheet and "asic" in claim_doc_lower and ("bcu pack" in contract_title_lower or "pack operating" in contract_title_lower or "pack operational" in contract_title_lower):
-            if "asic" not in contract_title_lower and not ("cell supervisory asic" in contract_raw_lower and "standoff" in contract_raw_lower):
-                if has_system_empirical_support:
+        # Scope Check: Component datasheets do not create a false conflict for a different scope level
+        # unless the requirement explicitly references that component entity
+        if is_datasheet:
+            scope_compat = scopes_compatible(contract.scope, claim.entity_scope)
+            if scope_compat is False:
+                # If scopes are demonstrably incompatible, only consider if requirement explicitly references the claim entity
+                if claim_scope != "system" and claim_scope not in contract_raw_lower:
                     continue
+            # If system-level empirical tests already prove full system compliance across the required envelope,
+            # subcomponent-level deratings do not create a false system-level contradiction
+            if has_system_empirical_support and claim_scope != "system" and claim_scope not in contract_title_lower:
+                continue
 
         # 1. Numeric Range upper/lower limit restriction (e.g. Spec 1000V ASIC Standoff vs Datasheet 750V max, or Temp +85C vs +70C)
         if contract.requirement_type in ("numeric_range", "threshold"):

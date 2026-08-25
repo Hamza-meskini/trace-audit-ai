@@ -1,5 +1,6 @@
 """Deterministic Validator for Boolean Features, Ratings, and Protocol Flags."""
 
+import re
 from typing import Optional
 from app.schemas.contract import RequirementContract
 from app.schemas.claim import EvidenceClaim
@@ -13,12 +14,14 @@ def validate_boolean_flag(
     """Validate IP ratings, protocol presence, or hardware boolean features."""
     req_text = contract.raw_text.lower()
 
-    # 1. IP Rating Check
-    if contract.parameter == "ingress_protection" or contract.unit == "IP" or "ip6" in req_text:
-        target_ip = str(contract.expected_value or "IP67").upper()
+    # 1. Generalized IP Ingress Protection Check
+    ip_match = re.search(r"\b(IP\d{2}[A-Z]?)\b", req_text, re.IGNORECASE)
+    if contract.parameter == "ingress_protection" or contract.unit == "IP" or ip_match:
+        target_ip = str(contract.expected_value or (ip_match.group(1).upper() if ip_match else "IP67")).upper()
         for claim in claims:
-            if "ip67" in claim.quote.lower() or "ip65" in claim.quote.lower() or "immersion" in claim.quote.lower():
-                if "pass" in claim.quote.lower() or "zero water" in claim.quote.lower() or "completed" in claim.quote.lower():
+            c_quote_lower = claim.quote.lower()
+            if target_ip.lower() in c_quote_lower or "ingress" in c_quote_lower or "immersion" in c_quote_lower:
+                if any(k in c_quote_lower for k in ["pass", "zero water", "completed", "verified", "satisfied"]):
                     return ValidationOutcome(
                         status="SUPPORTED",
                         confidence=95.0,
@@ -26,7 +29,7 @@ def validate_boolean_flag(
                         expected_value=target_ip,
                         observed_value=f"PASS {target_ip}",
                     )
-                elif "not tested" in claim.quote.lower() or "missing" in claim.quote.lower():
+                elif any(k in c_quote_lower for k in ["not tested", "missing", "not started", "untested"]):
                     return ValidationOutcome(
                         status="MISSING",
                         confidence=95.0,
@@ -34,33 +37,40 @@ def validate_boolean_flag(
                         expected_value=f"Completed {target_ip} test",
                         observed_value="Not Tested",
                     )
+                elif "fail" in c_quote_lower:
+                    return ValidationOutcome(
+                        status="CONFLICT",
+                        confidence=95.0,
+                        reason=f"Ingress protection test failed for {target_ip}.",
+                        highlight="FAIL",
+                        expected_value=target_ip,
+                        observed_value="FAIL",
+                    )
 
-    # 2. CAN-FD protocol rate check (e.g. 5.0 Mbps zero frame errors)
-    if "can-fd" in req_text and "5.0 mbps" in req_text:
-        for claim in claims:
-            if "5.0 mbps" in claim.quote.lower() and "zero frame errors" in claim.quote.lower():
+    # 2. Generalized Boolean Feature / Flag Verification
+    if contract.requirement_type in ("boolean", "enumeration") or contract.expected_value is True:
+        feature_keywords = [
+            w.lower() for w in re.findall(r"\w+", f"{contract.req_code} {contract.title}")
+            if len(w) > 3 and w.lower() not in ["shall", "must", "support", "provide", "feature", "enabled", "device", "system", "requirement", "protocol", "rated", "nominal"]
+        ]
+        if feature_keywords:
+            empirical_claims = [
+                c for c in claims
+                if c.source_authority in ("EMPIRICAL_TEST", "QUALIFICATION_TEST", "VALIDATION_REPORT", "COMPLIANCE_MATRIX")
+                and not any(k in c.document_name.lower() for k in ["srs", "product_requirements"])
+            ]
+            has_verified = any(
+                any(kw in c.quote.lower() for kw in feature_keywords) and
+                any(p in c.quote.lower() for p in ["pass", "verified", "supported", "implemented", "confirmed", "satisfied", "zero frame errors", "0 errors"])
+                for c in empirical_claims
+            )
+            if has_verified:
                 return ValidationOutcome(
                     status="SUPPORTED",
                     confidence=95.0,
-                    reason="CAN-FD telemetry protocol verified at 5.0 Mbps with zero frame errors.",
-                    expected_value="5.0 Mbps, zero frame errors",
-                    observed_value="5.0 Mbps tested with 0 errors",
+                    reason=f"Empirical verification records confirm implementation and compliance for '{contract.title}'.",
+                    expected_value=contract.title,
+                    observed_value="Verified",
                 )
-
-    # 3. Secure boot / Hardware Root of Trust check
-    if "secure boot" in req_text or "root-of-trust" in req_text or "ecdsa" in req_text:
-        # Check if any non-spec claim actually verifies secure boot implementation
-        has_secure_boot_proof = any(
-            ("ecdsa" in c.quote.lower() or "root-of-trust" in c.quote.lower() or "secure boot" in c.quote.lower()) and ("pass" in c.quote.lower() or "verified" in c.quote.lower())
-            for c in claims if not any(k in c.document_name.lower() for k in ["srs", "product_requirements"])
-        )
-        if not has_secure_boot_proof:
-            return ValidationOutcome(
-                status="MISSING",
-                confidence=95.0,
-                reason="No test report, security evaluation record, or cryptographic validation certificate found verifying ISO 21434 secure boot.",
-                expected_value="ECDSA P-384 secure boot verification certificate",
-                observed_value="Missing Evidence",
-            )
 
     return None

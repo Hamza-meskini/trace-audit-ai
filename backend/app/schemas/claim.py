@@ -67,12 +67,13 @@ def classify_source_authority(
         return "CALCULATION"
 
     # 4. Architecture / Design Intent / Interface Spec
-    if any(k in dn for k in ["02_system_architecture", "architecture", "arch_spec", "interface_spec", "system_architecture"]) or \
+    if any(k in dn for k in ["architecture", "arch_spec", "interface_spec", "system_architecture", "design_intent", "system_design", "block_diagram"]) or \
        any(k in ct for k in ["architecture section", "design intention", "is specified for", "architecture definition", "layout reviewed"]):
         return "ARCHITECTURE_SPEC"
 
     # 5. Supplier Component Datasheets
-    if any(k in dn for k in ["03_bms_cell_supervisory_asic_datasheet", "datasheet", "data sheet", "ds-", "oem_supplier", "supplier", "component_datasheet"]):
+    if any(k in dn for k in ["datasheet", "data sheet", "ds-", "oem_supplier", "supplier", "component_datasheet", "part_spec", "ic_spec"]) or \
+       any(k in ct for k in ["absolute maximum ratings", "electrical characteristics", "pin configuration", "package dimensions", "typical application circuit"]):
         return "DATASHEET"
 
     # 6. Inspection
