@@ -466,5 +466,216 @@ class TestMergeQualificationEnforcement(unittest.TestCase):
         self.assertEqual(merged[0].status, "PROVEN")
 
 
+class TestBuildVerificationPrompt(unittest.TestCase):
+    """Verify single-requirement prompt construction without undefined variable bugs."""
+
+    def test_build_verification_prompt_executes_cleanly(self):
+        from app.services.verification_reasoner import build_verification_prompt
+        contract = make_contract(
+            req_code="REQ-AUD-001",
+            title="Operating voltage shall be 400V to 800V",
+            conditions=[
+                cond("REQ-AUD-001-C1", parameter="voltage", operator="<=", threshold=400.0, unit="V"),
+                cond("REQ-AUD-001-C2", parameter="voltage", operator=">=", threshold=800.0, unit="V"),
+            ],
+            min_value=400.0,
+            max_value=800.0,
+            unit="V",
+        )
+        evidence_chunks = [
+            {
+                "id": "c1",
+                "document_name": "lab_report.pdf",
+                "page_number": 3,
+                "content": "System bench test demonstrated continuous operation from 380 V to 820 V DC. Verdict: PASS.",
+            }
+        ]
+        prompt, system_instruction = build_verification_prompt(contract, evidence_chunks)
+        self.assertIn("Requirement to Verify:", prompt)
+        self.assertIn("REQ-AUD-001", prompt)
+        self.assertIn("lab_report.pdf", prompt)
+        self.assertIn("formal compliance", system_instruction)
+        # Verify no duplicate excerpts or unformatted tags
+        self.assertEqual(prompt.count("[Evidence Excerpt #1"), 1)
+
+
+class TestFullPipelineToApiResponse(unittest.TestCase):
+    """Prove end-to-end status derivation from LLM/Reasoner output to API responses."""
+
+    def setUp(self):
+        self.contract = make_contract(
+            req_code="REQ-BAT-001",
+            title="Battery Pack Isolation and Latency",
+            conditions=[
+                cond("REQ-BAT-001-C1", parameter="isolation", operator=">=", threshold=2.5, unit="kV"),
+                cond("REQ-BAT-001-C2", parameter="latency", operator="<=", threshold=10.0, unit="ms"),
+            ],
+        )
+        self.qualifications = [
+            qual("E1", "03_Lab_Test_Report.pdf", "QUALIFIED", True, True, parameters_found=["isolation"]),
+            qual("E2", "04_Timing_Report.pdf", "QUALIFIED", True, True, parameters_found=["latency"]),
+        ]
+        self.candidate_chunks = [
+            {
+                "id": "chunk-001",
+                "document_name": "03_Lab_Test_Report.pdf",
+                "doc_type": "Test report",
+                "page_number": 5,
+                "content": "Galvanic isolation measured at 3.2 kV, satisfying dielectric criteria.",
+            },
+            {
+                "id": "chunk-002",
+                "document_name": "04_Timing_Report.pdf",
+                "doc_type": "Test report",
+                "page_number": 8,
+                "content": "Contactor opening latency measured at 8.4 ms under fault conditions.",
+            },
+        ]
+
+    def test_llm_supported_with_proven_and_untested_returns_partial_api_response(self):
+        """Proof 1: LLM returns SUPPORTED, Conditions are PROVEN + UNTESTED -> API returns PARTIAL."""
+        from app.services.classification import _finalize_assessment, _format_evidence_items
+        from app.services.validators import ValidationOutcome
+        from app.schemas.requirement import RequirementResponse
+        from datetime import datetime, timezone
+
+        # 1. LLM reasoner outputs provisional SUPPORTED status, but condition C2 is UNTESTED
+        llm_output = VerificationAnalysisResult(
+            status="SUPPORTED",  # LLM erroneously claims SUPPORTED
+            confidence=95.0,
+            condition_results=[
+                ConditionVerificationResult(condition_id="REQ-BAT-001-C1", status="PROVEN", evidence_ids=["E1"], quote="Galvanic isolation measured at 3.2 kV"),
+                ConditionVerificationResult(condition_id="REQ-BAT-001-C2", status="UNTESTED", reason="Latency test not yet conducted."),
+            ],
+            reason="Isolation test passed, timing clause pending.",
+        )
+
+        # 2. Finalize verdict recomputes status in Python
+        final_verdict = finalize_verdict(
+            contract=self.contract,
+            analysis=llm_output,
+            qualifications=self.qualifications,
+            qualified_contents={
+                "E1": self.candidate_chunks[0]["content"],
+                "E2": self.candidate_chunks[1]["content"],
+            },
+            has_relevant_evidence=True,
+        )
+
+        # Python aggregator overrides LLM provisional SUPPORTED to PARTIAL
+        self.assertEqual(final_verdict.status, "PARTIAL")
+
+        # 3. _finalize_assessment formats the RequirementAssessment for API persistence
+        formatted_items = _format_evidence_items(self.candidate_chunks)
+        assessment = _finalize_assessment(
+            contract=self.contract,
+            non_spec_items=formatted_items,
+            outcome=ValidationOutcome(
+                status=final_verdict.status,
+                confidence=float(final_verdict.confidence),
+                reason=final_verdict.reason,
+            ),
+        )
+
+        self.assertEqual(assessment.coverage_status, "Partial")
+        self.assertEqual(assessment.review_state, "Needs review")
+
+        # 4. API serialization into public RequirementResponse
+        api_response = RequirementResponse(
+            id="req-uuid-001",
+            project_id="proj-uuid-001",
+            req_code=self.contract.req_code,
+            title=self.contract.title,
+            description=self.contract.raw_text,
+            category="Electrical",
+            source_document="01_SRS.docx",
+            sources_count=len(assessment.evidence_links),
+            coverage_status=assessment.coverage_status,
+            confidence=assessment.confidence,
+            review_state=assessment.review_state,
+            severity="High",
+            ai_analysis=assessment.ai_analysis,
+            ai_recommendation=assessment.ai_recommendation,
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+        )
+
+        # PROOF: Final API response field is 'Partial'
+        self.assertEqual(api_response.coverage_status, "Partial")
+        self.assertEqual(api_response.review_state, "Needs review")
+
+    def test_llm_supported_with_all_proven_returns_supported_api_response(self):
+        """Proof 2: LLM returns SUPPORTED, Conditions are all PROVEN -> API returns SUPPORTED."""
+        from app.services.classification import _finalize_assessment, _format_evidence_items
+        from app.services.validators import ValidationOutcome
+        from app.schemas.requirement import RequirementResponse
+        from datetime import datetime, timezone
+
+        # 1. LLM reasoner outputs SUPPORTED, and all conditions C1 & C2 are PROVEN with qualified citations
+        llm_output = VerificationAnalysisResult(
+            status="SUPPORTED",
+            confidence=95.0,
+            condition_results=[
+                ConditionVerificationResult(condition_id="REQ-BAT-001-C1", status="PROVEN", evidence_ids=["E1"], quote="Galvanic isolation measured at 3.2 kV"),
+                ConditionVerificationResult(condition_id="REQ-BAT-001-C2", status="PROVEN", evidence_ids=["E2"], quote="Contactor opening latency measured at 8.4 ms"),
+            ],
+            reason="All conditions verified by lab test reports.",
+        )
+
+        # 2. Finalize verdict in Python
+        final_verdict = finalize_verdict(
+            contract=self.contract,
+            analysis=llm_output,
+            qualifications=self.qualifications,
+            qualified_contents={
+                "E1": self.candidate_chunks[0]["content"],
+                "E2": self.candidate_chunks[1]["content"],
+            },
+            has_relevant_evidence=True,
+        )
+
+        self.assertEqual(final_verdict.status, "SUPPORTED")
+
+        # 3. _finalize_assessment formats the RequirementAssessment
+        formatted_items = _format_evidence_items(self.candidate_chunks)
+        assessment = _finalize_assessment(
+            contract=self.contract,
+            non_spec_items=formatted_items,
+            outcome=ValidationOutcome(
+                status=final_verdict.status,
+                confidence=float(final_verdict.confidence),
+                reason=final_verdict.reason,
+            ),
+        )
+
+        self.assertEqual(assessment.coverage_status, "Supported")
+        self.assertEqual(assessment.review_state, "Reviewed")
+
+        # 4. API serialization into public RequirementResponse
+        api_response = RequirementResponse(
+            id="req-uuid-001",
+            project_id="proj-uuid-001",
+            req_code=self.contract.req_code,
+            title=self.contract.title,
+            description=self.contract.raw_text,
+            category="Electrical",
+            source_document="01_SRS.docx",
+            sources_count=len(assessment.evidence_links),
+            coverage_status=assessment.coverage_status,
+            confidence=assessment.confidence,
+            review_state=assessment.review_state,
+            severity="High",
+            ai_analysis=assessment.ai_analysis,
+            ai_recommendation=assessment.ai_recommendation,
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+        )
+
+        # PROOF: Final API response field is 'Supported'
+        self.assertEqual(api_response.coverage_status, "Supported")
+        self.assertEqual(api_response.review_state, "Reviewed")
+
+
 if __name__ == "__main__":
     unittest.main()
+

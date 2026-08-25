@@ -119,10 +119,6 @@ def build_verification_prompt(
             f"--- [Evidence Excerpt #{i} ({q.evidence_id}): {doc_name}{page_str}] ---\n{anno}\n{content}\n"
         )
 
-        formatted_evidence.append(
-            f"--- [Evidence Excerpt #{i}: {doc_name}{page_str}] ---\n{auth_tag}\n{content}\n"
-        )
-
     evidence_block = "\n".join(formatted_evidence) if formatted_evidence else "[No evidence retrieved]"
 
     cond_descriptions = []
