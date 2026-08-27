@@ -180,6 +180,7 @@ async def call_databricks_chat_completions(
     timeout: float = 90.0,
 ) -> Optional[str]:
     """Call Databricks Model Serving AI Gateway via OpenAI-compatible endpoint."""
+    import time
     token = settings.effective_databricks_token
     if not token or not settings.DATABRICKS_BASE_URL:
         return None
@@ -198,8 +199,6 @@ async def call_databricks_chat_completions(
         "temperature": 0.1,
         "max_tokens": 4096,
     }
-    if json_mode:
-        payload["response_format"] = {"type": "json_object"}
 
     headers = {
         "Authorization": f"Bearer {token}",
@@ -208,16 +207,21 @@ async def call_databricks_chat_completions(
 
     for attempt in range(MAX_ATTEMPTS):
         try:
+            t0 = time.time()
+            print(f"  [LLM Request -> Databricks] Sending prompt to {model} ({len(prompt)} chars)...", flush=True)
             async with httpx.AsyncClient(timeout=timeout) as client:
                 resp = await client.post(url, json=payload, headers=headers)
+                elapsed = time.time() - t0
                 if resp.status_code in RETRYABLE_STATUS_CODES:
+                    print(f"  [LLM Warning] Databricks rate/capacity [{resp.status_code}]. Retrying (attempt {attempt+1}/{MAX_ATTEMPTS})...", flush=True)
                     logger.warning(
                         f"Databricks API rate/capacity [{resp.status_code}] for model {model}. "
                         f"Retrying (attempt {attempt+1}/{MAX_ATTEMPTS})..."
                     )
-                    await asyncio.sleep(1.5 * (attempt + 1))
+                    await asyncio.sleep(2.0 * (attempt + 1))
                     continue
                 if resp.status_code != 200:
+                    print(f"  [LLM Error] Databricks returned HTTP {resp.status_code}: {resp.text[:200]}", flush=True)
                     logger.error(f"Databricks API error [{resp.status_code}] for model {model}: {resp.text}")
                     return None
 
@@ -228,14 +232,28 @@ async def call_databricks_chat_completions(
                     return None
                 content = choices[0].get("message", {}).get("content")
                 if isinstance(content, list):
-                    parts = [p.get("text", "") for p in content if isinstance(p, dict) and p.get("type") == "text"]
-                    return "\n".join(parts) if parts else str(content)
-                return content
+                    parts = []
+                    for p in content:
+                        if isinstance(p, dict):
+                            if p.get("type") == "text" and "text" in p:
+                                parts.append(p["text"])
+                            elif "text" in p and p.get("type") != "reasoning":
+                                parts.append(p["text"])
+                            elif "content" in p:
+                                parts.append(str(p["content"]))
+                        elif isinstance(p, str):
+                            parts.append(p)
+                    result_text = "\n".join(parts) if parts else str(content)
+                else:
+                    result_text = content
+                print(f"  [LLM Response <- Databricks] Received response from {model} in {elapsed:.2f}s ({len(str(result_text))} chars)", flush=True)
+                return result_text
         except Exception as ex:
             if attempt == MAX_ATTEMPTS - 1:
+                print(f"  [LLM Error] Databricks call failed: {ex}", flush=True)
                 logger.error(f"Exception calling Databricks Model Serving ({model}): {ex}")
                 return None
-            await asyncio.sleep(1.0)
+            await asyncio.sleep(1.5)
     return None
 
 
@@ -286,31 +304,25 @@ async def generate_structured(
     system_instruction: Optional[str] = None,
     thinking_level: Optional[str] = None,
 ) -> Optional[T]:
-    """Generate structured output validated against a Pydantic schema using Gemini or Databricks AI Gateway."""
+    """Generate structured output validated against a Pydantic schema using Databricks or Gemini."""
     active_model = model or settings.LLM_MODEL
-    is_gemini = "gemini" in active_model.lower()
+    is_databricks = (
+        settings.LLM_PROVIDER == "databricks"
+        or "system.ai." in active_model.lower()
+        or "qwen" in active_model.lower()
+        or "llama" in active_model.lower()
+    )
+    is_gemini = not is_databricks and "gemini" in active_model.lower()
 
     raw_response: Optional[str] = None
 
     schema = response_model.model_json_schema()
     prompt_with_schema = f"{prompt}\n\nRespond ONLY with valid JSON strictly conforming to this schema:\n{json.dumps(schema)}"
 
-    # 1. Primary: Google Gemini
-    if is_gemini and settings.effective_gemini_api_key:
-        raw_response = await call_gemini_generate_content(
-            prompt=prompt_with_schema,
-            model=active_model,
-            system_instruction=system_instruction,
-            json_mode=True,
-            response_schema=None,
-            thinking_level=thinking_level,
-        )
-
-    # 2. Fallback: Databricks Model Serving AI Gateway
-    if not raw_response and settings.effective_databricks_token:
-        models_to_try = [settings.DATABRICKS_MODEL] + [m for m in settings.DATABRICKS_FALLBACK_MODELS if m != settings.DATABRICKS_MODEL]
+    # 1. Primary: Databricks AI Gateway (when configured or requested)
+    if is_databricks and settings.effective_databricks_token:
+        models_to_try = [active_model] + [m for m in settings.DATABRICKS_FALLBACK_MODELS if m != active_model]
         for db_model in models_to_try:
-            logger.info(f"Cascading to Databricks AI Gateway model: {db_model}")
             raw_response = await call_databricks_chat_completions(
                 prompt=prompt_with_schema,
                 model=db_model,
@@ -319,6 +331,17 @@ async def generate_structured(
             )
             if raw_response:
                 break
+
+    # 2. Secondary: Google Gemini (when configured and not Databricks)
+    elif is_gemini and settings.effective_gemini_api_key:
+        raw_response = await call_gemini_generate_content(
+            prompt=prompt_with_schema,
+            model=active_model,
+            system_instruction=system_instruction,
+            json_mode=True,
+            response_schema=None,
+            thinking_level=thinking_level,
+        )
 
     # 3. Fallback: OpenAI
     if not raw_response and settings.effective_openai_api_key:
@@ -337,6 +360,7 @@ async def generate_structured(
         parsed_json = json.loads(cleaned)
         return response_model.model_validate(parsed_json)
     except Exception as ex:
+        print(f"  [LLM Schema Error] Failed to parse JSON response: {ex}", flush=True)
         logger.error(f"Failed to validate model schema: {ex}. Raw: {raw_response[:300]}")
         return None
 

@@ -141,22 +141,27 @@ def build_verification_prompt(
 Retrieved Technical Evidence:
 {evidence_block}
 
-Auditing Rules & Constraints:
-1. DOCUMENT AUTHORITY & MODALITY RULE:
-   - EMPIRICAL TEST / VALIDATION / QUALIFICATION REPORT: Direct empirical proof of physical testing.
-   - COMPLIANCE MATRIX: Official verification status record (PASS, IN PROGRESS, NOT STARTED, FAIL).
-   - COMPONENT DATASHEET: Hardware device ratings.
-   - THEORETICAL SIMULATION / CALCULATION / ARCHITECTURE SPEC: Models, design intent, or math.
-   - If the requirement requires physical testing ('physical_test') and the ONLY available evidence is simulation, calculation, or architecture specification clause, you MUST classify status as 'UNKNOWN' (do NOT classify as PARTIAL or SUPPORTED).
-   - If the requirement explicitly specifies verification by simulation, simulation evidence may be valid.
-2. ENTITY & SCOPE RULE:
-   - A component datasheet limit (e.g. ASIC maximum voltage) does NOT create a system-level conflict if the requirement is for the overall system (e.g. BCU Pack) and system test reports show passing tests.
-3. NUMERIC ENVELOPE RULE:
-   - A tested operating range [Tmin, Tmax] that fully covers the required bounds [Rmin, Rmax] (Tmin <= Rmin and Tmax >= Rmax) is SUPPORTED for that range condition.
-4. COMPOUND CONDITIONS & PASS VERDICTS:
-   - If a requirement has multiple conditions (e.g. threshold + tolerance + latency), a 'Result: PASS' on one sub-test does NOT make the entire requirement SUPPORTED if other conditions are unmeasured or pending.
-   - Evaluate each condition in `condition_results` with status: 'PROVEN', 'FAILED', 'PENDING', or 'UNTESTED'.
-   - Final status: 'SUPPORTED' only if ALL conditions PROVEN. 'PARTIAL' if some PROVEN and some PENDING/UNTESTED. 'CONFLICT' if any FAILED. 'MISSING' if no evidence / NOT STARTED. 'UNKNOWN' if only simulation / non-authoritative.
+Auditing Protocol & Verification Rules:
+
+STEP 1: EVIDENCE ATTRIBUTION & RELEVANCE CHECK (Filter Similarity Noise)
+- For each retrieved excerpt, evaluate whether it provides DIRECT verification evidence for the target requirement and its specified entity/subsystem, or if it was fetched merely due to keyword/vector similarity.
+- HIERARCHICAL SCOPE vs COMPONENT CONTEXT:
+  * If an excerpt describes an internal component/sub-circuit rating from a component datasheet, while a primary System-Level Physical Test Report proves that the fully integrated system successfully operated across the entire required operational envelope, the internal component rating represents implementation detail and does NOT restrict or invalidate the verified integrated system capability.
+  * If an excerpt describes an intentional fault-injection or safety stress test (e.g., injecting an out-of-range stimulus or simulated fault to verify that protective shutdown/reaction mechanisms execute within required latency), this proves functional safety protective compliance, NOT a specification breach or contradiction.
+
+STEP 2: CONDITION EVALUATION & COMPLIANCE RULES
+1. NUMERIC OPERATING ENVELOPE (SUPERSET PROOF):
+   - When verifying an operating capability span [Rmin, Rmax], any empirical test envelope [Tmin, Tmax] where Tmin <= Rmin and Tmax >= Rmax (i.e. the tested range fully encompasses the required operational bounds) provides mathematical proof of capability and is PROVEN / SUPPORTED.
+2. DOCUMENT AUTHORITY & MODALITY DISCIPLINE:
+   - When a requirement mandates physical laboratory/bench testing ('physical_test'), theoretical simulations (MATLAB, SPICE, CFD, Simulink), analytical calculations (FMEDA, formulas), or architecture drawings provide 0% empirical proof.
+   - You must NOT mark conditions as 'PROVEN' or 'PENDING' based on simulation or calculation evidence when physical test is required. Mark condition status as 'UNTESTED' and overall requirement status as 'UNKNOWN' (NOT 'PARTIAL', NOT 'SUPPORTED').
+   - Reserve 'PARTIAL' strictly for when actual empirical lab testing was conducted across an incomplete operating envelope or subset of conditions.
+   - If the requirement explicitly permits or specifies verification by simulation/analysis, simulation evidence is acceptable.
+3. COMPLIANCE MATRIX STATUS:
+   - If an official compliance tracking matrix explicitly records 'NOT STARTED', 'MISSING', or 'TEST PENDING' for this requirement, the status is 'MISSING' (condition status: 'UNTESTED').
+4. COMPOUND CONDITIONS:
+   - For multi-condition requirements, evaluate each condition in `condition_results` with status: 'PROVEN', 'FAILED', 'PENDING', or 'UNTESTED'.
+   - Final status: 'SUPPORTED' only if ALL conditions PROVEN; 'PARTIAL' if some PROVEN and some PENDING/UNTESTED; 'CONFLICT' if any condition FAILED; 'MISSING' if no evidence / NOT STARTED; 'UNKNOWN' if only simulation / non-authoritative.
 
 Return your evaluation strictly as a valid JSON object matching the VerificationAnalysisResult schema.
 """
@@ -300,16 +305,25 @@ def build_batch_verification_prompt(
 
 {"\n".join(req_blocks)}
 
-Auditing Rules for each requirement:
-1. DOCUMENT AUTHORITY & MODALITY:
-   - If requirement requires physical testing ('physical_test') and the ONLY available evidence is theoretical simulation (SPICE, CFD, MATLAB, mathematical models), analytical calculation, or architecture specification clause, you MUST classify status as 'UNKNOWN' (NOT 'PARTIAL', NOT 'SUPPORTED').
-   - If the requirement explicitly specifies verification by simulation, simulation evidence may be acceptable.
-2. ENTITY & SCOPE:
-   - A component datasheet limit (e.g. ASIC maximum voltage) does NOT create a system-level conflict if the requirement is for the overall system (e.g. BCU Pack) and system test reports show successful system testing across the full range.
-3. NUMERIC ENVELOPE:
-   - A tested operating range [Tmin, Tmax] that fully encompasses the required range [Rmin, Rmax] (Tmin <= Rmin and Tmax >= Rmax) is SUPPORTED.
-4. COMPOUND CONDITIONS & PASS:
-   - An explicit 'Result: PASS' on one test condition does NOT prove unmeasured or pending conditions in compound requirements.
+Auditing Protocol & Verification Rules for each requirement:
+
+STEP 1: EVIDENCE ATTRIBUTION & RELEVANCE CHECK (Filter Similarity Noise)
+- For each requirement, evaluate whether retrieved excerpts provide DIRECT verification evidence for the target requirement and its specified entity/subsystem, or if fetched merely due to keyword/vector similarity.
+- HIERARCHICAL SCOPE vs COMPONENT CONTEXT:
+  * If an excerpt describes an internal component/sub-circuit rating from a component datasheet, while a primary System-Level Physical Test Report proves that the fully integrated system successfully operated across the entire required operational envelope, the internal component rating represents implementation detail and does NOT restrict or invalidate the verified integrated system capability.
+  * If an excerpt describes an intentional fault-injection or safety stress test (e.g., injecting an out-of-range stimulus or simulated fault to verify that protective shutdown/reaction mechanisms execute within required latency), this proves functional safety protective compliance, NOT a specification breach or contradiction.
+
+STEP 2: CONDITION EVALUATION & COMPLIANCE RULES
+1. NUMERIC OPERATING ENVELOPE (SUPERSET PROOF):
+   - When verifying an operating capability span [Rmin, Rmax], any empirical test envelope [Tmin, Tmax] where Tmin <= Rmin and Tmax >= Rmax (i.e. the tested range fully encompasses the required operational bounds) provides mathematical proof of capability and is PROVEN / SUPPORTED.
+2. DOCUMENT AUTHORITY & MODALITY DISCIPLINE:
+   - When a requirement mandates physical laboratory/bench testing ('physical_test'), theoretical simulations (MATLAB, SPICE, CFD, Simulink), analytical calculations (FMEDA, formulas), or architecture drawings provide 0% empirical proof.
+   - You must NOT mark conditions as 'PROVEN' or 'PENDING' based on simulation or calculation evidence when physical test is required. Mark condition status as 'UNTESTED' and overall requirement status as 'UNKNOWN' (NOT 'PARTIAL', NOT 'SUPPORTED').
+   - Reserve 'PARTIAL' strictly for when actual empirical lab testing was conducted across an incomplete operating envelope or subset of conditions.
+   - If the requirement explicitly permits or specifies verification by simulation/analysis, simulation evidence is acceptable.
+3. COMPLIANCE MATRIX STATUS:
+   - If an official compliance tracking matrix explicitly records 'NOT STARTED', 'MISSING', or 'TEST PENDING' for this requirement, the status is 'MISSING' (condition status: 'UNTESTED').
+4. COMPOUND CONDITIONS:
    - For each requirement item, return `condition_results: list[ConditionVerificationResult]` for each defined condition with status: 'PROVEN', 'FAILED', 'PENDING', or 'UNTESTED'.
    - Final status: 'SUPPORTED' if all conditions PROVEN; 'PARTIAL' if some PROVEN and some PENDING/UNTESTED; 'CONFLICT' if any condition FAILED or violated; 'MISSING' if no evidence / NOT STARTED; 'UNKNOWN' if only simulation / non-authoritative.
 
@@ -356,6 +370,14 @@ async def evaluate_batch_verification(
                     qual_contents = {q.evidence_id: (c.get("content") or c.get("quote") or "") for q, c in zip(quals, cand_chunks)}
                     has_relevant = any(not any(k in c.get("document_name", "").lower() for k in SPEC_DOC_KEYWORDS) for c in cand_chunks)
 
+                    # Check if compliance matrix explicitly records NOT STARTED / PENDING
+                    evidence_absent = any(
+                        ("not started" in (c.get("content") or "").lower() or "missing" in (c.get("content") or "").lower() or "not tested" in (c.get("content") or "").lower())
+                        and any(k in c.get("document_name", "").lower() for k in COMPLIANCE_MATRIX_KEYWORDS)
+                        and contract.req_code.upper() in (c.get("content") or "").upper()
+                        for c in cand_chunks
+                    )
+
                     provisional = VerificationAnalysisResult(
                         status=item_res.status,
                         confidence=item_res.confidence,
@@ -370,6 +392,7 @@ async def evaluate_batch_verification(
                         qualifications=quals,
                         qualified_contents=qual_contents,
                         has_relevant_evidence=has_relevant,
+                        evidence_absent=evidence_absent,
                     )
     except Exception as ex:
         logger.warning(f"Batch verification LLM call failed: {ex}. Falling back to rule-based verification.")

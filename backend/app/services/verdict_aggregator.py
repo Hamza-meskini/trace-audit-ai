@@ -163,7 +163,7 @@ def merge_qualification_into_conditions(
     conditions_by_id = {c.condition_id: c for c in contract.atomic_conditions}
 
     for cr in condition_results:
-        if cr.status not in ("PROVEN", "FAILED"):
+        if cr.status not in ("PROVEN", "FAILED", "PENDING"):
             continue
 
         refs = _resolve_evidence_ids(cr.evidence_ids)
@@ -171,13 +171,15 @@ def merge_qualification_into_conditions(
 
         # Citation fallback: an exact quote inside a qualified chunk counts
         # as a traceable reference even when evidence_ids were omitted.
-        if not any(b.qualification_status == "QUALIFIED" for b in backing) and cr.quote:
+        if not any(b.qualification_status in ("QUALIFIED", "PARTIALLY_QUALIFIED") for b in backing) and cr.quote:
             needle = cr.quote.strip().lower()[:80]
             if any(needle in content.lower() for content in qualified_contents.values()):
-                backing = [q for q in qualifications if q.qualification_status == "QUALIFIED"]
+                backing = [q for q in qualifications if q.qualification_status in ("QUALIFIED", "PARTIALLY_QUALIFIED")]
 
         if cr.status == "PROVEN":
             ok = any(b.qualification_status == "QUALIFIED" for b in backing)
+        elif cr.status == "PENDING":
+            ok = any(b.qualification_status in ("QUALIFIED", "PARTIALLY_QUALIFIED") for b in backing)
         else:  # FAILED
             ok = any(
                 b.qualification_status == "QUALIFIED" or _is_contradiction_relevant(b)
@@ -186,7 +188,7 @@ def merge_qualification_into_conditions(
 
         if not ok:
             old = cr.status
-            cr.status = "INCONCLUSIVE"
+            cr.status = "UNTESTED" if old == "PENDING" else "INCONCLUSIVE"
             cr.reason = (
                 (cr.reason or "") +
                 f" [Downgraded from {old}: referenced evidence is not qualified to "

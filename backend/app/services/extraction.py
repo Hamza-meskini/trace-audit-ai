@@ -203,9 +203,11 @@ async def extract_requirements_from_text(
     text_chunks = _split_text_into_chunks(text)
     all_requirements: list[ExtractedRequirement] = []
     seen_codes: set[str] = set()
+    print(f"  • Extracting requirements across {len(text_chunks)} document sections...", flush=True)
 
     for chunk_idx, chunk_text in enumerate(text_chunks):
         chunk_label = f"(Section {chunk_idx + 1}/{len(text_chunks)})" if len(text_chunks) > 1 else ""
+        print(f"    [Extraction {chunk_idx + 1:02d}/{len(text_chunks):02d}] Processing section {chunk_idx + 1} ({len(chunk_text)} chars)...", flush=True)
         prompt = f"""You are an engineering requirements auditor for manufacturing and industrial hardware/software.
 Extract all technical requirements, design constraints, performance criteria, and testable specifications from the following document excerpt.
 
@@ -233,11 +235,14 @@ For each requirement, provide:
             )
 
             if result and result.requirements:
+                added_count = 0
                 for req in result.requirements:
                     # Deduplicate by req_code across overlapping chunks
                     if req.req_code not in seen_codes:
                         seen_codes.add(req.req_code)
                         all_requirements.append(req)
+                        added_count += 1
+                print(f"    [Extraction {chunk_idx + 1:02d}/{len(text_chunks):02d}] Extracted {added_count} new requirements (Total unique: {len(all_requirements)})", flush=True)
         except Exception as ex:
             import logging
             logging.getLogger("traceaudit.extraction").warning(

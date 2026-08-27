@@ -10,6 +10,8 @@ additionally escalate inconclusive (UNKNOWN) cases to the LLM
 verification reasoner.
 """
 
+import asyncio
+import time
 from typing import Optional, Any
 from dataclasses import dataclass, field
 
@@ -368,7 +370,7 @@ async def batch_assess_requirements(
     req_items: list[dict[str, Any]],
     model: Optional[str] = None,
     thinking_level: Optional[str] = None,
-    batch_size: int = 10,
+    batch_size: int = 5,
     spec_doc_names: Optional[set[str]] = None,
 ) -> dict[str, RequirementAssessment]:
     """Assess a batch of requirements: deterministic checks first, batched LLM reasoning for the rest.
@@ -417,13 +419,20 @@ async def batch_assess_requirements(
 
 
     # Step 2: process queued requirements in batches
-    for i in range(0, len(pre_processed), batch_size):
+    import time
+    total_batches = (len(pre_processed) + batch_size - 1) // max(batch_size, 1)
+    print(f"  • Evaluating {len(pre_processed)} queued requirements across {total_batches} batches (batch_size={batch_size})...", flush=True)
+
+    for b_idx, i in enumerate(range(0, len(pre_processed), batch_size), 1):
         batch = pre_processed[i : i + batch_size]
+        t0 = time.time()
+        batch_codes = [it["req_code"] for it in batch]
         batch_results = await evaluate_batch_verification(
             batch_items=batch,
             model=model,
             thinking_level=thinking_level,
         )
+        dt = time.time() - t0
 
         for item in batch:
             req_code = item["req_code"]
@@ -442,5 +451,13 @@ async def batch_assess_requirements(
                     reason="Evaluated through compliance assessment engine.",
                 )
             assessments[req_code] = _finalize_assessment(item["contract"], item["non_spec_items"], outcome)
+
+        done_count = min(i + len(batch), len(pre_processed))
+        first_code = batch_codes[0] if batch_codes else "?"
+        last_code = batch_codes[-1] if batch_codes else "?"
+        print(f"    -> [Batch {b_idx:02d}/{total_batches:02d}] {first_code}..{last_code} ({len(batch)} reqs) in {dt:.2f}s | Done: {done_count}/{len(pre_processed)} ({done_count/len(pre_processed)*100:.0f}%)", flush=True)
+
+        if i + batch_size < len(pre_processed):
+            await asyncio.sleep(0.5)
 
     return assessments

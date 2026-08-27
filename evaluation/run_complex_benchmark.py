@@ -254,7 +254,7 @@ async def run_benchmark():
         req_items=req_items,
         model=settings.LLM_MODEL,
         thinking_level=settings.GEMINI_THINKING_LEVEL,
-        batch_size=10,
+        batch_size=5,
         spec_doc_names={"01_System_Requirements_Specification_SRS.docx"},
     )
 
@@ -527,6 +527,24 @@ async def run_benchmark():
 
     # Generate Markdown Report
     generate_markdown_report(benchmark_results, failures)
+
+    # Generate Structured Excel Audit Trace
+    excel_path = RESULTS_DIR / "benchmark_audit_trace.xlsx"
+    try:
+        sys.path.insert(0, str(REPO_ROOT / "evaluation"))
+        from export_excel_trace import export_benchmark_audit_trace_excel
+        export_benchmark_audit_trace_excel(
+            results=benchmark_results,
+            ground_truth_reqs=ground_truth_reqs,
+            links_by_id=links_by_id,
+            retrieved_by_req=retrieved_by_req,
+            assessments=assessments,
+            predictions=predictions,
+            failures=failures,
+            excel_path=excel_path,
+        )
+    except Exception as ex:
+        print(f"  [WARN] Failed exporting Excel Audit Trace: {ex}")
 
     return benchmark_results
 

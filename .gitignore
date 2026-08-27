@@ -57,6 +57,7 @@ backend/.cache/
 
 # Python bytecode & test caches (anywhere in tree)
 __pycache__/
+**/__pycache__/
 *.pyc
 *.pyo
 *.pyd
@@ -72,4 +73,13 @@ build/
 # ── Generated / local-only files ─────────────────────────────
 sample_documents/
 TraceAudit_AI_Product_Strategy_Report.docx
+
+# Office / Excel temporary lock files
+~$*
+*.tmp
+
+# Temporary debug & scratch outputs
+evaluation/results/detailed_*.json
+evaluation/results/*_v2.xlsx
+!evaluation/tests/*.py
 
