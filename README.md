@@ -46,6 +46,21 @@ Evaluates advanced multi-condition compliance across 10 vehicle subsystems (HV B
 - **Entity & Scope Reasoning:** Preventing component datasheet ratings (e.g. ASIC max voltage) from creating false conflicts against system-level requirements when system tests pass.
 - **Cross-Document Contradiction Detection:** Detecting subtle datasheet deratings and hardware interface limit violations.
 
+| Metric | Score | Industry Context |
+|---|---|---|
+| **Requirement Extraction F1** | **100.0%** (Precision: 100%, Recall: 100%) | Perfect extraction across all 20 document sections |
+| **Atomic Condition Recall** | **100.0%** | All 172 atomic conditions successfully decomposed |
+| **Retrieval Document Recall@3** | **97.00%** | Correct evidence document in top 3 candidates |
+| **Retrieval Document Recall@5** | **99.00%** | Correct evidence document in top 5 candidates |
+| **Verification Accuracy** | **96.00%** | Correct 5-class compliance classification |
+| **Verification Macro F1** | **95.97%** | Balanced across Supported, Partial, Conflict, Missing, Unknown |
+| **Conflict Detection F1** | **97.56%** | Catches cross-document contradictions and derating violations |
+| **Missing Evidence F1** | **100.0%** | Perfect recall on unverified and "Not Started" clauses |
+| **Partial Compliance F1** | **95.00%** | Correctly identifies incomplete multi-condition coverage |
+| **Unknown (Simulation-Only) F1** | **92.31%** | Distinguishes simulation evidence from physical testing |
+| **Unsupported Claim Rate** | **0.00%** | Zero false verifications on missing evidence |
+| **Condition-Level Accuracy** | **81.40%** | Per-condition numeric & semantic verification |
+| **Total Benchmark Runtime** | **~371s** | 100 requirements verified in ~6 minutes |
 
 ---
 

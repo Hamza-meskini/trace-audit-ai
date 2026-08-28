@@ -81,5 +81,6 @@ TraceAudit_AI_Product_Strategy_Report.docx
 # Temporary debug & scratch outputs
 evaluation/results/detailed_*.json
 evaluation/results/*_v2.xlsx
+evaluation/results/*.xlsx
 !evaluation/tests/*.py
 

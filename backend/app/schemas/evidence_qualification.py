@@ -14,6 +14,7 @@ schemas (claim, contract) and services can share the same normalization
 without circular imports.
 """
 
+import re
 from typing import Literal, Optional
 from pydantic import BaseModel, Field
 
@@ -105,7 +106,10 @@ def methods_compatible(
 
 _SCOPE_PATTERNS: list[tuple[str, tuple[str, ...]]] = [
     ("ASIC", ("asic", "cell supervisory")),
-    ("Inverter", ("inverter", "gate driver")),
+    ("SafetyController", ("safety microcontroller", "watchdog", "brownout", "pmic", "core voltage", "lockstep")),
+    ("SecuritySystem", ("cybersecurity", "secure logging", "security event", "secevent", "hsm", "secoc")),
+    ("ECU", ("ecu", "electronic control unit")),
+    ("Inverter", ("inverter", "tc-inv", "tc_inv", "gate driver", "resolver", "motor control", "foc", "flux weakening")),
     ("BCU", ("bcu",)),
     ("BMS", ("bms",)),
     ("Pack", ("pack",)),
@@ -127,6 +131,9 @@ _SCOPE_FAMILY = {
     "HVIL": "hvil",
     "DC-DC": "dcdc",
     "ONBOARDCHARGER": "obc",
+    "SAFETYCONTROLLER": "safety_controller",
+    "SECURITYSYSTEM": "security_system",
+    "ECU": "ecu",
     "SYSTEM": "system",
 }
 
@@ -186,20 +193,24 @@ _PARAMETER_GROUPS: dict[str, set[str]] = {
     "voltage": {"voltage", "v", "volt", "vdc", "pack_voltage", "cell_voltage",
                 "operating_voltage", "range_min", "range_max", "voltage_min", "voltage_max",
                 "standoff", "standoff_voltage", "withstand"},
-    "current": {"current", "a", "amp", "amps", "ma", "quiescent", "quiescent_current",
+    "current": {"current", "a", "amp", "amps", "ma", "current_threshold", "phase_current_threshold", "quiescent", "quiescent_current",
                 "supply_current", "leakage_current", "short_circuit_current"},
     "temperature": {"temperature", "temp", "c", "ambient_temperature", "ambient_temp",
                     "operating_temperature"},
     "junction_temperature": {"junction_temperature", "junction_temp", "tj", "asic_junction_temperature"},
     "cell_temperature": {"cell_temperature", "cell_temp"},
-    "coolant_temperature": {"coolant_temperature", "coolant_temp", "inlet_temperature"},
+    "coolant_temperature": {"coolant_temperature", "coolant_temp", "coolant_temp_target",
+                            "coolant_temperature_target", "inlet_temperature", "inlet_coolant_temperature"},
     "latency": {"latency", "response_time", "reaction_time", "transition_time",
-                "switching_time", "propagation_delay", "disconnect_time", "opening_time"},
+                "switching_time", "propagation_delay", "disconnect_time", "opening_time",
+                "shutdown_latency", "reset_latency", "detection_latency", "trip_latency",
+                "recovery_time", "assertion_latency", "window_min", "window_max", "service_window"},
     "pyro_fuse_latency": {"pyro_fuse_latency", "pyro_latency", "pyrotechnic_trigger_latency",
                           "pyro_trigger_latency", "squib_trigger_latency"},
     "contactor_latency": {"contactor_latency", "contactor_transition_latency",
                           "contactor_opening_time", "contactor_response_time"},
-    "persistence_time": {"persistence_time", "persistence", "filter_time", "debounce",
+    "persistence_time": {"persistence_time", "persistence", "persistent", "persisted",
+                         "hold_time", "dwell_time", "filter_time", "debounce",
                          "debounce_time", "duration"},
     "tolerance": {"tolerance", "measurement_tolerance", "accuracy", "precision"},
     "energy": {"energy", "j", "joule", "pulse_energy", "short_circuit_energy"},
@@ -209,10 +220,16 @@ _PARAMETER_GROUPS: dict[str, set[str]] = {
     "ingress_protection": {"ingress_protection", "ip", "ip_rating", "ip54", "ip67"},
     "mtbf": {"mtbf", "mean_time_between_failures"},
     "frequency": {"frequency", "hz", "baud", "baud_rate", "data_rate", "bit_rate"},
+    "emissions_margin": {"emissions_margin", "attenuation_margin", "margin", "db_margin"},
+    "tamper_evident": {"tamper_evident", "append_only", "audit_log_integrity"},
     "pressure": {"pressure", "mbar", "bar", "kpa"},
     "force": {"force", "n", "newton", "crash_force"},
+    "heat_load": {"heat_load", "thermal_load", "pack_heat_load", "heat_dissipation",
+                  "thermal_dissipation", "power", "kw", "w"},
     "thd": {"thd", "total_harmonic_distortion", "harmonic_distortion"},
 }
+
+_PARAMETER_GROUPS["frequency"].add("frequency_range")
 
 
 def normalize_parameter(name: Optional[str]) -> Optional[str]:
@@ -220,6 +237,8 @@ def normalize_parameter(name: Optional[str]) -> Optional[str]:
     if not name:
         return None
     n = name.strip().lower().replace(" ", "_").replace("-", "_")
+    if n == "brownout_threshold":
+        return "voltage"
     if n in _PARAMETER_GROUPS:
         return n
     for canonical, aliases in _PARAMETER_GROUPS.items():
@@ -280,6 +299,8 @@ _PARAMETER_PRIORITY: list[str] = [
     "contactor_latency",
     "ingress_protection",
     "thd",
+    "emissions_margin",
+    "tamper_evident",
     "mtbf",
     "isolation",
     "persistence_time",
@@ -293,6 +314,7 @@ _PARAMETER_PRIORITY: list[str] = [
     "frequency",
     "pressure",
     "force",
+    "heat_load",
 ]
 
 
@@ -309,6 +331,46 @@ def extract_parameters_from_text(text: str) -> list[str]:
             if alias_form in t or f" {alias} " in t:
                 found.append(group)
                 break
+    # Time units need phrase-level interpretation. "for 60 s" is a duration,
+    # while "disabled in 1.1 us" is a latency; a bare unit regex cannot tell
+    # those apart.
+    time_unit = r"(?:ns|us|µs|μs|ms|milliseconds?|s|seconds?|sec)"
+    persistence_signal = re.search(
+        rf"(?:\bfor\s+|\bheld\s+(?:for\s+)?|\bmaintained\s+(?:for\s+)?|"
+        rf"\bpersist(?:ent|ed)?\s+(?:for\s+)?)\d+(?:\.\d+)?\s*{time_unit}\b",
+        text,
+        re.IGNORECASE,
+    )
+    latency_signal = re.search(
+        rf"(?:\bwithin\s+|\bafter\s+|\b(?:disabled|opened|closed|tripped|triggered|"
+        rf"asserted|recovered|responded)\s+in\s+)\d+(?:\.\d+)?\s*{time_unit}\b",
+        text,
+        re.IGNORECASE,
+    )
+    if persistence_signal and "persistence_time" not in found:
+        found.append("persistence_time")
+    if latency_signal and "latency" not in found:
+        found.append("latency")
+
+    # Other unit-bearing measured values provide reliable local parameter
+    # signals even when the prose omits the quantity name.
+    unit_signals = [
+        ("voltage", r"\d(?:\.\d+)?\s*(?:mV|V|kV)(?:\s*(?:AC|DC))?\b"),
+        ("current", r"\d(?:\.\d+)?\s*(?:uA|µA|μA|mA|A|kA)\b"),
+        ("frequency", r"\d(?:\.\d+)?\s*(?:Hz|kHz|MHz|GHz)\b"),
+        ("emissions_margin", r"\d(?:\.\d+)?\s*dB\b"),
+        ("resistance", r"\d(?:\.\d+)?\s*(?:uOhm|µOhm|mOhm|Ohm|kOhm|K/W)\b"),
+        ("heat_load", r"\d(?:\.\d+)?\s*(?:W|kW)\b"),
+    ]
+    for group, pattern in unit_signals:
+        if group not in found and re.search(pattern, text, re.IGNORECASE):
+            found.append(group)
+    # Backward-compatible fallback for terse timing records such as
+    # "response = 4 ms" where no stronger duration/latency phrase exists.
+    if "latency" not in found and "persistence_time" not in found and re.search(
+        rf"\d+(?:\.\d+)?\s*{time_unit}\b", text, re.IGNORECASE
+    ):
+        found.append("latency")
     return found
 
 
@@ -324,6 +386,7 @@ class EvidenceQualification(BaseModel):
     """
 
     evidence_id: str                      # e.g. "E1" — matches prompt labeling
+    source_chunk_id: Optional[str] = None  # stable link back to the retrieved chunk
     document_name: str
     source_authority: str                 # SourceAuthority literal value
     entity_scope: str = "System"

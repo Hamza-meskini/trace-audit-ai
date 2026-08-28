@@ -6,6 +6,7 @@ parser when no API key is provided or when running offline.
 """
 
 import re
+import asyncio
 from typing import Optional, Union, Any
 from pydantic import BaseModel, Field, field_validator
 from app.config import settings
@@ -27,11 +28,35 @@ class ExtractedParameter(BaseModel):
         if isinstance(v, (int, float)):
             return float(v)
         if isinstance(v, str):
-            clean = re.sub(r"[^\d.+-]", "", v.strip())
-            try:
-                return float(clean) if clean else None
-            except ValueError:
-                return None
+            match = re.match(r"^\s*(?:[<>]=?\s*)?([+-]?\d+(?:\.\d+)?)", v)
+            return float(match.group(1)) if match else None
+        return None
+
+
+class ExtractedCondition(BaseModel):
+    """One mandatory, independently verifiable clause in a requirement."""
+
+    condition_id: Optional[str] = None
+    description: str
+    parameter: Optional[str] = None
+    operator: Optional[str] = None
+    threshold: Optional[Union[float, str, bool]] = None
+    min_value: Optional[float] = None
+    max_value: Optional[float] = None
+    unit: Optional[str] = None
+    mandatory: bool = True
+
+    @field_validator("min_value", "max_value", mode="before")
+    @classmethod
+    def parse_numeric_bound(cls, value: Any) -> Optional[float]:
+        """Discard misplaced identifiers instead of rejecting a whole batch."""
+        if value is None:
+            return None
+        if isinstance(value, (int, float)):
+            return float(value)
+        if isinstance(value, str):
+            match = re.match(r"^\s*(?:[<>]=?\s*)?([+-]?\d+(?:\.\d+)?)", value)
+            return float(match.group(1)) if match else None
         return None
 
 
@@ -43,6 +68,7 @@ class ExtractedRequirement(BaseModel):
     category: str = Field("General", description="Category: Electrical, Safety, Environmental, Mechanical, Cybersecurity, Documentation")
     severity: str = Field("Medium", description="Severity: Critical, High, Medium, Low")
     parameters: list[ExtractedParameter] = Field(default_factory=list)
+    conditions: list[ExtractedCondition] = Field(default_factory=list)
 
 
 class ExtractionResult(BaseModel):
@@ -157,29 +183,272 @@ def fallback_extract_requirements(text_content: str, doc_name: str = "") -> list
                 parameters=params,
             ))
 
+    # Preserve a condition tree even in offline mode. The deterministic prose
+    # parser is only a fallback; once produced, these conditions become the
+    # canonical contract input for the rest of the pipeline.
+    from app.schemas.contract import parse_requirement_contract
+    for req in reqs:
+        if req.conditions:
+            continue
+        contract = parse_requirement_contract(
+            req_code=req.req_code,
+            title=req.title,
+            description=req.description,
+            category=req.category,
+        )
+        req.conditions = [
+            ExtractedCondition(
+                condition_id=c.condition_id,
+                description=c.description or c.condition_id,
+                parameter=c.parameter,
+                operator=c.operator,
+                threshold=c.threshold,
+                min_value=c.min_value,
+                max_value=c.max_value,
+                unit=c.unit,
+                mandatory=c.mandatory,
+            )
+            for c in contract.atomic_conditions
+        ]
     return reqs
 
 
 # ── LLM-Powered Extraction ───────────────────────────────────────────────────
 
-# Chunk size for splitting large documents before sending to the LLM.
-# Each chunk is sent as a separate extraction call; results are deduplicated.
-EXTRACTION_CHUNK_SIZE = 8000
+# Structured output, rather than prompt input, is the limiting factor for large
+# specifications. Keep each request small enough that the JSON can finish within
+# the model's output budget and split on requirement boundaries whenever IDs are
+# present. Character windows remain a fallback for unstructured prose.
+EXTRACTION_CHUNK_SIZE = 5000
 EXTRACTION_CHUNK_OVERLAP = 500
+EXTRACTION_REQUIREMENTS_PER_CHUNK = 5
+EXTRACTION_MAX_RETRY_DEPTH = 2
+EXTRACTION_MAX_OUTPUT_TOKENS = 8192
+EXTRACTION_MAX_CONCURRENCY = 3
+
+_REQUIREMENT_START_RE = re.compile(
+    r"(?mi)^(?=[ \t]*(?:REQ[-_]?[A-Za-z0-9_-]*\d+|R[-_]?[A-Za-z0-9_-]*\d+)[ \t]*[:\-–—]?[ \t]*)"
+)
 
 
-def _split_text_into_chunks(text: str, chunk_size: int = EXTRACTION_CHUNK_SIZE, overlap: int = EXTRACTION_CHUNK_OVERLAP) -> list[str]:
-    """Split document text into overlapping windows for iterative extraction."""
+def _requirement_blocks(text: str) -> list[str]:
+    """Return complete requirement blocks when explicit IDs are available."""
+    starts = [match.start() for match in _REQUIREMENT_START_RE.finditer(text)]
+    if not starts:
+        return []
+
+    blocks: list[str] = []
+    preamble = text[:starts[0]].strip()
+    for index, start in enumerate(starts):
+        end = starts[index + 1] if index + 1 < len(starts) else len(text)
+        block = text[start:end].strip()
+        if not block:
+            continue
+        if preamble and not blocks:
+            block = f"{preamble}\n{block}"
+        blocks.append(block)
+    return blocks
+
+
+def _requirement_code_from_block(block: str) -> Optional[str]:
+    match = re.match(
+        r"^[ \t]*(REQ[-_]?[A-Za-z0-9_-]*\d+|R[-_]?[A-Za-z0-9_-]*\d+)",
+        block,
+        re.IGNORECASE,
+    )
+    return match.group(1).upper().replace("_", "-") if match else None
+
+
+def _deduplicate_requirements(
+    requirements: list[ExtractedRequirement],
+) -> list[ExtractedRequirement]:
+    unique: list[ExtractedRequirement] = []
+    seen: set[str] = set()
+    for requirement in requirements:
+        if requirement.req_code not in seen:
+            seen.add(requirement.req_code)
+            unique.append(requirement)
+    return unique
+
+
+def _split_text_into_chunks(
+    text: str,
+    chunk_size: int = EXTRACTION_CHUNK_SIZE,
+    overlap: int = EXTRACTION_CHUNK_OVERLAP,
+    max_requirements_per_chunk: int = EXTRACTION_REQUIREMENTS_PER_CHUNK,
+) -> list[str]:
+    """Split text without cutting explicit requirement clauses in half."""
+    blocks = _requirement_blocks(text)
+    if blocks:
+        chunks: list[str] = []
+        current: list[str] = []
+        current_chars = 0
+        for block in blocks:
+            exceeds_count = len(current) >= max_requirements_per_chunk
+            exceeds_chars = bool(current) and current_chars + len(block) + 1 > chunk_size
+            if exceeds_count or exceeds_chars:
+                chunks.append("\n".join(current))
+                current = []
+                current_chars = 0
+            current.append(block)
+            current_chars += len(block) + 1
+        if current:
+            chunks.append("\n".join(current))
+        return chunks
+
     if len(text) <= chunk_size:
         return [text]
 
     chunks = []
     start = 0
     while start < len(text):
-        end = start + chunk_size
+        end = min(len(text), start + chunk_size)
+        # Prefer a paragraph/newline boundary for prose-only documents.
+        if end < len(text):
+            boundary = text.rfind("\n", start + chunk_size // 2, end)
+            if boundary > start:
+                end = boundary
         chunks.append(text[start:end])
-        start = end - overlap  # Overlap to avoid splitting a requirement across chunk boundaries
+        if end >= len(text):
+            break
+        start = max(start + 1, end - overlap)
     return chunks
+
+
+def _normalize_extracted_requirements(
+    requirements: list[ExtractedRequirement],
+) -> list[ExtractedRequirement]:
+    """Normalize stable IDs while preserving the model's semantic contract."""
+    for req in requirements:
+        req.req_code = req.req_code.strip().upper().replace("_", "-")
+        for index, condition in enumerate(req.conditions, 1):
+            if not condition.condition_id:
+                condition.condition_id = f"{req.req_code}-C{index}"
+            if not condition.description.strip():
+                condition.description = condition.parameter or req.title
+    return requirements
+
+
+def _build_extraction_prompt(chunk_text: str, doc_name: str, chunk_label: str) -> str:
+    return f"""You are an engineering requirements auditor for manufacturing and industrial hardware/software.
+Extract all technical requirements, design constraints, performance criteria, and testable specifications from the following document excerpt.
+
+Document: {doc_name} {chunk_label}
+Text:
+{chunk_text}
+
+For each requirement, provide:
+- req_code (preserve the exact existing ID when one is present)
+- title (concise summary)
+- description (the complete requirement clause, without dropping joined clauses)
+- category (Electrical, Safety, Environmental, Mechanical, Cybersecurity, Documentation)
+- severity (Critical, High, Medium, Low)
+- parameters (numeric values, min/max limits, units like V, °C, kV, IP rating, MTBF hours)
+- conditions (one entry per independently verifiable clause, with a stable condition_id,
+  description, parameter, operator, threshold/min/max, unit, and mandatory flag)
+"""
+
+
+async def _extract_chunk_with_retry(
+    chunk_text: str,
+    *,
+    doc_name: str,
+    active_model: str,
+    thinking_level: Optional[str],
+    chunk_label: str,
+    depth: int = 0,
+) -> list[ExtractedRequirement]:
+    """Extract one bounded chunk, recursively splitting invalid/truncated JSON."""
+    system_instruction = (
+        "You extract structured engineering requirements accurately. Preserve every joined clause as a separate "
+        "atomic condition; never merge values with different units or omit a pending verification dimension. "
+        "Return only complete JSON; never stop part-way through a requirement."
+    )
+    result: Optional[ExtractionResult] = None
+    try:
+        result = await generate_structured(
+            prompt=_build_extraction_prompt(chunk_text, doc_name, chunk_label),
+            response_model=ExtractionResult,
+            model=active_model,
+            system_instruction=system_instruction,
+            thinking_level=thinking_level or settings.GEMINI_THINKING_LEVEL,
+            max_output_tokens=EXTRACTION_MAX_OUTPUT_TOKENS,
+        )
+    except Exception as ex:
+        import logging
+        logging.getLogger("traceaudit.extraction").warning(
+            "LLM extraction raised for %s at retry depth %s: %s",
+            chunk_label,
+            depth,
+            ex,
+        )
+
+    blocks = _requirement_blocks(chunk_text)
+    if result and result.requirements:
+        normalized = _normalize_extracted_requirements(result.requirements)
+        expected_by_code = {
+            code: block
+            for block in blocks
+            if (code := _requirement_code_from_block(block)) is not None
+        }
+        returned_codes = {requirement.req_code for requirement in normalized}
+        missing_blocks = [
+            block for code, block in expected_by_code.items() if code not in returned_codes
+        ]
+        if not missing_blocks:
+            return normalized
+
+        print(
+            f"    [Extraction retry] {chunk_label} returned valid but incomplete JSON; "
+            f"recovering {len(missing_blocks)} omitted requirement(s).",
+            flush=True,
+        )
+        if depth < EXTRACTION_MAX_RETRY_DEPTH:
+            recovered = await _extract_chunk_with_retry(
+                "\n".join(missing_blocks),
+                doc_name=doc_name,
+                active_model=active_model,
+                thinking_level=thinking_level,
+                chunk_label=f"{chunk_label}.missing",
+                depth=depth + 1,
+            )
+        else:
+            recovered = _normalize_extracted_requirements(
+                fallback_extract_requirements("\n".join(missing_blocks), doc_name)
+            )
+        return _deduplicate_requirements(normalized + recovered)
+
+    if depth < EXTRACTION_MAX_RETRY_DEPTH and len(blocks) > 1:
+        midpoint = (len(blocks) + 1) // 2
+        retry_groups = [blocks[:midpoint], blocks[midpoint:]]
+        recovered: list[ExtractedRequirement] = []
+        print(
+            f"    [Extraction retry] Invalid or truncated output for {chunk_label}; "
+            f"retrying as {len(retry_groups)} smaller sections.",
+            flush=True,
+        )
+        for retry_index, group in enumerate(retry_groups, 1):
+            if not group:
+                continue
+            recovered.extend(
+                await _extract_chunk_with_retry(
+                    "\n".join(group),
+                    doc_name=doc_name,
+                    active_model=active_model,
+                    thinking_level=thinking_level,
+                    chunk_label=f"{chunk_label}.{retry_index}",
+                    depth=depth + 1,
+                )
+            )
+        return recovered
+
+    fallback = fallback_extract_requirements(chunk_text, doc_name)
+    print(
+        f"    [Extraction fallback] {chunk_label} could not be parsed by the LLM; "
+        f"recovered {len(fallback)} requirement(s) deterministically.",
+        flush=True,
+    )
+    return _normalize_extracted_requirements(fallback)
 
 
 async def extract_requirements_from_text(
@@ -190,9 +459,9 @@ async def extract_requirements_from_text(
 ) -> list[ExtractedRequirement]:
     """Extract structured requirements from document text using Gemini (with Thinking enabled) or Databricks/OpenAI.
 
-    For large documents, the text is split into overlapping chunks and each chunk
-    is processed independently. Results are deduplicated by requirement code to
-    avoid duplicates from the overlap regions.
+    For large documents, explicit requirement boundaries are preserved and each
+    bounded group is processed independently. Invalid/truncated output is retried
+    on smaller groups before a local deterministic fallback is used.
     """
     active_model = model or settings.LLM_MODEL
     has_keys = bool(settings.effective_gemini_api_key or settings.effective_databricks_token or settings.effective_openai_api_key)
@@ -201,53 +470,42 @@ async def extract_requirements_from_text(
         return fallback_extract_requirements(text, doc_name)
 
     text_chunks = _split_text_into_chunks(text)
-    all_requirements: list[ExtractedRequirement] = []
-    seen_codes: set[str] = set()
     print(f"  • Extracting requirements across {len(text_chunks)} document sections...", flush=True)
 
-    for chunk_idx, chunk_text in enumerate(text_chunks):
+    semaphore = asyncio.Semaphore(EXTRACTION_MAX_CONCURRENCY)
+
+    async def process_chunk(
+        chunk_idx: int,
+        chunk_text: str,
+    ) -> tuple[int, list[ExtractedRequirement]]:
         chunk_label = f"(Section {chunk_idx + 1}/{len(text_chunks)})" if len(text_chunks) > 1 else ""
-        print(f"    [Extraction {chunk_idx + 1:02d}/{len(text_chunks):02d}] Processing section {chunk_idx + 1} ({len(chunk_text)} chars)...", flush=True)
-        prompt = f"""You are an engineering requirements auditor for manufacturing and industrial hardware/software.
-Extract all technical requirements, design constraints, performance criteria, and testable specifications from the following document excerpt.
-
-Document: {doc_name} {chunk_label}
-Text:
-{chunk_text}
-
-For each requirement, provide:
-- req_code (e.g. REQ-001, or existing ID if present in text)
-- title (concise summary)
-- description (full clause)
-- category (Electrical, Safety, Environmental, Mechanical, Cybersecurity, Documentation)
-- severity (Critical, High, Medium, Low)
-- parameters (numeric values, min/max limits, units like V, °C, kV, IP rating, MTBF hours)
-"""
-        system_instruction = "You extract structured engineering requirements accurately with precise numeric parameters."
-
-        try:
-            result: Optional[ExtractionResult] = await generate_structured(
-                prompt=prompt,
-                response_model=ExtractionResult,
-                model=active_model,
-                system_instruction=system_instruction,
-                thinking_level=thinking_level or settings.GEMINI_THINKING_LEVEL,
+        async with semaphore:
+            print(f"    [Extraction {chunk_idx + 1:02d}/{len(text_chunks):02d}] Processing section {chunk_idx + 1} ({len(chunk_text)} chars)...", flush=True)
+            requirements = await _extract_chunk_with_retry(
+                chunk_text,
+                doc_name=doc_name,
+                active_model=active_model,
+                thinking_level=thinking_level,
+                chunk_label=chunk_label or "Section 1/1",
             )
+        return chunk_idx, requirements
 
-            if result and result.requirements:
-                added_count = 0
-                for req in result.requirements:
-                    # Deduplicate by req_code across overlapping chunks
-                    if req.req_code not in seen_codes:
-                        seen_codes.add(req.req_code)
-                        all_requirements.append(req)
-                        added_count += 1
-                print(f"    [Extraction {chunk_idx + 1:02d}/{len(text_chunks):02d}] Extracted {added_count} new requirements (Total unique: {len(all_requirements)})", flush=True)
-        except Exception as ex:
-            import logging
-            logging.getLogger("traceaudit.extraction").warning(
-                f"LLM extraction failed for chunk {chunk_idx + 1}/{len(text_chunks)} of {doc_name}: {ex}"
-            )
+    chunk_results = await asyncio.gather(*(
+        process_chunk(chunk_idx, chunk_text)
+        for chunk_idx, chunk_text in enumerate(text_chunks)
+    ))
+
+    all_requirements: list[ExtractedRequirement] = []
+    seen_codes: set[str] = set()
+    for chunk_idx, requirements in sorted(chunk_results, key=lambda item: item[0]):
+        added_count = 0
+        for req in requirements:
+            # Deduplicate by normalized req_code across bounded/retried chunks.
+            if req.req_code not in seen_codes:
+                seen_codes.add(req.req_code)
+                all_requirements.append(req)
+                added_count += 1
+        print(f"    [Extraction {chunk_idx + 1:02d}/{len(text_chunks):02d}] Extracted {added_count} new requirements (Total unique: {len(all_requirements)})", flush=True)
 
     if all_requirements:
         return all_requirements

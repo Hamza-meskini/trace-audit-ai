@@ -12,6 +12,8 @@ import sys
 import json
 import time
 import asyncio
+import re
+import argparse
 from pathlib import Path
 from typing import Any, Optional
 from collections import Counter
@@ -40,6 +42,31 @@ BENCHMARK_CLASSES = ["SUPPORTED", "PARTIAL", "CONFLICT", "MISSING", "UNKNOWN"]
 SRS_DOC_NAME = "01_System_Requirements_Specification_SRS.docx"
 
 
+def _normalized_tokens(value: str) -> list[str]:
+    normalized = value.lower().replace("μ", "µ").replace("–", "-")
+    return re.findall(r"[a-z0-9µ%]+", normalized)
+
+
+def _token_f1(left: str, right: str) -> float:
+    a, b = set(_normalized_tokens(left)), set(_normalized_tokens(right))
+    if not a or not b:
+        return 0.0
+    overlap = len(a & b)
+    precision = overlap / len(a)
+    recall = overlap / len(b)
+    return 2 * precision * recall / (precision + recall) if precision + recall else 0.0
+
+
+def _passage_matches(expected_quote: str, candidate_content: str) -> bool:
+    """Fuzzy passage match robust to PDF glyph normalization and line wrapping."""
+    quote_tokens = _normalized_tokens(expected_quote)
+    content_tokens = set(_normalized_tokens(candidate_content))
+    if not quote_tokens:
+        return False
+    covered = sum(1 for token in quote_tokens if token in content_tokens)
+    return covered / len(quote_tokens) >= 0.82
+
+
 def normalize_status_5(status: Optional[str]) -> str:
     """Normalize status into one of 5 benchmark classes."""
     if not status:
@@ -56,9 +83,202 @@ def normalize_status_5(status: Optional[str]) -> str:
     return "UNKNOWN"
 
 
-async def run_benchmark():
+def _build_pipeline_requirements(
+    mode: str,
+    extracted_reqs: list[Any],
+    ground_truth_reqs: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Choose pipeline inputs without leaking ground truth into end-to-end mode."""
+    normalized_mode = mode.strip().lower()
+    if normalized_mode == "oracle":
+        return [
+            {
+                "req_code": item["requirement_id"],
+                "title": item["title"],
+                "description": item["requirement_text"],
+                "category": item.get("category", "General"),
+                "severity": item.get("severity", "Medium"),
+                "conditions": list(item.get("conditions", [])),
+            }
+            for item in ground_truth_reqs
+        ]
+    if normalized_mode != "end-to-end":
+        raise ValueError("mode must be 'end-to-end' or 'oracle'")
+
+    return [
+        {
+            "req_code": item.req_code,
+            "title": item.title,
+            "description": item.description or item.title,
+            "category": item.category,
+            "severity": item.severity,
+            "conditions": [condition.model_dump(exclude_none=True) for condition in item.conditions],
+        }
+        for item in extracted_reqs
+    ]
+
+
+def _predicted_condition_status(
+    expected_condition: dict[str, Any],
+    predicted_results: list[Any],
+) -> str:
+    """Align evaluator-only condition labels without altering pipeline inputs."""
+    expected_id = expected_condition.get("condition_id", "")
+    direct = next(
+        (result for result in predicted_results if result.condition_id == expected_id),
+        None,
+    )
+    if direct is not None:
+        return direct.status
+
+    expected_text = " ".join(
+        str(value)
+        for value in (
+            expected_condition.get("parameter"),
+            expected_condition.get("description"),
+            expected_condition.get("operator"),
+            expected_condition.get("threshold"),
+            expected_condition.get("min_value"),
+            expected_condition.get("max_value"),
+            expected_condition.get("unit"),
+        )
+        if value is not None
+    )
+    scored = [
+        (
+            _token_f1(
+                expected_text,
+                " ".join(
+                    str(value)
+                    for value in (result.description, result.reason)
+                    if value
+                ),
+            ),
+            result,
+        )
+        for result in predicted_results
+    ]
+    if scored:
+        score, best = max(scored, key=lambda item: item[0])
+        if score >= 0.45:
+            return best.status
+    return "UNTESTED"
+
+
+def _condition_similarity(expected: dict[str, Any], extracted: Any) -> float:
+    """Semantic condition similarity used only by benchmark scoring."""
+    extracted_data = extracted.model_dump(exclude_none=True)
+    if expected.get("condition_id") and expected.get("condition_id") == extracted_data.get("condition_id"):
+        return 1.0
+
+    expected_parameter = str(expected.get("parameter") or "")
+    extracted_parameter = str(extracted_data.get("parameter") or "")
+    expected_description = str(expected.get("description") or "")
+    extracted_description = str(extracted_data.get("description") or "")
+    lexical = _token_f1(
+        f"{expected_parameter} {expected_description}",
+        f"{extracted_parameter} {extracted_description}",
+    )
+    parameter = _token_f1(expected_parameter, extracted_parameter)
+    operator = 1.0 if expected.get("operator") == extracted_data.get("operator") else 0.0
+    unit = _token_f1(str(expected.get("unit") or ""), str(extracted_data.get("unit") or ""))
+
+    expected_values = {
+        str(expected.get(key))
+        for key in ("threshold", "min_value", "max_value")
+        if expected.get(key) is not None
+    }
+    extracted_values = {
+        str(extracted_data.get(key))
+        for key in ("threshold", "min_value", "max_value")
+        if extracted_data.get(key) is not None
+    }
+    numeric = 1.0 if expected_values and expected_values & extracted_values else 0.0
+    return 0.45 * lexical + 0.25 * parameter + 0.1 * operator + 0.1 * unit + 0.1 * numeric
+
+
+def _count_semantically_matched_conditions(
+    ground_truth_reqs: list[dict[str, Any]],
+    extracted_by_id: dict[str, Any],
+) -> int:
+    """One-to-one semantic matching avoids requiring benchmark-specific IDs."""
+    matched = 0
+    for requirement in ground_truth_reqs:
+        extracted_req = extracted_by_id.get(requirement["requirement_id"])
+        if extracted_req is None:
+            continue
+        available = list(enumerate(extracted_req.conditions))
+        used_indices: set[int] = set()
+        for expected in requirement.get("conditions", []):
+            candidates = [
+                (_condition_similarity(expected, actual), index)
+                for index, actual in available
+                if index not in used_indices
+            ]
+            if not candidates:
+                continue
+            score, best_index = max(candidates)
+            if score >= 0.45:
+                used_indices.add(best_index)
+                matched += 1
+    return matched
+
+
+def _normalized_contract_value(value: Any) -> Any:
+    if isinstance(value, bool) or value is None:
+        return value
+    if isinstance(value, (int, float)):
+        return round(float(value), 9)
+    text = str(value).strip().lower().replace("μ", "µ")
+    try:
+        return round(float(text), 9)
+    except ValueError:
+        return re.sub(r"[\s_-]+", "", text)
+
+
+def _condition_contract_exact(expected: dict[str, Any], extracted: Any) -> bool:
+    actual = extracted.model_dump(exclude_none=True)
+    expected_operator = "==" if expected.get("operator") == "=" else expected.get("operator")
+    actual_operator = "==" if actual.get("operator") == "=" else actual.get("operator")
+    if expected_operator != actual_operator:
+        return False
+    if _normalized_contract_value(expected.get("parameter")) != _normalized_contract_value(actual.get("parameter")):
+        return False
+    if _normalized_contract_value(expected.get("unit") or "") != _normalized_contract_value(actual.get("unit") or ""):
+        return False
+    for field in ("threshold", "min_value", "max_value"):
+        expected_value = expected.get(field)
+        if expected_value is not None and _normalized_contract_value(expected_value) != _normalized_contract_value(actual.get(field)):
+            return False
+    return True
+
+
+def _count_exactly_matched_conditions(
+    ground_truth_reqs: list[dict[str, Any]],
+    extracted_by_id: dict[str, Any],
+) -> int:
+    matched = 0
+    for requirement in ground_truth_reqs:
+        extracted_req = extracted_by_id.get(requirement["requirement_id"])
+        if extracted_req is None:
+            continue
+        used_indices: set[int] = set()
+        for expected in requirement.get("conditions", []):
+            for index, actual in enumerate(extracted_req.conditions):
+                if index not in used_indices and _condition_contract_exact(expected, actual):
+                    used_indices.add(index)
+                    matched += 1
+                    break
+    return matched
+
+
+async def run_benchmark(mode: str = "end-to-end"):
+    mode = mode.strip().lower()
+    if mode not in {"end-to-end", "oracle"}:
+        raise ValueError("mode must be 'end-to-end' or 'oracle'")
     print("=" * 75)
     print("     TRACEAUDIT AI - 100-REQUIREMENT COMPLEX AUTOMOTIVE BENCHMARK")
+    print(f"     MODE: {mode.upper()}")
     print("=" * 75)
 
     start_time = time.time()
@@ -118,18 +338,53 @@ async def run_benchmark():
     )
 
     extracted_dict = {r.req_code: r for r in extracted_reqs}
-    tp_extract = sum(1 for r in ground_truth_reqs if r["requirement_id"] in extracted_dict)
+    id_tp_extract = sum(1 for r in ground_truth_reqs if r["requirement_id"] in extracted_dict)
+    tp_extract = sum(
+        1 for r in ground_truth_reqs
+        if r["requirement_id"] in extracted_dict
+        and _token_f1(extracted_dict[r["requirement_id"]].description or extracted_dict[r["requirement_id"]].title, r["requirement_text"]) >= 0.65
+    )
     fp_extract = max(0, len(extracted_reqs) - tp_extract)
     fn_extract = len(ground_truth_reqs) - tp_extract
     ext_p = (tp_extract / len(extracted_reqs) * 100.0) if extracted_reqs else 0.0
     ext_r = (tp_extract / len(ground_truth_reqs) * 100.0) if ground_truth_reqs else 0.0
     ext_f1 = (2 * ext_p * ext_r / (ext_p + ext_r)) if (ext_p + ext_r) > 0 else 0.0
 
+    total_gt_conditions = sum(len(r.get("conditions", [])) for r in ground_truth_reqs)
+    matched_extracted_conditions = _count_semantically_matched_conditions(
+        ground_truth_reqs,
+        extracted_dict,
+    )
+    exact_matched_extracted_conditions = _count_exactly_matched_conditions(
+        ground_truth_reqs,
+        extracted_dict,
+    )
+    ext_condition_recall = (
+        matched_extracted_conditions / total_gt_conditions * 100.0 if total_gt_conditions else 0.0
+    )
+    exact_condition_recall = (
+        exact_matched_extracted_conditions / total_gt_conditions * 100.0 if total_gt_conditions else 0.0
+    )
+
     print(f"  • Ground Truth Requirements : {len(ground_truth_reqs)}")
     print(f"  • Extracted Requirements    : {len(extracted_reqs)}")
     print(f"  • Extraction Precision      : {ext_p:.2f}%")
     print(f"  • Extraction Recall         : {ext_r:.2f}%")
     print(f"  • Extraction F1-Score       : {ext_f1:.2f}%")
+    print(f"  • Requirement ID Recall     : {id_tp_extract / len(ground_truth_reqs) * 100.0:.2f}%")
+    print(f"  • Atomic Condition Recall   : {ext_condition_recall:.2f}%")
+    print(f"  • Exact Contract Recall     : {exact_condition_recall:.2f}%")
+
+    pipeline_requirements = _build_pipeline_requirements(
+        mode,
+        extracted_reqs,
+        ground_truth_reqs,
+    )
+    pipeline_by_id = {item["req_code"]: item for item in pipeline_requirements}
+    print(
+        f"  • Downstream Requirement Source: "
+        f"{'EXTRACTED CONTRACTS' if mode == 'end-to-end' else 'GROUND-TRUTH ORACLE CONTRACTS'}"
+    )
 
     # 4. Evidence Retrieval Evaluation (Document Recall@K vs Passage Recall@K)
     print(f"\n[4/5] Evaluating Hybrid Evidence Retrieval across 100 Requirements...")
@@ -141,9 +396,9 @@ async def run_benchmark():
 
     eval_queries = [r for r in ground_truth_reqs if links_by_id.get(r["requirement_id"], {}).get("expected_evidence")]
 
-    for r in ground_truth_reqs:
-        req_id = r["requirement_id"]
-        query_text = f"{r['requirement_id']} {r['title']} {r['requirement_text']}"
+    for source_req in pipeline_requirements:
+        req_id = source_req["req_code"]
+        query_text = f"{req_id} {source_req['title']} {source_req['description']}"
 
         # Hybrid retrieval — the SRS itself is excluded from candidates because its
         # chunks contain the requirement text verbatim and always occupy rank 1.
@@ -183,7 +438,7 @@ async def run_benchmark():
             for rank, c in enumerate(candidate_chunks[:5], 1):
                 doc_match = c["document_name"].lower() in exp_docs
                 content_lower = c["content"].lower()
-                quote_match = any(q[:40] in content_lower or (len(q) > 20 and " ".join(q.split()[:4]) in content_lower) for q in exp_quotes)
+                quote_match = doc_match and any(_passage_matches(q, content_lower) for q in exp_quotes)
 
                 if doc_match and doc_hit_rank is None:
                     doc_hit_rank = rank
@@ -222,6 +477,14 @@ async def run_benchmark():
             else:
                 passage_reciprocal_ranks.append(0.0)
 
+    # An expected requirement that extraction omitted is a retrieval miss in a
+    # true end-to-end run. Ground truth is used here only as the scoring oracle.
+    retrieved_expected_ids = set(retrieved_by_req)
+    for expected_req in eval_queries:
+        if expected_req["requirement_id"] not in retrieved_expected_ids:
+            doc_reciprocal_ranks.append(0.0)
+            passage_reciprocal_ranks.append(0.0)
+
     total_q = len(eval_queries)
     doc_r1 = (doc_hits["R@1"] / total_q * 100.0) if total_q else 0.0
     doc_r3 = (doc_hits["R@3"] / total_q * 100.0) if total_q else 0.0
@@ -241,13 +504,10 @@ async def run_benchmark():
     print(f"\n[5/5] Executing 5-Class Multi-Condition Compliance Verification...")
     req_items = [
         {
-            "req_code": r["requirement_id"],
-            "title": r["title"],
-            "description": r["requirement_text"],
-            "category": r["category"],
-            "candidate_chunks": retrieved_by_req.get(r["requirement_id"], []),
+            **source_req,
+            "candidate_chunks": retrieved_by_req.get(source_req["req_code"], []),
         }
-        for r in ground_truth_reqs
+        for source_req in pipeline_requirements
     ]
 
     assessments = await batch_assess_requirements(
@@ -276,6 +536,7 @@ async def run_benchmark():
     numerical_total = 0
     numerical_correct = 0
     unsupported_claims = 0  # Missing evidence falsely claimed as SUPPORTED
+    extraction_missing_count = 0
 
     for r in ground_truth_reqs:
         req_id = r["requirement_id"]
@@ -291,11 +552,17 @@ async def run_benchmark():
             "predicted": actual_status,
             "confidence": assessment.confidence if assessment else 0.0,
             "reason": assessment.ai_analysis if assessment else "None",
+            "condition_results": [
+                result.model_dump() for result in (assessment.condition_results if assessment else [])
+            ],
         }
 
         matrix[expected_status][actual_status] += 1
 
-        is_correct = (expected_status == actual_status)
+        extraction_missing = mode == "end-to-end" and req_id not in pipeline_by_id
+        if extraction_missing:
+            extraction_missing_count += 1
+        is_correct = bool(assessment) and not extraction_missing and (expected_status == actual_status)
         if is_correct:
             correct_count += 1
         else:
@@ -303,9 +570,17 @@ async def run_benchmark():
             exp_docs = {e["document"].lower() for e in gt_link.get("expected_evidence", []) if e.get("document")}
             retrieved_doc_names = {c["document_name"].lower() for c in retrieved_chunks}
             retrieval_missed = bool(exp_docs and not (exp_docs & retrieved_doc_names))
+            citation_traceability_failed = any(
+                "could not be traced to the referenced evidence" in (result.reason or "")
+                for result in (assessment.condition_results if assessment else [])
+            )
 
-            if retrieval_missed:
+            if extraction_missing:
+                cat = "EXTRACTION_FAILURE"
+            elif retrieval_missed:
                 cat = "RETRIEVAL_FAILURE"
+            elif citation_traceability_failed:
+                cat = "CITATION_TRACEABILITY_FAILURE"
             elif expected_status == "UNKNOWN" and actual_status in ("SUPPORTED", "PARTIAL"):
                 cat = "SOURCE_AUTHORITY_FAILURE"
             elif expected_status == "PARTIAL" and actual_status == "SUPPORTED":
@@ -338,6 +613,8 @@ async def run_benchmark():
         conds = r.get("conditions", [])
         missing_cond_refs = gt_link.get("missing_conditions", [])
 
+        predicted_condition_results = list(assessment.condition_results if assessment else [])
+
         for cond in conds:
             total_atomic_conditions += 1
             cid = cond.get("condition_id", "")
@@ -357,20 +634,10 @@ async def run_benchmark():
             else:
                 gt_cond_status = "UNTESTED"
 
-            # Determine predicted status for this atomic condition
-            if actual_status == "SUPPORTED":
-                pred_cond_status = "PROVEN"
-            elif actual_status == "MISSING":
-                pred_cond_status = "UNTESTED"
-            elif actual_status == "UNKNOWN":
-                pred_cond_status = "INCONCLUSIVE"
-            elif actual_status == "CONFLICT":
-                pred_cond_status = "FAILED"
-            elif actual_status == "PARTIAL":
-                # For partial requirements, check if evidence covers this condition or is pending
-                pred_cond_status = "PROVEN" if gt_cond_status == "PROVEN" else "PENDING"
-            else:
-                pred_cond_status = "UNTESTED"
+            # Score the verifier's actual per-condition output. Missing condition
+            # IDs are conservatively UNTESTED; no ground-truth status is used to
+            # manufacture a prediction.
+            pred_cond_status = _predicted_condition_status(cond, predicted_condition_results)
 
             if pred_cond_status == gt_cond_status:
                 correct_atomic_conditions += 1
@@ -386,11 +653,13 @@ async def run_benchmark():
                 else:
                     cond_tn += 1
 
-        # Numerical accuracy tracking
-        if any(c.get("operator") in ("<=", ">=", "between", "==") for c in conds):
-            numerical_total += 1
-            if is_correct:
-                numerical_correct += 1
+            if cond.get("operator") in ("<=", "<", ">=", ">", "between", "==") and (
+                isinstance(cond.get("threshold"), (int, float))
+                or (isinstance(cond.get("threshold"), str) and any(ch.isdigit() for ch in cond["threshold"]))
+            ):
+                numerical_total += 1
+                if pred_cond_status == gt_cond_status:
+                    numerical_correct += 1
 
         # Unsupported claims (Hallucination on MISSING)
         if expected_status == "MISSING" and actual_status == "SUPPORTED":
@@ -467,6 +736,10 @@ async def run_benchmark():
     # Output JSON results
     benchmark_results = {
         "benchmark_name": "TraceAudit AI 100-Requirement Complex Automotive Benchmark",
+        "evaluation_mode": mode,
+        "downstream_requirement_source": (
+            "extracted_contracts" if mode == "end-to-end" else "ground_truth_oracle_contracts"
+        ),
         "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
         "total_requirements": total_eval,
         "runtime_seconds": elapsed_time,
@@ -475,6 +748,10 @@ async def run_benchmark():
             "recall": round(ext_r, 2),
             "f1": round(ext_f1, 2),
             "total_extracted": len(extracted_reqs),
+            "id_recall": round(id_tp_extract / len(ground_truth_reqs) * 100.0, 2),
+            "atomic_condition_recall": round(ext_condition_recall, 2),
+            "atomic_condition_exact_recall": round(exact_condition_recall, 2),
+            "missing_required_ids": extraction_missing_count,
         },
         "retrieval_metrics": {
             "document_recall_at_1": round(doc_r1, 2),
@@ -491,6 +768,11 @@ async def run_benchmark():
         },
         "verification_metrics": {
             "accuracy": round(acc, 2),
+            "accuracy_definition": (
+                "end-to-end: requirement must be extracted and classified correctly"
+                if mode == "end-to-end"
+                else "oracle: classification correctness using ground-truth contracts"
+            ),
             "macro_precision": round(macro_p, 2),
             "macro_recall": round(macro_r, 2),
             "macro_f1": round(macro_f1, 2),
@@ -518,6 +800,11 @@ async def run_benchmark():
         "failures_count": len(failures),
         "failures": failures,
         "predictions": predictions,
+        "retrieval_trace": retrieved_by_req,
+        "extracted_requirements": [
+            requirement.model_dump(exclude_none=True)
+            for requirement in extracted_reqs
+        ],
     }
 
     json_path = RESULTS_DIR / "complex_benchmark_results.json"
@@ -542,6 +829,7 @@ async def run_benchmark():
             predictions=predictions,
             failures=failures,
             excel_path=excel_path,
+            pipeline_requirements=pipeline_requirements,
         )
     except Exception as ex:
         print(f"  [WARN] Failed exporting Excel Audit Trace: {ex}")
@@ -581,6 +869,8 @@ def generate_markdown_report(results: dict, failures: list[dict]):
     content = f"""# TraceAudit AI — 100-Requirement Complex Benchmark Report
 
 > **Benchmark Date:** {results['timestamp']}  
+> **Evaluation Mode:** {results.get('evaluation_mode', 'oracle').upper()}
+> **Downstream Requirement Source:** {results.get('downstream_requirement_source', 'ground_truth_oracle_contracts')}
 > **Total Requirements Evaluated:** 100  
 > **Total Atomic Conditions Evaluated:** {cm_data.get('total_conditions', 172)}  
 > **Total Technical Documents:** 20 (DOCX, PDF, XLSX)  
@@ -596,8 +886,9 @@ The 100-requirement synthetic benchmark tests real-world automotive compliance a
 ```
 Pipeline Performance Summary:
   • Requirement Extraction F1 : {em['f1']:.2f}%
+  • Exact Extracted Contract Recall: {em.get('atomic_condition_exact_recall', 0):.2f}%
   • Document Retrieval Recall@3: {rm['document_recall_at_3']:.2f}% | Recall@5: {rm['document_recall_at_5']:.2f}% (MRR: {rm['document_mrr']:.4f})
-  • Exact Passage Recall@3    : {rm['passage_recall_at_3']:.2f}% | Recall@5: {rm['passage_recall_at_5']:.2f}% (MRR: {rm['passage_mrr']:.4f})
+  • Document-qualified Passage Recall@3: {rm['passage_recall_at_3']:.2f}% | Recall@5: {rm['passage_recall_at_5']:.2f}% (MRR: {rm['passage_mrr']:.4f})
   • 5-Class Requirement Macro F1: {vm['macro_f1']:.2f}% (Accuracy: {vm['accuracy']:.2f}%)
   • Atomic Condition Accuracy  : {cm_data.get('condition_accuracy', sm.get('condition_accuracy', 0)):.2f}% (F1: {cm_data.get('condition_f1', 0):.2f}%)
   • Unsupported Claim Rate    : {sm['unsupported_claim_rate']:.2f}% (Evidence-grounded)
@@ -684,5 +975,15 @@ Failure Categorization:
 
 
 if __name__ == "__main__":
-    asyncio.run(run_benchmark())
-
+    parser = argparse.ArgumentParser(description="Run the TraceAudit complex benchmark")
+    parser.add_argument(
+        "--mode",
+        choices=("end-to-end", "oracle"),
+        default="end-to-end",
+        help=(
+            "end-to-end feeds extracted contracts into retrieval/verification; "
+            "oracle isolates retrieval/verifier behavior with benchmark contracts"
+        ),
+    )
+    args = parser.parse_args()
+    asyncio.run(run_benchmark(mode=args.mode))

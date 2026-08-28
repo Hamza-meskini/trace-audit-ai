@@ -6,7 +6,12 @@ import re
 import uuid
 
 from app.schemas.contract import RequirementContract, RANGE_REGEX, THRESHOLD_LE_REGEX, THRESHOLD_GE_REGEX, IP_REGEX
-from app.schemas.evidence_qualification import normalize_entity_scope
+from app.schemas.evidence_qualification import (
+    extract_parameters_from_text,
+    normalize_entity_scope,
+    normalize_parameter,
+)
+from app.services.units import convert_value, normalize_unit_str
 
 
 REQ_CODE_REGEX = re.compile(r"\b(REQ[-_]?[A-Za-z0-9_-]*\d+)\b", re.IGNORECASE)
@@ -50,40 +55,53 @@ def classify_source_authority(
     if "compliance matrix" in dt or "compliance_matrix" in dt or dn.endswith(".xlsx") or "matrix" in dn:
         return "COMPLIANCE_MATRIX"
 
-    # 2. Simulation (SPICE, MATLAB, CFD, Simulink, etc.)
-    if any(k in dn or k in ct for k in [
-        "spice", "ltspice", "matlab", "simulink", "cfd", "simulation",
-        "simulated", "model predicts", "modeling calculation", "theoretical simulation",
-        "ansys", "finite element", "transient simulation"
-    ]):
-        if any(k in ct for k in ["spice", "matlab", "simulink", "cfd", "simulation", "simulated", "model predicts"]) or any(k in dn for k in ["spice", "matlab", "cfd", "simul"]):
-            return "SIMULATION"
+    # 2. Passage modality overrides a generic report filename. Treat explicit
+    # modelling tools/phrases as simulation, but do not let the ambiguous word
+    # "simulation" erase physical-test actions such as voltage being applied
+    # and degradation being observed (for example, a physical scenario test
+    # whose title happens to contain the word "simulation").
+    strong_simulation_markers = (
+        "spice", "ltspice", "matlab", "simulink", "cfd", "model predicts",
+        "modeling calculation", "theoretical simulation", "ansys",
+        "finite element", "transient simulation",
+    )
+    physical_action_markers = (
+        " applied ", " measured ", " observed ", " recorded ", " injected ",
+        "test case", "verdict: pass", "verdict: fail", "no degradation",
+        "no thermal runaway", "bench test", "lab test", "chamber test",
+    )
+    has_strong_simulation = any(k in dn or k in ct for k in strong_simulation_markers)
+    has_ambiguous_simulation = any(k in ct for k in ("simulation", "simulated"))
+    has_physical_action = any(k in f" {ct} " for k in physical_action_markers)
+    if has_strong_simulation or (
+        has_ambiguous_simulation and not has_physical_action
+    ) or any(k in dn for k in ("spice", "matlab", "cfd", "simul")):
+        return "SIMULATION"
 
-    # 3. Calculation / Analytical Estimation
+    # 3. Supplier component datasheets (document-level identity).
+    if any(k in dn for k in ["datasheet", "data sheet", "ds-", "oem_supplier", "supplier", "component_datasheet", "part_spec", "ic_spec"]):
+        return "DATASHEET"
+
+    # 4. Architecture documents (document-level identity).
+    if any(k in dn for k in ["architecture", "arch_spec", "interface_spec", "system_architecture", "design_intent", "system_design", "block_diagram"]):
+        return "ARCHITECTURE_SPEC"
+
+    # 5. Calculation / Analytical Estimation
     if any(k in dn or k in ct for k in [
         "calculation", "calculated", "analytical estimation", "formula predicts",
         "derivation", "theoretical calculation", "estimated by formula"
     ]) and not any(k in ct for k in ["measured", "tested", "lab test", "chamber", "dynamometer"]):
         return "CALCULATION"
 
-    # 4. Architecture / Design Intent / Interface Spec
-    if any(k in dn for k in ["architecture", "arch_spec", "interface_spec", "system_architecture", "design_intent", "system_design", "block_diagram"]) or \
-       any(k in ct for k in ["architecture section", "design intention", "is specified for", "architecture definition", "layout reviewed"]):
-        return "ARCHITECTURE_SPEC"
-
-    # 5. Supplier Component Datasheets
-    if any(k in dn for k in ["datasheet", "data sheet", "ds-", "oem_supplier", "supplier", "component_datasheet", "part_spec", "ic_spec"]) or \
-       any(k in ct for k in ["absolute maximum ratings", "electrical characteristics", "pin configuration", "package dimensions", "typical application circuit"]):
-        return "DATASHEET"
-
-    # 6. Inspection
+    # 6. Inspection-only passage
     if any(k in ct for k in ["visual inspection", "layout reviewed", "circuit layout reviewed", "schematic inspection"]):
         return "INSPECTION"
 
-    # 7. Qualification / Validation / Empirical Test Reports
+    # 7. Qualification / Validation / Empirical Test Reports. Filename role is
+    # evaluated before incidental architecture words in another page section.
     if any(k in dn for k in [
-        "validation_report", "test_report", "thermal_shock", "thermal_runaway",
-        "environmental", "emc_report", "lab_report", "test_log"
+        "validation_report", "validation", "test_report", "test report", "_report",
+        "thermal_shock", "thermal_runaway", "environmental", "emc_report", "lab_report", "test_log"
     ]) or any(k in ct for k in [
         "tested at", "measured across", "injected at", "triggered in", "test points",
         "chamber", "oscilloscope", "dynamometer", "verdict: pass", "verdict: fail", "result: pass"
@@ -94,6 +112,12 @@ def classify_source_authority(
             return "VALIDATION_REPORT"
         return "EMPIRICAL_TEST"
 
+    # 8. Content-only document roles, used when filenames are uninformative.
+    if any(k in ct for k in ["absolute maximum ratings", "electrical characteristics", "pin configuration", "package dimensions", "typical application circuit"]):
+        return "DATASHEET"
+    if any(k in ct for k in ["architecture section", "design intention", "is specified for", "architecture definition", "layout reviewed"]):
+        return "ARCHITECTURE_SPEC"
+
     return "UNKNOWN"
 
 
@@ -102,6 +126,8 @@ class EvidenceClaim(BaseModel):
 
     claim_id: str = Field(default_factory=lambda: str(uuid.uuid4())[:8])
     source_chunk_id: Optional[str] = None
+    requirement_id: Optional[str] = None
+    condition_id: Optional[str] = None
     document_name: str
     page_number: Optional[int] = None
     claim_type: ClaimType = "unknown"
@@ -133,7 +159,7 @@ TESTED_SWEEP_PATTERN = re.compile(
 )
 
 NUM_WITH_UNIT_PATTERN = re.compile(
-    r"([+-]?\d+(?:\.\d+)?)\s*([°\w/µμ%]+)",
+    r"([+-]?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?)\s*([°\w/µμ%]+)",
     re.IGNORECASE,
 )
 
@@ -141,6 +167,131 @@ TEST_VERDICT_PATTERN = re.compile(
     r"\b(PASS|PASSED|FAIL|FAILED|NOT\s+TESTED|IN\s+PROGRESS|PARTIAL|MISSING|COMPLETED)\b",
     re.IGNORECASE,
 )
+
+
+def _dominant_test_verdict(text: str) -> Optional[str]:
+    """Return the most safety-significant local verdict expressed in text.
+
+    A passage may legitimately contain both a sub-test PASS and a decisive
+    requirement-level FAIL (for example IP6X dust passed but IP67 water ingress
+    failed). Negative or incomplete outcomes therefore dominate positive words.
+    """
+    lower = text.lower()
+    if any(k in lower for k in ("not started", "verdict: missing", "record missing", "[missing evidence]", "not tested")):
+        return "MISSING" if "not tested" not in lower else "NOT TESTED"
+
+    normalized = []
+    for match in TEST_VERDICT_PATTERN.finditer(text):
+        raw = match.group(1).upper()
+        normalized.append({
+            "PASSED": "PASS",
+            "FAILED": "FAIL",
+            "COMPLETED": "PASS",
+            "NOT TESTED": "NOT TESTED",
+            "IN PROGRESS": "IN PROGRESS",
+        }.get(raw, raw))
+
+    if "FAIL" in normalized:
+        return "FAIL"
+    if "IN PROGRESS" in normalized or "PARTIAL" in normalized or "in progress" in lower:
+        return "IN PROGRESS"
+    if "MISSING" in normalized or "NOT TESTED" in normalized:
+        return "MISSING"
+    if "PASS" in normalized:
+        return "PASS"
+    return None
+
+_PASSAGE_STOPWORDS = {
+    "requirement", "system", "shall", "must", "with", "within", "from", "that",
+    "this", "every", "hardware", "test", "testing", "verification", "maximum",
+    "minimum", "provide", "support", "operation", "operating", "complete", "peak",
+    "current", "voltage", "temperature", "frequency", "resistance", "power", "range",
+    "latency", "duration", "time", "threshold", "margin", "error", "value", "condition",
+}
+
+
+def _isolate_relevant_passage(text: str, contract: Optional[RequirementContract]) -> str:
+    """Return only lines that locally address the target requirement.
+
+    Parsed PDF pages often contain several unrelated test cases. Keeping the
+    whole page lets a PASS or numeric value from one case contaminate another.
+    """
+    if not contract or not text.strip():
+        return text
+
+    code = contract.req_code.upper()
+    codes_in_text = [match.upper() for match in REQ_CODE_REGEX.findall(text)]
+    if codes_in_text:
+        if code not in codes_in_text:
+            return ""
+        pos = text.upper().find(code)
+        # Never carry the tail of the preceding matrix row into this
+        # requirement's claims (it may contain another row's PASS/FAIL).
+        start_pos = pos
+        next_req = REQ_CODE_REGEX.search(text[pos + len(code):])
+        end_pos = (pos + len(code) + next_req.start()) if next_req else min(len(text), pos + 900)
+        return text[start_pos:end_pos]
+
+    suffix_match = re.search(r"(\d+)$", code)
+    suffix = suffix_match.group(1) if suffix_match else ""
+    direct_id = re.compile(rf"\b(?:TC|TEST(?:\s+CASE)?)[-_][A-Z0-9_-]*[-_]{re.escape(suffix)}\b", re.IGNORECASE) if suffix else None
+    if direct_id:
+        direct_match = direct_id.search(text)
+        if direct_match:
+            # PDF test cases often wrap onto following lines. Keep the full
+            # case until the next TC marker instead of just the first line.
+            next_case = re.search(
+                r"\b(?:TC|TEST(?:\s+CASE)?)[-_][A-Z0-9_-]*[-_]\d+\b",
+                text[direct_match.end():],
+                re.IGNORECASE,
+            )
+            end_pos = direct_match.end() + next_case.start() if next_case else min(len(text), direct_match.start() + 1000)
+            start_pos = max(0, text.rfind("\n", 0, direct_match.start()) + 1)
+            return text[start_pos:end_pos].strip()
+    term_source = " ".join(
+        [contract.title, contract.raw_text]
+        + [c.description or "" for c in contract.atomic_conditions]
+        + [c.parameter or "" for c in contract.atomic_conditions]
+    ).replace("_", " ").replace("-", " ")
+    terms = {
+        word.lower()
+        for word in re.findall(r"[A-Za-z][A-Za-z0-9_-]{3,}", term_source)
+        if word.lower() not in _PASSAGE_STOPWORDS
+    }
+    if "range" in term_source.lower():
+        terms.add("envelope")
+
+    selected: list[str] = []
+    required_overlap = min(3 if len(terms) >= 6 else 2, len(terms))
+    for line in text.splitlines():
+        line_lower = line.lower()
+        overlap = sum(1 for term in terms if term in line_lower)
+        if required_overlap and overlap >= required_overlap:
+            selected.append(line.strip())
+
+    if not selected and not terms and len(text) <= 300 and re.search(r"\d", text) and any(
+        marker in text.lower() for marker in ("tested", "measured", "verified", "verdict", "evaluated")
+    ):
+        return text
+    return "\n".join(selected)
+
+
+def _infer_claim_parameter(snippet: str, unit: Optional[str]) -> Optional[str]:
+    """Infer a claim parameter from its local words and physical unit."""
+    found = extract_parameters_from_text(snippet)
+    normalized_unit = normalize_unit_str(unit)
+    preferred_by_unit = {
+        "db": "emissions_margin",
+        "hz": "frequency", "khz": "frequency", "mhz": "frequency", "ghz": "frequency",
+        "ns": "latency", "us": "latency", "ms": "latency", "s": "latency",
+        "v": "voltage", "vdc": "voltage", "v dc": "voltage", "mv": "voltage", "kv": "voltage",
+        "a": "current", "ma": "current", "ua": "current", "ka": "current",
+        "w": "heat_load", "kw": "heat_load",
+    }
+    preferred = preferred_by_unit.get(normalized_unit)
+    if preferred:
+        return preferred
+    return normalize_parameter(found[0]) if found else None
 
 
 def extract_claims_from_chunk(
@@ -154,43 +305,28 @@ def extract_claims_from_chunk(
     page_num = chunk.get("page_number")
     chunk_id = chunk.get("chunk_id") or chunk.get("id")
     claims: list[EvidenceClaim] = []
-    text_lower = text.lower()
+    target_text = _isolate_relevant_passage(text, contract)
+    if not target_text.strip():
+        return []
 
-    source_auth = classify_source_authority(doc_name, text, doc_type)
+    # Normalize the two common replacement-character artifacts produced by
+    # PDF extraction: micro units (�s/�A) and an en-dash between range bounds.
+    target_text = re.sub(r"�(?=[sSaA]\b)", "u", target_text)
+    target_text = re.sub(r"(?<=[A-Za-z])�(?=[+-]?\d)", " to ", target_text)
 
-    # Determine entity scope of chunk (single shared normalization path)
-    entity_scope = normalize_entity_scope(text, doc_name)
+    source_auth = classify_source_authority(doc_name, target_text, doc_type)
 
-    # If the chunk explicitly lists requirement codes, ensure it applies to this contract
-    target_text = text
-    if contract and contract.req_code:
-        req_codes_in_text = [code.upper() for code in REQ_CODE_REGEX.findall(text)]
-        if req_codes_in_text:
-            if contract.req_code.upper() not in req_codes_in_text:
-                return []
-            # Scope extraction to the specific section for contract.req_code
-            pos = text.upper().find(contract.req_code.upper())
-            start_pos = max(0, pos - 50)
-            next_req = REQ_CODE_REGEX.search(text[pos + len(contract.req_code):])
-            end_pos = (pos + len(contract.req_code) + next_req.start()) if next_req else min(len(text), pos + 600)
-            target_text = text[start_pos:end_pos]
+    # Determine entity scope from the local passage, not the complete page.
+    entity_scope = normalize_entity_scope(target_text, doc_name)
 
     target_text_lower = target_text.lower()
 
     # 1. Extract explicit test verdict claims (especially from matrices and lab reports)
-    verdict_match = TEST_VERDICT_PATTERN.search(target_text)
-    if verdict_match or any(k in target_text_lower for k in ["not started", "verdict: missing", "record missing", "[missing evidence]", "in progress"]):
-        verdict_str = "MISSING" if any(k in target_text_lower for k in ["not started", "verdict: missing", "record missing", "[missing evidence]"]) else ("IN PROGRESS" if "in progress" in target_text_lower else verdict_match.group(1).upper())
-        normalized_verdict = {
-            "PASSED": "PASS",
-            "FAILED": "FAIL",
-            "COMPLETED": "PASS",
-            "NOT TESTED": "NOT TESTED",
-            "IN PROGRESS": "IN PROGRESS",
-        }.get(verdict_str, verdict_str)
-
+    normalized_verdict = _dominant_test_verdict(target_text)
+    if normalized_verdict:
         claims.append(EvidenceClaim(
             source_chunk_id=chunk_id,
+            requirement_id=contract.req_code if contract else None,
             document_name=doc_name,
             page_number=page_num,
             claim_type="test_verdict",
@@ -208,18 +344,34 @@ def extract_claims_from_chunk(
             max_v = float(m.group(3))
             unit_post = m.group(4)
             unit = (unit_post or unit_pre or "").strip()
+            # Mixed-unit ranges (150 kHz–2.5 GHz) must normalize each endpoint
+            # before they are represented by one claim unit.
+            if contract and unit_pre and unit_post and normalize_unit_str(unit_pre) != normalize_unit_str(unit_post):
+                range_condition = next(
+                    (c for c in contract.atomic_conditions if c.min_value is not None and c.max_value is not None and c.unit),
+                    None,
+                )
+                target_unit = range_condition.unit if range_condition else unit_post
+                converted_min = convert_value(min_v, unit_pre, target_unit)
+                converted_max = convert_value(max_v, unit_post, target_unit)
+                if converted_min is not None and converted_max is not None:
+                    min_v, max_v, unit = converted_min, converted_max, target_unit
+
+            quote = target_text[max(0, m.start() - 40):min(len(target_text), m.end() + 40)]
 
             claims.append(EvidenceClaim(
                 source_chunk_id=chunk_id,
+                requirement_id=contract.req_code if contract else None,
                 document_name=doc_name,
                 page_number=page_num,
                 claim_type="numeric_range",
                 source_authority=source_auth,
                 entity_scope=entity_scope,
+                parameter=_infer_claim_parameter(quote, unit),
                 min_value=min_v,
                 max_value=max_v,
                 unit=unit or None,
-                quote=text[max(0, m.start() - 40):min(len(text), m.end() + 40)],
+                quote=quote,
             ))
         except (ValueError, TypeError):
             continue
@@ -228,7 +380,7 @@ def extract_claims_from_chunk(
     points_by_unit: dict[str, list[tuple[float, str]]] = {}
     for m in NUM_WITH_UNIT_PATTERN.finditer(target_text):
         try:
-            val = float(m.group(1))
+            val = float(m.group(1).replace(",", ""))
             u = m.group(2).strip()
             if u and len(u) <= 8 and not any(ch.isdigit() for ch in u):
                 snippet = target_text[max(0, m.start() - 60):min(len(target_text), m.end() + 60)]
@@ -241,11 +393,13 @@ def extract_claims_from_chunk(
             if len(pts) >= 2:
                 claims.append(EvidenceClaim(
                     source_chunk_id=chunk_id,
+                    requirement_id=contract.req_code if contract else None,
                     document_name=doc_name,
                     page_number=page_num,
                     claim_type="discrete_sweep",
                     source_authority=source_auth,
                     entity_scope=entity_scope,
+                    parameter=_infer_claim_parameter(" ".join(p[1] for p in pts), u),
                     discrete_points=[p[0] for p in pts],
                     unit=u,
                     quote=" ".join(p[1] for p in pts),
@@ -253,11 +407,13 @@ def extract_claims_from_chunk(
             elif len(pts) == 1:
                 claims.append(EvidenceClaim(
                     source_chunk_id=chunk_id,
+                    requirement_id=contract.req_code if contract else None,
                     document_name=doc_name,
                     page_number=page_num,
                     claim_type="threshold",
                     source_authority=source_auth,
                     entity_scope=entity_scope,
+                    parameter=_infer_claim_parameter(pts[0][1], u),
                     value=pts[0][0],
                     unit=u,
                     quote=pts[0][1],
@@ -267,30 +423,41 @@ def extract_claims_from_chunk(
             if len(pts) == 1:
                 claims.append(EvidenceClaim(
                     source_chunk_id=chunk_id,
+                    requirement_id=contract.req_code if contract else None,
                     document_name=doc_name,
                     page_number=page_num,
                     claim_type="threshold",
                     source_authority=source_auth,
                     entity_scope=entity_scope,
+                    parameter=_infer_claim_parameter(pts[0][1], u),
                     value=pts[0][0],
                     unit=u,
                     quote=pts[0][1],
                 ))
 
     # 4. Extract IP rating claim
-    ip_m = IP_REGEX.search(target_text)
-    if ip_m:
+    ip_matches = list(IP_REGEX.finditer(target_text))
+    if ip_matches:
+        observed_ip = ip_matches[-1].group(1).upper()
+        ip_failure = any(k in target_text_lower for k in (
+            "water ingress", "leakage", "leak detected", "verdict: fail", " failed",
+        )) or bool(re.search(r"\brated\s+as\s+ip\d{2}[a-z]?\s+only\b", target_text_lower))
         claims.append(EvidenceClaim(
             source_chunk_id=chunk_id,
+            requirement_id=contract.req_code if contract else None,
             document_name=doc_name,
             page_number=page_num,
             claim_type="boolean",
             source_authority=source_auth,
             entity_scope=entity_scope,
             parameter="ingress_protection",
-            value=ip_m.group(1).upper(),
+            value=observed_ip,
             unit="IP",
-            test_result="PASS" if "pass" in target_text_lower or "zero water" in target_text_lower else "UNKNOWN",
+            test_result=(
+                "FAIL" if ip_failure
+                else "PASS" if "pass" in target_text_lower or "zero water" in target_text_lower
+                else "UNKNOWN"
+            ),
             quote=target_text,
         ))
 
@@ -298,6 +465,7 @@ def extract_claims_from_chunk(
     if not claims:
         claims.append(EvidenceClaim(
             source_chunk_id=chunk_id,
+            requirement_id=contract.req_code if contract else None,
             document_name=doc_name,
             page_number=page_num,
             claim_type="semantic",

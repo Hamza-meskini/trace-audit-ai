@@ -12,7 +12,7 @@ produced here. Never duplicate these rules elsewhere.
 import logging
 from typing import Any, Optional
 
-from app.schemas.claim import EvidenceClaim, classify_source_authority
+from app.schemas.claim import EvidenceClaim, classify_source_authority, _isolate_relevant_passage
 from app.schemas.contract import RequirementContract
 from app.schemas.evidence_qualification import (
     AUTHORITY_TO_METHOD,
@@ -47,6 +47,15 @@ def _contract_parameter(contract: RequirementContract) -> Optional[str]:
     return None
 
 
+def _contract_parameters(contract: RequirementContract) -> list[str]:
+    params: list[str] = []
+    for value in [contract.parameter, *[c.parameter for c in contract.atomic_conditions]]:
+        normalized = normalize_parameter(value)
+        if normalized and normalized not in params:
+            params.append(normalized)
+    return params
+
+
 def qualify_evidence(
     contract: RequirementContract,
     evidence_id: str,
@@ -54,12 +63,53 @@ def qualify_evidence(
     content: str,
     doc_type: Optional[str] = None,
     evidence_parameter: Optional[str] = None,
+    source_chunk_id: Optional[str] = None,
 ) -> EvidenceQualification:
     """Qualify one evidence unit against one requirement contract."""
-    authority = classify_source_authority(document_name, content, doc_type)
+    local_content = _isolate_relevant_passage(content, contract)
+    if not local_content.strip():
+        # Keep conservative scope/parameter facts from the raw passage for
+        # contradiction screening. The passage remains NOT_QUALIFIED for
+        # proof, but a matching ASIC hard limit may still refute an ASIC
+        # requirement while the same limit must not refute a BCU requirement.
+        raw_authority = classify_source_authority(document_name, content, doc_type)
+        raw_method = AUTHORITY_TO_METHOD.get(raw_authority, "unknown")
+        raw_scope = normalize_entity_scope(content, document_name)
+        raw_params = extract_parameters_from_text(content)
+        required_params = _contract_parameters(contract)
+        raw_checks = [
+            parameters_compatible(required, observed, content)
+            for required in required_params
+            for observed in (raw_params or [None])
+        ]
+        if any(check is True for check in raw_checks):
+            raw_param_ok = True
+        elif raw_checks and all(check is False for check in raw_checks):
+            raw_param_ok = False
+        else:
+            raw_param_ok = None
+        return EvidenceQualification(
+            evidence_id=evidence_id,
+            source_chunk_id=source_chunk_id,
+            document_name=document_name,
+            source_authority=raw_authority,
+            entity_scope=raw_scope,
+            parameter=raw_params[0] if raw_params else None,
+            parameters_found=raw_params,
+            verification_method=raw_method,
+            required_verification_method=contract.verification_method,
+            method_compatible=methods_compatible(contract.verification_method, raw_method),
+            scope_compatible=scopes_compatible(contract.scope, raw_scope),
+            parameter_compatible=raw_param_ok,
+            is_authoritative=False,
+            qualification_status="NOT_QUALIFIED",
+            reason="Retrieved chunk does not contain a local passage addressing this requirement.",
+        )
+
+    authority = classify_source_authority(document_name, local_content, doc_type)
     method = AUTHORITY_TO_METHOD.get(authority, "unknown")
-    scope = normalize_entity_scope(content, document_name)
-    params_found = extract_parameters_from_text(content)
+    scope = normalize_entity_scope(local_content, document_name)
+    params_found = extract_parameters_from_text(local_content)
     if evidence_parameter:
         norm = normalize_parameter(evidence_parameter)
         if norm and norm not in params_found:
@@ -68,21 +118,36 @@ def qualify_evidence(
 
     method_ok = methods_compatible(contract.verification_method, method)
     scope_ok = scopes_compatible(contract.scope, scope)
-    param_ok = parameters_compatible(_contract_parameter(contract), primary_param, content)
+    required_params = _contract_parameters(contract)
+    evidence_params = params_found or ([primary_param] if primary_param else [None])
+    param_checks = [
+        parameters_compatible(param, evidence_param, local_content)
+        for param in required_params
+        for evidence_param in evidence_params
+    ]
+    if any(check is True for check in param_checks):
+        param_ok = True
+    elif param_checks and all(check is False for check in param_checks):
+        param_ok = False
+    else:
+        param_ok = None
 
     # Authoritative = a formal record OF THE KIND THE REQUIREMENT DEMANDS:
     # empirical / matrix records for physical requirements, a simulation study
     # for simulation requirements, an inspection record for inspection, etc.
     required_method = normalize_required_method(contract.verification_method)
-    is_authoritative = method_ok and (
-        method in ("physical_test", "matrix_record") or method == required_method
+    is_authoritative = method_ok and authority != "COMPLIANCE_MATRIX" and (
+        method == "physical_test" or method == required_method
     )
 
     # Decision tree — a piece of evidence is only QUALIFIED when it can
     # actually stand in as verification: right method, right entity (or
     # system-level), and nothing contradicts the required parameter.
     reasons: list[str] = []
-    if not method_ok:
+    if authority == "COMPLIANCE_MATRIX":
+        status = "PARTIALLY_QUALIFIED"
+        reasons.append("compliance matrix is authoritative for workflow status but references, rather than replaces, technical proof")
+    elif not method_ok:
         status = "NOT_QUALIFIED"
         reasons.append(
             f"evidence method '{method}' cannot satisfy required verification "
@@ -112,6 +177,7 @@ def qualify_evidence(
 
     return EvidenceQualification(
         evidence_id=evidence_id,
+        source_chunk_id=source_chunk_id,
         document_name=document_name,
         source_authority=authority,
         entity_scope=scope,
@@ -145,6 +211,7 @@ def qualify_evidence_chunks(
             document_name=doc_name,
             content=(chunk.get("content") or chunk.get("quote") or "").strip(),
             doc_type=chunk.get("doc_type"),
+            source_chunk_id=chunk.get("chunk_id") or chunk.get("id"),
         ))
     return quals
 
@@ -160,6 +227,7 @@ def qualify_evidence_claim(
         document_name=claim.document_name,
         content=claim.quote,
         evidence_parameter=claim.parameter,
+        source_chunk_id=claim.source_chunk_id,
     )
 
 
@@ -177,12 +245,19 @@ def condition_evidence_compatible(
     cond_param = normalize_parameter(getattr(condition, "parameter", None))
     if cond_param is None:
         return None
-    if cond_param in qualification.parameters_found:
+    normalized_found = {
+        value
+        for value in (normalize_parameter(p) for p in qualification.parameters_found)
+        if value
+    }
+    if cond_param in normalized_found:
         return True
-    if qualification.parameters_found:
-        # Evidence names specific quantities, none of which is ours.
-        return False
-    return None
+    # Absence from a lexical parameter list is not proof of incompatibility.
+    # The semantic reasoner may have mapped a valid cited phrase that this
+    # lightweight extractor cannot classify. Requirement-level qualification
+    # already rejects explicit parameter conflicts (e.g. contactor latency for
+    # a pyro-fuse requirement), so this per-condition check stays tri-state.
+    return False if qualification.parameter_compatible is False else None
 
 
 def format_qualification_annotation(q: EvidenceQualification) -> str:

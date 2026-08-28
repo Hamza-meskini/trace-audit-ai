@@ -21,6 +21,25 @@ def validate_boolean_flag(
         for claim in claims:
             c_quote_lower = claim.quote.lower()
             if target_ip.lower() in c_quote_lower or "ingress" in c_quote_lower or "immersion" in c_quote_lower:
+                observed_ip = str(claim.value or "").upper()
+                negative_ingress = (
+                    (claim.test_result or "").upper() == "FAIL"
+                    or any(k in c_quote_lower for k in [
+                        "fail", "water ingress", "leakage", "leak detected",
+                    ])
+                    or (observed_ip.startswith("IP") and observed_ip != target_ip)
+                )
+                # Safety-negative evidence is decisive even when another
+                # sub-test in the same passage contains the word "passed".
+                if negative_ingress:
+                    return ValidationOutcome(
+                        status="CONFLICT",
+                        confidence=95.0,
+                        reason=f"Ingress protection evidence does not satisfy {target_ip}; a failure, leakage, or lower rating was recorded.",
+                        highlight="FAIL",
+                        expected_value=target_ip,
+                        observed_value=observed_ip or "FAIL",
+                    )
                 if any(k in c_quote_lower for k in ["pass", "zero water", "completed", "verified", "satisfied"]):
                     return ValidationOutcome(
                         status="SUPPORTED",
@@ -37,15 +56,6 @@ def validate_boolean_flag(
                         expected_value=f"Completed {target_ip} test",
                         observed_value="Not Tested",
                     )
-                elif "fail" in c_quote_lower:
-                    return ValidationOutcome(
-                        status="CONFLICT",
-                        confidence=95.0,
-                        reason=f"Ingress protection test failed for {target_ip}.",
-                        highlight="FAIL",
-                        expected_value=target_ip,
-                        observed_value="FAIL",
-                    )
 
     # 2. Generalized Boolean Feature / Flag Verification
     if contract.requirement_type in ("boolean", "enumeration") or contract.expected_value is True:
@@ -56,12 +66,16 @@ def validate_boolean_flag(
         if feature_keywords:
             empirical_claims = [
                 c for c in claims
-                if c.source_authority in ("EMPIRICAL_TEST", "QUALIFICATION_TEST", "VALIDATION_REPORT", "COMPLIANCE_MATRIX")
+                if c.source_authority in ("EMPIRICAL_TEST", "QUALIFICATION_TEST", "VALIDATION_REPORT")
                 and not any(k in c.document_name.lower() for k in ["srs", "product_requirements"])
             ]
             has_verified = any(
                 any(kw in c.quote.lower() for kw in feature_keywords) and
                 any(p in c.quote.lower() for p in ["pass", "verified", "supported", "implemented", "confirmed", "satisfied", "zero frame errors", "0 errors"])
+                and not any(n in c.quote.lower() for n in [
+                    "not supported", "unsupported", "review required", "not verified",
+                    "not implemented", "failed", "failure",
+                ])
                 for c in empirical_claims
             )
             if has_verified:

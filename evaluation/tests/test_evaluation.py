@@ -14,7 +14,10 @@ Tests logic for:
 
 import unittest
 import json
+import tempfile
 from pathlib import Path
+
+import openpyxl
 
 from evaluation.metrics import (
     normalize_status,
@@ -28,9 +31,113 @@ from evaluation.metrics import (
 )
 from evaluation.report import generate_markdown_report
 from evaluation.run_evaluation import load_ground_truth
+from evaluation.export_excel_trace import export_benchmark_audit_trace_excel
 
 
 class TestEvaluationFramework(unittest.TestCase):
+
+    def test_excel_trace_exposes_pipeline_contract_and_all_source_authorities(self):
+        ground_truth = [{
+            "requirement_id": "REQ-001",
+            "title": "Ground truth title",
+            "requirement_text": "Ground truth requirement text",
+            "category": "Electrical",
+            "expected_status": "SUPPORTED",
+            "conditions": [{
+                "condition_id": "GT-C1",
+                "parameter": "voltage",
+                "operator": "<=",
+                "threshold": 12.0,
+                "unit": "V",
+            }],
+        }]
+        pipeline = [{
+            "req_code": "REQ-001",
+            "title": "Extracted title",
+            "description": "Actual extracted requirement text",
+            "conditions": [{
+                "condition_id": "EXT-C1",
+                "parameter": "voltage",
+                "operator": "<=",
+                "threshold": 12.0,
+                "unit": "V",
+            }],
+        }]
+        retrieved = {"REQ-001": [
+            {
+                "document_name": "Compliance_Matrix.xlsx",
+                "doc_type": "Compliance matrix",
+                "content": "Requirement REQ-001: COMPLETE",
+            },
+            {
+                "document_name": "Lab_Validation_Report.pdf",
+                "doc_type": "Test report",
+                "content": "Test Case REQ-001 measured voltage at 11.8 V. Verdict: PASS.",
+            },
+        ]}
+        predictions = {"REQ-001": {
+            "expected": "SUPPORTED",
+            "predicted": "SUPPORTED",
+            "confidence": 95,
+        }}
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output = Path(temp_dir) / "benchmark_audit_trace.xlsx"
+            export_benchmark_audit_trace_excel(
+                results={"evaluation_mode": "end-to-end"},
+                ground_truth_reqs=ground_truth,
+                links_by_id={},
+                retrieved_by_req=retrieved,
+                assessments={},
+                predictions=predictions,
+                failures=[],
+                excel_path=output,
+                pipeline_requirements=pipeline,
+            )
+            workbook = openpyxl.load_workbook(output, read_only=True)
+            try:
+                sheet = workbook["Full_Pipeline_Trace_100_Reqs"]
+                self.assertEqual(sheet["E1"].value, "Pipeline Requirement Text")
+                self.assertEqual(sheet["E2"].value, "Actual extracted requirement text")
+                self.assertIn("EXT-C1", sheet["G2"].value)
+                self.assertEqual(sheet["N2"].value, "COMPLIANCE_MATRIX + EMPIRICAL_TEST")
+            finally:
+                workbook.close()
+
+    def test_excel_summary_uses_actual_mismatch_count(self):
+        failures = [
+            {
+                "requirement_id": f"REQ-{idx:03d}",
+                "expected_status": "SUPPORTED",
+                "predicted_status": "PARTIAL",
+                "failure_category": "NUMERIC_REASONING_FAILURE",
+            }
+            for idx in range(1, 4)
+        ]
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output = Path(temp_dir) / "benchmark_audit_trace.xlsx"
+            export_benchmark_audit_trace_excel(
+                results={},
+                ground_truth_reqs=[],
+                links_by_id={},
+                retrieved_by_req={},
+                assessments={},
+                predictions={},
+                failures=failures,
+                excel_path=output,
+            )
+            workbook = openpyxl.load_workbook(output, read_only=True)
+            try:
+                self.assertEqual(
+                    workbook["Executive_Summary"]["B15"].value,
+                    "Diagnostic Failure Root Causes (3 Mismatches)",
+                )
+                self.assertEqual(
+                    workbook["Mismatches_Deep_Dive"].max_row - 1,
+                    3,
+                )
+            finally:
+                workbook.close()
 
     def test_status_and_code_normalization(self):
         """Test that various casing, spacing, and aliases normalize to standard forms."""

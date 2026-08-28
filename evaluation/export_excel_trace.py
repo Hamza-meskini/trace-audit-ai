@@ -16,6 +16,26 @@ from openpyxl.utils import get_column_letter
 BENCHMARK_CLASSES = ["SUPPORTED", "PARTIAL", "CONFLICT", "MISSING", "UNKNOWN"]
 
 
+def _authority_for_chunk(chunk: dict[str, Any]) -> str:
+    """Compact reporting classifier; preserves every retrieved source type."""
+    name = chunk.get("document_name", "").lower()
+    doc_type = chunk.get("doc_type", "").lower()
+    content = chunk.get("content", "").lower()
+    if "matrix" in name or name.endswith(".xlsx") or "compliance matrix" in doc_type:
+        return "COMPLIANCE_MATRIX"
+    if "datasheet" in name:
+        return "DATASHEET"
+    if "architecture" in name or "specification" in doc_type:
+        return "ARCHITECTURE_SPEC"
+    if any(marker in content for marker in ("spice", "simulink", "theoretical simulation", "model predicts")):
+        return "SIMULATION"
+    if "test report" in doc_type or "validation" in name or "qualification" in name:
+        return "EMPIRICAL_TEST"
+    if any(marker in content for marker in ("measured", "test case", "verdict: pass", "verdict: fail", "bench test")):
+        return "EMPIRICAL_TEST"
+    return "UNKNOWN"
+
+
 def export_benchmark_audit_trace_excel(
     results: dict[str, Any],
     ground_truth_reqs: list[dict[str, Any]],
@@ -25,6 +45,7 @@ def export_benchmark_audit_trace_excel(
     predictions: dict[str, dict[str, Any]],
     failures: list[dict[str, Any]],
     excel_path: Path,
+    pipeline_requirements: Optional[list[dict[str, Any]]] = None,
 ):
     """Generate professional 3-tab Excel audit trace workbook."""
     wb = openpyxl.Workbook()
@@ -77,6 +98,13 @@ def export_benchmark_audit_trace_excel(
     ws_sum["A1"].alignment = Alignment(horizontal="center", vertical="center")
     ws_sum.row_dimensions[1].height = 36
 
+    ws_sum.merge_cells("A2:G2")
+    evaluation_mode = results.get("evaluation_mode", "oracle").upper()
+    downstream_source = results.get("downstream_requirement_source", "ground_truth_oracle_contracts")
+    ws_sum["A2"] = f"Evaluation mode: {evaluation_mode} | Downstream requirement source: {downstream_source}"
+    ws_sum["A2"].font = Font(name="Calibri", size=10, italic=True, color="475569")
+    ws_sum["A2"].alignment = Alignment(horizontal="center", vertical="center")
+
     # Summary KPI Cards
     vm = results.get("verification_metrics", {})
     rm = results.get("retrieval_metrics", {})
@@ -89,6 +117,7 @@ def export_benchmark_audit_trace_excel(
         ("Conflict Detection", f"{sm.get('conflict_f1', 93.0):.1f}%", "D3:D4"),
         ("Extraction F1", f"{em.get('f1', 99.5):.1f}%", "E3:E4"),
         ("Passage Recall@3", f"{rm.get('passage_recall_at_3', 100.0):.1f}%", "F3:F4"),
+        ("Exact Contract Recall", f"{em.get('atomic_condition_exact_recall', 0.0):.1f}%", "G3:G4"),
     ]
 
     for title, val, cell_range in kpi_cards:
@@ -159,8 +188,15 @@ def export_benchmark_audit_trace_excel(
                 cell.fill = PatternFill(start_color="FEE2E2", fill_type="solid")
                 cell.font = Font(bold=True, color="991B1B")
 
-    # Failure Root Cause Table
-    ws_sum.cell(row=15, column=2, value="Diagnostic Failure Root Causes (22 Mismatches)").font = Font(bold=True, size=11, color="1E293B")
+    # Failure Root Cause Table. The deep-dive sheet is populated from this
+    # same list, so its length is the single source of truth for the title.
+    mismatch_count = len(failures)
+    mismatch_label = "Mismatch" if mismatch_count == 1 else "Mismatches"
+    ws_sum.cell(
+        row=15,
+        column=2,
+        value=f"Diagnostic Failure Root Causes ({mismatch_count} {mismatch_label})",
+    ).font = Font(bold=True, size=11, color="1E293B")
     ws_sum.cell(row=16, column=2, value="Failure Category").font = section_font
     ws_sum.cell(row=16, column=2).fill = section_fill
     ws_sum.cell(row=16, column=3, value="Count").font = section_font
@@ -169,6 +205,8 @@ def export_benchmark_audit_trace_excel(
     ws_sum.cell(row=16, column=4).fill = section_fill
 
     failure_cat_desc = {
+        "EXTRACTION_FAILURE": "Required contract was not extracted, so downstream retrieval/verification could not run",
+        "CITATION_TRACEABILITY_FAILURE": "A condition quote was not found in the evidence ID attached to it",
         "SOURCE_AUTHORITY_FAILURE": "Theoretical simulation / architecture spec confused with empirical physical test",
         "UNKNOWN_CLASSIFICATION_FAILURE": "Non-authoritative evidence modality misrouted by reasoner",
         "PARTIAL_COMPLIANCE_FAILURE": "Partial range envelope or sub-clause marked supported",
@@ -204,8 +242,10 @@ def export_benchmark_audit_trace_excel(
         "Req ID",
         "Subsystem",
         "Requirement Title",
-        "Requirement Text",
-        "Conditions / Parameters",
+        "Ground Truth Requirement Text",
+        "Pipeline Requirement Text",
+        "Ground Truth Conditions / Parameters",
+        "Pipeline Conditions / Parameters",
         "Ground Truth Status",
         "Pipeline Predicted Status",
         "Verdict Match?",
@@ -228,12 +268,18 @@ def export_benchmark_audit_trace_excel(
 
     # Populate 100 Requirements
     failures_by_id = {f["requirement_id"]: f for f in failures}
+    pipeline_by_id = {
+        requirement["req_code"]: requirement
+        for requirement in (pipeline_requirements or [])
+    }
 
     for r_idx, r in enumerate(ground_truth_reqs, start=2):
         req_id = r["requirement_id"]
         category = r.get("category", "")
         title = r.get("title", "")
         req_text = r.get("requirement_text", "")
+        pipeline_req = pipeline_by_id.get(req_id, {})
+        pipeline_req_text = pipeline_req.get("description", "[NOT EXTRACTED]")
         expected = predictions.get(req_id, {}).get("expected", r.get("expected_status", "UNKNOWN"))
         predicted = predictions.get(req_id, {}).get("predicted", "UNKNOWN")
         conf = predictions.get(req_id, {}).get("confidence", 85)
@@ -247,6 +293,20 @@ def export_benchmark_audit_trace_excel(
             unit = c.get("unit", "")
             cond_strs.append(f"{p} {op} {val} {unit}".strip())
         conditions_text = "; ".join(cond_strs) if cond_strs else "Single Clause"
+        pipeline_cond_strs = []
+        for condition in pipeline_req.get("conditions", []):
+            value = (
+                condition.get("threshold")
+                if condition.get("threshold") is not None
+                else condition.get("min_value")
+                if condition.get("min_value") is not None
+                else condition.get("max_value", "")
+            )
+            pipeline_cond_strs.append(
+                f"{condition.get('condition_id', '')}: {condition.get('parameter', '')} "
+                f"{condition.get('operator', '')} {value} {condition.get('unit', '')}".strip()
+            )
+        pipeline_conditions_text = "; ".join(pipeline_cond_strs) if pipeline_cond_strs else "[NO EXTRACTED CONDITIONS]"
 
         # Evidence retrieval: look in retrieved_by_req, or fallback to ground_truth_links
         candidate_chunks = retrieved_by_req.get(req_id, [])
@@ -263,20 +323,16 @@ def export_benchmark_audit_trace_excel(
             top_docs = "[No candidate document]"
             evidence_quote = "[No empirical evidence available]"
 
-        # Authority classification
-        top_docs_lower = top_docs.lower()
-        if "matrix" in top_docs_lower or ".xlsx" in top_docs_lower:
-            auth_str = "COMPLIANCE_MATRIX"
-        elif "datasheet" in top_docs_lower or "ds-" in top_docs_lower:
-            auth_str = "DATASHEET"
-        elif "architecture" in top_docs_lower or "spec" in top_docs_lower:
-            auth_str = "ARCHITECTURE_SPEC"
-        elif "simulation" in top_docs_lower or "spice" in top_docs_lower:
-            auth_str = "SIMULATION"
-        elif "no candidate" in top_docs_lower:
-            auth_str = "NO_EVIDENCE"
+        # Report every authority represented in the retrieved candidates. A
+        # leading compliance matrix must not hide an empirical report at rank 2.
+        if candidate_chunks:
+            authorities = [
+                _authority_for_chunk(chunk)
+                for chunk in candidate_chunks[:3]
+            ]
+            auth_str = " + ".join(dict.fromkeys(authorities))
         else:
-            auth_str = "EMPIRICAL_TEST"
+            auth_str = "NO_EVIDENCE"
 
         # AI Analysis / Reasoning
         assessment = assessments.get(req_id)
@@ -293,7 +349,9 @@ def export_benchmark_audit_trace_excel(
             category,
             title,
             req_text,
+            pipeline_req_text,
             conditions_text,
+            pipeline_conditions_text,
             expected,
             predicted,
             match_label,
@@ -315,7 +373,7 @@ def export_benchmark_audit_trace_excel(
             cell.alignment = Alignment(vertical="top", wrap_text=True)
 
         # Highlight match
-        match_cell = ws_trace.cell(row=r_idx, column=8)
+        match_cell = ws_trace.cell(row=r_idx, column=10)
         match_cell.alignment = Alignment(horizontal="center", vertical="center")
         if is_match:
             match_cell.fill = match_fill
@@ -325,8 +383,8 @@ def export_benchmark_audit_trace_excel(
             match_cell.font = mismatch_font
 
         # Color Expected & Predicted
-        exp_cell = ws_trace.cell(row=r_idx, column=6)
-        pred_cell = ws_trace.cell(row=r_idx, column=7)
+        exp_cell = ws_trace.cell(row=r_idx, column=8)
+        pred_cell = ws_trace.cell(row=r_idx, column=9)
         exp_cell.alignment = Alignment(horizontal="center", vertical="center")
         pred_cell.alignment = Alignment(horizontal="center", vertical="center")
         if expected in status_colors:
@@ -393,6 +451,8 @@ def export_benchmark_audit_trace_excel(
             diagnosis = f"Evidence from '{top_docs}' is a simulation/architecture design model. Expected UNKNOWN modality, but reasoner interpreted it as empirical proof."
         elif err_cat == "UNKNOWN_CLASSIFICATION_FAILURE":
             diagnosis = f"Requirement was classified as UNKNOWN because evidence was tagged non-authoritative, but ground truth expected {expected}."
+        elif err_cat == "CITATION_TRACEABILITY_FAILURE":
+            diagnosis = "A condition quote and its cited evidence ID did not refer to the same retrieved passage, so Python conservatively rejected the proof."
         elif err_cat == "PARTIAL_COMPLIANCE_FAILURE":
             diagnosis = f"Requirement had multiple clauses or partial test envelope. Expected PARTIAL, but verifier concluded {predicted}."
         elif err_cat == "CONTRADICTION_FAILURE":
@@ -439,8 +499,9 @@ def export_benchmark_audit_trace_excel(
     col_widths = {
         "Executive_Summary": {1: 8, 2: 32, 3: 16, 4: 45, 5: 16, 6: 16, 7: 16},
         "Full_Pipeline_Trace_100_Reqs": {
-            1: 14, 2: 18, 3: 26, 4: 40, 5: 25, 6: 14, 7: 14, 8: 12,
-            9: 12, 10: 28, 11: 45, 12: 18, 13: 45, 14: 35, 15: 25
+            1: 14, 2: 18, 3: 26, 4: 38, 5: 38, 6: 28, 7: 28, 8: 14,
+            9: 14, 10: 12, 11: 12, 12: 28, 13: 45, 14: 28, 15: 45,
+            16: 35, 17: 25
         },
         "Mismatches_Deep_Dive": {
             1: 14, 2: 18, 3: 26, 4: 14, 5: 14, 6: 25, 7: 28, 8: 45, 9: 45, 10: 45

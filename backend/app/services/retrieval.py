@@ -60,6 +60,8 @@ def _bm25_retrieve(
 
     req_code_match = REQ_CODE_REGEX.search(requirement_text)
     req_code_token = req_code_match.group(1).lower() if req_code_match else None
+    req_suffix_match = re.search(r"(\d+)$", req_code_token or "")
+    req_suffix = req_suffix_match.group(1) if req_suffix_match else None
 
     core_param_tokens = {
         t for t in query_tokens
@@ -73,12 +75,21 @@ def _bm25_retrieve(
 
     for c in chunks:
         content = c.get("content", "")
+        content_codes = {m.group(1).lower() for m in REQ_CODE_REGEX.finditer(content)}
+        if req_code_token and content_codes and req_code_token not in content_codes:
+            # A chunk explicitly assigned to another requirement is not a
+            # candidate merely because it shares generic technical words.
+            continue
         doc_tokens = tokenize(content)
         score = compute_bm25_score(query_tokens, doc_tokens, avg_doc_len=avg_len)
 
         # 1. Exact Requirement Code Boost (+5.0)
         if req_code_token and req_code_token in doc_tokens:
             score += 5.0
+
+        # Test reports commonly use TC-DOMAIN-NNN rather than the SRS code.
+        if req_suffix and re.search(rf"\bTC[-_][A-Za-z0-9_-]*[-_]{re.escape(req_suffix)}\b", content, re.IGNORECASE):
+            score += 6.0
 
         # 2. Number & Unit Parameter Match Boost (+2.0)
         for q in query_tokens:
@@ -127,7 +138,8 @@ def _diversified_rerank(candidate_pool: list[RetrievedChunk], top_k: int) -> lis
         doc_count = seen_docs.get(doc_key, 0)
 
         # Allow max 2 chunks per single document in initial selection pass
-        if doc_count < 2 or len(candidate_pool) < top_k:
+        per_doc_limit = 1 if ("matrix" in doc_key.lower() or doc_key.lower().endswith(".xlsx")) else 2
+        if doc_count < per_doc_limit or len(candidate_pool) < top_k:
             selected.append(item)
             seen_docs[doc_key] = doc_count + 1
             if len(selected) >= top_k:

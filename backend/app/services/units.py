@@ -100,7 +100,11 @@ def normalize_unit_str(unit_str: Optional[str]) -> str:
     if not unit_str:
         return ""
     cleaned = unit_str.strip().lower()
-    cleaned = cleaned.replace("°c", "c").replace("degrees c", "c").replace("µ", "u")
+    # Some PDF extractors emit U+FFFD for a non-ASCII micro sign. In unit
+    # position, "�s"/"�A" unambiguously means microseconds/microamps.
+    cleaned = cleaned.replace("°c", "c").replace("degrees c", "c").replace("µ", "u").replace("μ", "u")
+    if cleaned.startswith("�") and len(cleaned) > 1:
+        cleaned = "u" + cleaned[1:]
     if cleaned in ("c", "°c"):
         return "c"
     # Remove trailing dots / brackets

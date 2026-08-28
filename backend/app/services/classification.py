@@ -12,6 +12,7 @@ verification reasoner.
 
 import asyncio
 import time
+import re
 from typing import Optional, Any
 from dataclasses import dataclass, field
 
@@ -26,6 +27,7 @@ from app.services.validators.test_verdict import validate_test_verdict
 from app.services.validators.semantic import validate_semantic
 from app.services.validators import ValidationOutcome
 from app.services.verification_reasoner import SPEC_DOC_KEYWORDS
+from app.schemas.verification_result import ConditionVerificationResult
 
 
 @dataclass
@@ -48,6 +50,7 @@ class RequirementAssessment:
     ai_recommendation: str
     evidence_links: list[EvidenceLinkAssessment] = field(default_factory=list)
     contract: Optional[RequirementContract] = None
+    condition_results: list[ConditionVerificationResult] = field(default_factory=list)
 
 
 RECOMMENDATIONS = {
@@ -57,6 +60,28 @@ RECOMMENDATIONS = {
     "Missing": "Upload the relevant test plan, test report, or compliance record covering this requirement.",
     "Unknown": "Evidence is inconclusive (e.g. simulation, calculation, or design intent only). Request empirical test records or an authoritative verification record.",
 }
+
+
+def _condition_results_for_status(
+    contract: RequirementContract,
+    status: str,
+) -> list[ConditionVerificationResult]:
+    condition_status = {
+        "SUPPORTED": "PROVEN",
+        "PARTIAL": "PENDING",
+        "CONFLICT": "FAILED",
+        "MISSING": "UNTESTED",
+        "UNKNOWN": "INCONCLUSIVE",
+    }.get(status.upper(), "UNTESTED")
+    conditions = contract.atomic_conditions or []
+    return [
+        ConditionVerificationResult(
+            condition_id=c.condition_id,
+            description=c.description,
+            status=condition_status,
+        )
+        for c in conditions
+    ]
 
 
 def _format_evidence_items(candidate_chunks: list[dict]) -> list[dict]:
@@ -103,6 +128,7 @@ def _missing_assessment(contract: RequirementContract, empty_index: bool = False
         ai_recommendation="Upload the relevant test plan, test report, or compliance record covering this requirement.",
         evidence_links=[],
         contract=contract,
+        condition_results=_condition_results_for_status(contract, "MISSING"),
     )
 
 
@@ -134,10 +160,65 @@ def _conflict_assessment(
         ai_recommendation="Review the conflicting documentation with engineering and confirm the verified operating bounds before sign-off.",
         evidence_links=links,
         contract=contract,
+        condition_results=_condition_results_for_status(contract, "CONFLICT"),
     )
 
 
-def _verdict_assessment(contract: RequirementContract, verdict_outcome: ValidationOutcome) -> RequirementAssessment:
+def _partial_condition_results_from_claims(
+    contract: RequirementContract,
+    claims: list[Any],
+) -> list[ConditionVerificationResult]:
+    """Resolve condition detail carried by an authoritative in-progress record."""
+    pending_words = ("pending", "in progress", "not started", "remaining", "deferred")
+    proven_words = ("validated", "verified", "completed", "passed", " pass")
+    clauses = [
+        clause.strip()
+        for claim in claims
+        if getattr(claim, "test_result", None) in ("IN PROGRESS", "PARTIAL")
+        for clause in re.split(r"[;,]", getattr(claim, "quote", ""))
+        if clause.strip()
+    ]
+    results: list[ConditionVerificationResult] = []
+    for condition in contract.atomic_conditions:
+        condition_tokens = {
+            token
+            for token in re.findall(
+                r"[a-z0-9]+",
+                f"{condition.parameter or ''} {condition.description or ''} {condition.threshold or ''}".lower(),
+            )
+            if len(token) > 2 or any(ch.isdigit() for ch in token)
+        }
+        best_clause = max(
+            clauses,
+            key=lambda clause: len(condition_tokens & set(re.findall(r"[a-z0-9]+", clause.lower()))),
+            default="",
+        )
+        best_lower = best_clause.lower()
+        if best_clause and any(word in best_lower for word in pending_words):
+            status = "PENDING"
+        elif best_clause and any(word in best_lower for word in proven_words):
+            status = "PROVEN"
+        else:
+            status = "PENDING"
+        results.append(ConditionVerificationResult(
+            condition_id=condition.condition_id,
+            description=condition.description,
+            status=status,
+            quote=best_clause or None,
+            reason=(
+                "Condition state reported by the authoritative in-progress verification record."
+                if best_clause
+                else "Verification is in progress; no completed condition-specific result was reported."
+            ),
+        ))
+    return results
+
+
+def _verdict_assessment(
+    contract: RequirementContract,
+    verdict_outcome: ValidationOutcome,
+    claims: Optional[list[Any]] = None,
+) -> RequirementAssessment:
     status_map = {
         "MISSING": "Missing",
         "PARTIAL": "Partial",
@@ -145,6 +226,9 @@ def _verdict_assessment(contract: RequirementContract, verdict_outcome: Validati
     }
     cov_status = status_map.get(verdict_outcome.status, "Partial")
     rev_state = "Open" if cov_status == "Missing" else "Needs review"
+    condition_results = verdict_outcome.condition_results
+    if not condition_results and verdict_outcome.status == "PARTIAL":
+        condition_results = _partial_condition_results_from_claims(contract, claims or [])
     return RequirementAssessment(
         coverage_status=cov_status,
         confidence=verdict_outcome.confidence,
@@ -153,6 +237,10 @@ def _verdict_assessment(contract: RequirementContract, verdict_outcome: Validati
         ai_recommendation="Schedule testing or review in-progress validation records." if cov_status != "Conflict" else "Investigate test failure root cause.",
         evidence_links=[],
         contract=contract,
+        condition_results=(
+            condition_results
+            or _condition_results_for_status(contract, verdict_outcome.status)
+        ),
     )
 
 
@@ -194,6 +282,7 @@ def _deterministic_prechecks(
     contract: RequirementContract,
     candidate_chunks: list[dict],
     spec_doc_names: Optional[set[str]] = None,
+    defer_partial: bool = False,
 ) -> tuple[Optional[tuple[list[dict], list[dict], list]], Optional[RequirementAssessment]]:
     """Shared deterministic pre-check chain: empty evidence, spec self-reference,
     cross-document contradictions, and compliance-matrix verdicts.
@@ -213,15 +302,17 @@ def _deterministic_prechecks(
 
     claims = extract_all_evidence_claims(evidence_items, contract)
 
+    # Formal compliance matrix test verdicts (e.g. NOT STARTED, IN PROGRESS, PASS, FAIL)
+    verdict_outcome = validate_test_verdict(contract, claims)
+    if verdict_outcome and verdict_outcome.status in ("MISSING", "CONFLICT"):
+        return None, _verdict_assessment(contract, verdict_outcome, claims=claims)
+    if verdict_outcome and verdict_outcome.status == "PARTIAL" and not defer_partial:
+        return None, _verdict_assessment(contract, verdict_outcome, claims=claims)
+
     # Cross-document / contract contradictions -> CONFLICT
     contradiction: Optional[ContradictionFinding] = detect_cross_document_contradiction(evidence_items, contract)
     if contradiction and contradiction.has_conflict:
         return None, _conflict_assessment(contract, evidence_items, contradiction)
-
-    # Formal compliance matrix test verdicts (e.g. NOT STARTED, IN PROGRESS, PASS, FAIL)
-    verdict_outcome = validate_test_verdict(contract, claims)
-    if verdict_outcome and verdict_outcome.status in ("MISSING", "PARTIAL", "CONFLICT"):
-        return None, _verdict_assessment(contract, verdict_outcome)
 
     return (evidence_items, non_spec_items, claims), None
 
@@ -275,6 +366,7 @@ def _finalize_assessment(
         ai_recommendation=RECOMMENDATIONS.get(cov_status, "Perform engineering review."),
         evidence_links=links,
         contract=contract,
+        condition_results=(outcome.condition_results or _condition_results_for_status(contract, outcome.status)),
     )
 
 
@@ -285,6 +377,7 @@ def assess_requirement_coverage(
     category: str,
     candidate_chunks: list[dict],
     spec_doc_names: Optional[set[str]] = None,
+    conditions: Optional[list[dict[str, Any]]] = None,
 ) -> RequirementAssessment:
     """Assess a requirement using the deterministic validation engine only (no LLM calls)."""
     contract = parse_requirement_contract(
@@ -292,6 +385,7 @@ def assess_requirement_coverage(
         title=title,
         description=description,
         category=category,
+        structured_conditions=conditions,
     )
 
     context, decided = _deterministic_prechecks(contract, candidate_chunks, spec_doc_names=spec_doc_names)
@@ -300,19 +394,20 @@ def assess_requirement_coverage(
 
     evidence_items, non_spec_items, claims = context
 
-    validation_outcome = _run_deterministic_validators(contract, claims)
-
-    # If outcome is UNKNOWN, run the deterministic multi-condition reasoner
-    if validation_outcome and validation_outcome.status == "UNKNOWN":
-        from app.services.verification_reasoner import rule_based_multi_condition_verification
-        reasoner_result = rule_based_multi_condition_verification(contract, candidate_chunks, spec_doc_names=spec_doc_names)
-        if reasoner_result.status in ("SUPPORTED", "PARTIAL", "CONFLICT", "MISSING"):
-            validation_outcome = ValidationOutcome(
-                status=reasoner_result.status,
-                confidence=float(reasoner_result.confidence),
-                reason=reasoner_result.reason,
-                highlight=reasoner_result.highlight,
-            )
+    # One authoritative decision path for both single- and multi-condition
+    # requirements. Type-specific validators remain available as helpers, but
+    # they cannot bypass evidence qualification and condition aggregation.
+    from app.services.verification_reasoner import rule_based_multi_condition_verification
+    reasoner_result = rule_based_multi_condition_verification(
+        contract, candidate_chunks, spec_doc_names=spec_doc_names
+    )
+    validation_outcome = ValidationOutcome(
+        status=reasoner_result.status,
+        confidence=float(reasoner_result.confidence),
+        reason=reasoner_result.reason,
+        highlight=reasoner_result.highlight,
+        condition_results=reasoner_result.condition_results,
+    )
 
     return _finalize_assessment(contract, non_spec_items, validation_outcome)
 
@@ -326,6 +421,7 @@ async def assess_requirement_coverage_async(
     model: Optional[str] = None,
     thinking_level: Optional[str] = None,
     spec_doc_names: Optional[set[str]] = None,
+    conditions: Optional[list[dict[str, Any]]] = None,
 ) -> RequirementAssessment:
     """Async assessment that escalates inconclusive cases to the LLM verification reasoner."""
     contract = parse_requirement_contract(
@@ -333,6 +429,7 @@ async def assess_requirement_coverage_async(
         title=title,
         description=description,
         category=category,
+        structured_conditions=conditions,
     )
 
     context, decided = _deterministic_prechecks(contract, candidate_chunks, spec_doc_names=spec_doc_names)
@@ -341,27 +438,24 @@ async def assess_requirement_coverage_async(
 
     evidence_items, non_spec_items, claims = context
 
-    # If deterministic validation did not produce an authoritative answer, escalate to the LLM reasoner
-    if len(contract.atomic_conditions) <= 1:
-        validation_outcome = _run_deterministic_validators(contract, claims)
-    else:
-        validation_outcome = None
-
-    if validation_outcome is None or validation_outcome.status == "UNKNOWN":
-        from app.services.verification_reasoner import evaluate_requirement_verification
-        reasoner_result = await evaluate_requirement_verification(
-            contract=contract,
-            evidence_chunks=candidate_chunks,
-            model=model,
-            thinking_level=thinking_level,
-            spec_doc_names=spec_doc_names,
-        )
-        validation_outcome = ValidationOutcome(
-            status=reasoner_result.status,
-            confidence=float(reasoner_result.confidence),
-            reason=reasoner_result.reason,
-            highlight=reasoner_result.highlight,
-        )
+    # Single- and multi-condition requirements share the same semantic
+    # reasoner and finalizer. This prevents a keyword validator from approving
+    # evidence before qualification has run.
+    from app.services.verification_reasoner import evaluate_requirement_verification
+    reasoner_result = await evaluate_requirement_verification(
+        contract=contract,
+        evidence_chunks=candidate_chunks,
+        model=model,
+        thinking_level=thinking_level,
+        spec_doc_names=spec_doc_names,
+    )
+    validation_outcome = ValidationOutcome(
+        status=reasoner_result.status,
+        confidence=float(reasoner_result.confidence),
+        reason=reasoner_result.reason,
+        highlight=reasoner_result.highlight,
+        condition_results=reasoner_result.condition_results,
+    )
 
     return _finalize_assessment(contract, non_spec_items, validation_outcome)
 
@@ -391,30 +485,34 @@ async def batch_assess_requirements(
             title=item.get("title", ""),
             description=item.get("description", ""),
             category=item.get("category", "General"),
+            structured_conditions=item.get("conditions"),
         )
         candidate_chunks = item.get("candidate_chunks", [])
 
-        context, decided = _deterministic_prechecks(contract, candidate_chunks, spec_doc_names=spec_doc_names)
+        context, decided = _deterministic_prechecks(
+            contract,
+            candidate_chunks,
+            spec_doc_names=spec_doc_names,
+            defer_partial=True,
+        )
         if decided:
             assessments[req_code] = decided
             continue
 
         evidence_items, non_spec_items, claims = context
+        workflow_verdict = validate_test_verdict(contract, claims)
+        authoritative_partial = bool(
+            workflow_verdict and workflow_verdict.status == "PARTIAL"
+        )
 
-        # For single condition requirements, allow deterministic validators
-        if len(contract.atomic_conditions) <= 1:
-            val_outcome = _run_deterministic_validators(contract, claims)
-            if val_outcome and val_outcome.status != "UNKNOWN":
-                # Deterministic validators reached an authoritative conclusion
-                assessments[req_code] = _finalize_assessment(contract, non_spec_items, val_outcome)
-                continue
-
-        # Compound or inconclusive -> queue for batched LLM reasoning
+        # Every unresolved requirement is queued for the same qualified
+        # condition-level reasoner, regardless of condition count.
         pre_processed.append({
             "req_code": req_code,
             "contract": contract,
             "candidate_chunks": candidate_chunks,
             "non_spec_items": non_spec_items,
+            "authoritative_partial": authoritative_partial,
         })
 
 
@@ -438,11 +536,21 @@ async def batch_assess_requirements(
             req_code = item["req_code"]
             res = batch_results.get(req_code)
             if res:
+                resolved_status = res.status
+                resolved_reason = res.reason
+                if item.get("authoritative_partial") and resolved_status != "CONFLICT":
+                    resolved_status = "PARTIAL"
+                    resolved_reason = (
+                        "An authoritative verification record remains IN PROGRESS; "
+                        "condition-level evidence is reported separately, but the full requirement cannot close yet. "
+                        f"Reasoner detail: {res.reason}"
+                    )
                 outcome = ValidationOutcome(
-                    status=res.status,
+                    status=resolved_status,
                     confidence=float(res.confidence),
-                    reason=res.reason,
+                    reason=resolved_reason,
                     highlight=res.highlight,
+                    condition_results=res.condition_results,
                 )
             else:
                 outcome = ValidationOutcome(

@@ -92,6 +92,7 @@ async def call_gemini_generate_content(
     json_mode: bool = False,
     response_schema: Optional[dict] = None,
     thinking_level: Optional[str] = None,
+    max_output_tokens: int = 8192,
     timeout: float = 90.0,
 ) -> Optional[str]:
     """Call Google Gemini generateContent API via REST with Thinking capabilities enabled."""
@@ -107,7 +108,7 @@ async def call_gemini_generate_content(
 
     generation_config: dict[str, Any] = {
         "temperature": 0.1,
-        "maxOutputTokens": 8192,
+        "maxOutputTokens": max_output_tokens,
     }
 
     # Enable Gemini Thinking
@@ -177,6 +178,7 @@ async def call_databricks_chat_completions(
     model: str = "system.ai.qwen35-122b-a10b",
     system_instruction: Optional[str] = None,
     json_mode: bool = False,
+    max_output_tokens: int = 4096,
     timeout: float = 90.0,
 ) -> Optional[str]:
     """Call Databricks Model Serving AI Gateway via OpenAI-compatible endpoint."""
@@ -197,7 +199,7 @@ async def call_databricks_chat_completions(
         "model": model,
         "messages": messages,
         "temperature": 0.1,
-        "max_tokens": 4096,
+        "max_tokens": max_output_tokens,
     }
 
     headers = {
@@ -262,6 +264,7 @@ async def call_openai_chat_completions(
     model: str = "gpt-4o-mini",
     system_instruction: Optional[str] = None,
     json_mode: bool = False,
+    max_output_tokens: Optional[int] = None,
     timeout: float = 60.0,
 ) -> Optional[str]:
     """Call OpenAI chat completions API via REST."""
@@ -282,6 +285,8 @@ async def call_openai_chat_completions(
     }
     if json_mode:
         payload["response_format"] = {"type": "json_object"}
+    if max_output_tokens is not None:
+        payload["max_tokens"] = max_output_tokens
 
     try:
         headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
@@ -303,6 +308,7 @@ async def generate_structured(
     model: Optional[str] = None,
     system_instruction: Optional[str] = None,
     thinking_level: Optional[str] = None,
+    max_output_tokens: Optional[int] = None,
 ) -> Optional[T]:
     """Generate structured output validated against a Pydantic schema using Databricks or Gemini."""
     active_model = model or settings.LLM_MODEL
@@ -328,6 +334,7 @@ async def generate_structured(
                 model=db_model,
                 system_instruction=system_instruction,
                 json_mode=True,
+                max_output_tokens=max_output_tokens or 4096,
             )
             if raw_response:
                 break
@@ -341,6 +348,7 @@ async def generate_structured(
             json_mode=True,
             response_schema=None,
             thinking_level=thinking_level,
+            max_output_tokens=max_output_tokens or 8192,
         )
 
     # 3. Fallback: OpenAI
@@ -350,6 +358,7 @@ async def generate_structured(
             model=active_model if active_model.startswith("gpt-") else "gpt-4o-mini",
             system_instruction=system_instruction,
             json_mode=True,
+            max_output_tokens=max_output_tokens,
         )
 
     if not raw_response:

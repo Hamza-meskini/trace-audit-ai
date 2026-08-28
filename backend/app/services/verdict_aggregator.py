@@ -39,7 +39,12 @@ from app.schemas.verification_result import (
     ConditionVerificationResult,
     VerificationAnalysisResult,
 )
-from app.schemas.evidence_qualification import EvidenceQualification
+from app.schemas.evidence_qualification import (
+    EvidenceQualification,
+    extract_parameters_from_text,
+    normalize_parameter,
+    parameters_compatible,
+)
 from app.services.evidence_qualification import condition_evidence_compatible
 from app.services.units import convert_value, are_units_compatible
 
@@ -86,7 +91,7 @@ def _match_condition_results(
     """Align LLM condition results onto the contract's mandatory conditions.
 
     Matches by condition_id first (exact, then suffix match: LLMs often
-    shorten 'REQ-AUT-001-C2' to 'C2'). Unmatched conditions become UNTESTED.
+    shorten 'REQ-123-C2' to 'C2'). Unmatched conditions become UNTESTED.
     When the contract has no atomic decomposition, the returned results are
     used as-is (the producer performed the decomposition).
     """
@@ -134,6 +139,35 @@ def _resolve_evidence_ids(ids: list[str]) -> set[str]:
     return out
 
 
+def _normalized_quote_text(value: str) -> str:
+    """Normalize evidence text for conservative citation containment checks."""
+    normalized = (value or "").lower().replace("μ", "µ").replace("�", "µ")
+    return " ".join(re.findall(r"[a-z0-9µ%]+", normalized))
+
+
+def _quote_is_traceable(quote: str, contents: list[str]) -> bool:
+    """True when the leading factual clause appears in a cited evidence item."""
+    quote_tokens = _normalized_quote_text(quote).split()
+    if not quote_tokens:
+        return False
+    # Twelve normalized tokens are long enough to reject invented citations
+    # while tolerating a PDF line truncated after the factual clause.
+    needle = " ".join(quote_tokens[:12])
+    return any(needle in _normalized_quote_text(content) for content in contents if content)
+
+
+def condition_attribution_is_traceable(
+    result: ConditionVerificationResult,
+    evidence_contents: dict[str, str],
+) -> bool:
+    """Validate that a condition quote occurs in one of its cited evidence IDs."""
+    refs = _resolve_evidence_ids(result.evidence_ids)
+    if not refs or not result.quote:
+        return False
+    cited_contents = [evidence_contents[ref] for ref in refs if ref in evidence_contents]
+    return bool(cited_contents) and _quote_is_traceable(result.quote, cited_contents)
+
+
 def _is_contradiction_relevant(q: EvidenceQualification) -> bool:
     """Can this (possibly method-incompatible) evidence refute a condition?
 
@@ -142,7 +176,10 @@ def _is_contradiction_relevant(q: EvidenceQualification) -> bool:
     Only scope or parameter mismatches make evidence irrelevant for
     refutation.
     """
-    return q.scope_compatible is not False and q.parameter_compatible is not False
+    # Refutation needs affirmative scope and parameter alignment. Merely
+    # unknown alignment is not enough to turn an unqualified datasheet or
+    # unrelated passage into a safety conflict.
+    return q.scope_compatible is True and q.parameter_compatible is True
 
 
 def merge_qualification_into_conditions(
@@ -163,23 +200,73 @@ def merge_qualification_into_conditions(
     conditions_by_id = {c.condition_id: c for c in contract.atomic_conditions}
 
     for cr in condition_results:
+        if cr.status == "UNTESTED":
+            cond = conditions_by_id.get(cr.condition_id)
+            relevant_unqualified = any(
+                q.qualification_status != "QUALIFIED"
+                and q.scope_compatible is not False
+                and (
+                    cond is None
+                    or condition_evidence_compatible(cond, q) is not False
+                )
+                for q in qualifications
+            )
+            if relevant_unqualified:
+                cr.status = "INCONCLUSIVE"
+                cr.reason = (
+                    (cr.reason or "")
+                    + " [Relevant evidence exists, but its authority, method, scope, or parameter coverage is insufficient.]"
+                ).strip()
+            continue
         if cr.status not in ("PROVEN", "FAILED", "PENDING"):
             continue
 
+        cond = conditions_by_id.get(cr.condition_id)
         refs = _resolve_evidence_ids(cr.evidence_ids)
         backing = [qual_by_id[r] for r in refs if r in qual_by_id]
 
+        # Evidence IDs are not sufficient on their own: when a quote is
+        # supplied, ensure its factual clause exists in one of those cited
+        # evidence items. This lets semantic mapping lead without allowing
+        # fabricated or cross-requirement quotes through.
+        cited_contents = [qualified_contents[r] for r in refs if r in qualified_contents]
+        if cr.quote and cited_contents and not _quote_is_traceable(cr.quote, cited_contents):
+            old = cr.status
+            cr.status = "INCONCLUSIVE"
+            cr.reason = (
+                (cr.reason or "")
+                + f" [Downgraded from {old}: cited quote could not be traced to the referenced evidence.]"
+            ).strip()
+            continue
+
         # Citation fallback: an exact quote inside a qualified chunk counts
         # as a traceable reference even when evidence_ids were omitted.
-        if not any(b.qualification_status in ("QUALIFIED", "PARTIALLY_QUALIFIED") for b in backing) and cr.quote:
-            needle = cr.quote.strip().lower()[:80]
-            if any(needle in content.lower() for content in qualified_contents.values()):
-                backing = [q for q in qualifications if q.qualification_status in ("QUALIFIED", "PARTIALLY_QUALIFIED")]
+        if not backing and cr.quote:
+            matching_ids = {
+                evidence_id
+                for evidence_id, content in qualified_contents.items()
+                if _quote_is_traceable(cr.quote, [content])
+            }
+            backing = [qual_by_id[evidence_id] for evidence_id in matching_ids if evidence_id in qual_by_id]
 
         if cr.status == "PROVEN":
             ok = any(b.qualification_status == "QUALIFIED" for b in backing)
         elif cr.status == "PENDING":
-            ok = any(b.qualification_status in ("QUALIFIED", "PARTIALLY_QUALIFIED") for b in backing)
+            # PARTIAL means a qualified empirical method covered only part of
+            # the requested bounds. A workflow matrix, architecture document,
+            # or theoretical analysis alone is UNKNOWN, not PARTIAL.
+            cond_param = normalize_parameter(cond.parameter) if cond is not None else None
+            quote_params = set(extract_parameters_from_text(cr.quote or ""))
+            ok = any(
+                b.qualification_status == "QUALIFIED"
+                and (
+                    cond is None
+                    or condition_evidence_compatible(cond, b) is True
+                    or (cond_param is not None and cond_param in quote_params)
+                    or (cond_param is None and b.parameter_compatible is not False)
+                )
+                for b in backing
+            )
         else:  # FAILED
             ok = any(
                 b.qualification_status == "QUALIFIED" or _is_contradiction_relevant(b)
@@ -188,7 +275,7 @@ def merge_qualification_into_conditions(
 
         if not ok:
             old = cr.status
-            cr.status = "UNTESTED" if old == "PENDING" else "INCONCLUSIVE"
+            cr.status = "INCONCLUSIVE"
             cr.reason = (
                 (cr.reason or "") +
                 f" [Downgraded from {old}: referenced evidence is not qualified to "
@@ -197,11 +284,13 @@ def merge_qualification_into_conditions(
             continue
 
         # Per-condition parameter check on qualified backing.
-        cond = conditions_by_id.get(cr.condition_id)
         if cr.status == "PROVEN" and cond is not None and cond.parameter:
             qualified_backing = [b for b in backing if b.qualification_status == "QUALIFIED"]
             compat = [condition_evidence_compatible(cond, b) for b in qualified_backing]
-            if compat and all(c is False for c in compat):
+            cond_param = normalize_parameter(cond.parameter)
+            quote_params = set(extract_parameters_from_text(cr.quote or ""))
+            quote_supports_parameter = bool(cond_param and cond_param in quote_params)
+            if not quote_supports_parameter and compat and all(c is False for c in compat):
                 cr.status = "INCONCLUSIVE"
                 cr.reason = (
                     (cr.reason or "") +
@@ -334,7 +423,13 @@ def finalize_verdict(
             f"based on condition-level results.]"
         )
 
-    final_reason = f"{(analysis.reason or '').strip()}{override_note}" or (reason + override_note)
+    if override_note:
+        provisional_reason = (analysis.reason or "").strip()
+        final_reason = f"{reason}{override_note}"
+        if provisional_reason:
+            final_reason += f" Provisional model rationale: {provisional_reason}"
+    else:
+        final_reason = (analysis.reason or "").strip() or reason
 
     return VerificationAnalysisResult(
         status=status,
@@ -419,10 +514,43 @@ def _numeric_condition_status(
         v = convert_value(float(claim.value), claim.unit, cond.unit)
         if v is None:
             return None
+        if "tolerance" in (cond.parameter or "").lower():
+            nominal = next(
+                (
+                    sibling.threshold
+                    for sibling in contract.atomic_conditions
+                    if sibling.condition_id != cond.condition_id
+                    and sibling.operator in ("==", "=")
+                    and isinstance(sibling.threshold, (int, float))
+                    and are_units_compatible(sibling.unit, cond.unit)
+                ),
+                None,
+            )
+            if nominal is not None:
+                v = abs(v - float(nominal))
         if op in (">=", ">"):
             return "PROVEN" if v >= th else "FAILED"
         if op in ("<=", "<"):
             return "PROVEN" if v <= th else "FAILED"
+        if op in ("==", "="):
+            # A nominal target and its explicit sibling tolerance form one
+            # composite interval. Fall back to a small engineering tolerance
+            # only when the contract provides no explicit tolerance condition.
+            sibling_tolerance = next(
+                (
+                    float(sibling.threshold)
+                    for sibling in contract.atomic_conditions
+                    if sibling.condition_id != cond.condition_id
+                    and "tolerance" in (sibling.parameter or "").lower()
+                    and isinstance(sibling.threshold, (int, float))
+                    and are_units_compatible(sibling.unit, cond.unit)
+                ),
+                None,
+            )
+            tolerance = sibling_tolerance if sibling_tolerance is not None else max(abs(th) * 0.025, 1e-9)
+            if abs(v - th) <= tolerance:
+                return "PROVEN"
+            return "FAILED" if is_hard_rating else None
         return None
 
     # Range claim against a bound condition: worst-case semantics.
@@ -474,8 +602,11 @@ def condition_results_from_claims(
     """
     mand = mandatory_conditions(contract)
     qual_by_doc: dict[str, list[EvidenceQualification]] = {}
+    qual_by_chunk: dict[str, list[EvidenceQualification]] = {}
     for q in qualifications:
         qual_by_doc.setdefault(q.document_name, []).append(q)
+        if q.source_chunk_id:
+            qual_by_chunk.setdefault(q.source_chunk_id, []).append(q)
 
     results: list[ConditionVerificationResult] = []
 
@@ -484,46 +615,122 @@ def condition_results_from_claims(
         reason = "No qualified evidence addresses this condition."
         evidence_ids: list[str] = []
         quote: Optional[str] = None
+        attribution_quality = -1
         violation = False
         pending_found = False
+        inconclusive_found = False
 
         for claim in claims:
-            claim_quals = qual_by_doc.get(claim.document_name, [])
+            # Prefer the exact originating chunk. Falling back to document name
+            # preserves compatibility with legacy/imported claims that predate
+            # source_chunk_id, without mixing unrelated pages in normal runs.
+            claim_quals = (
+                qual_by_chunk.get(claim.source_chunk_id, [])
+                if claim.source_chunk_id
+                else qual_by_doc.get(claim.document_name, [])
+            )
             if not claim_quals:
                 continue
-            has_qualified = any(q.qualification_status == "QUALIFIED" for q in claim_quals)
+            inconclusive_found = True
+            directly_qualified = [
+                q for q in claim_quals if q.qualification_status == "QUALIFIED"
+            ]
+            linked_qualified: list[EvidenceQualification] = []
+            has_qualified = bool(directly_qualified)
+            # A compliance-matrix excerpt may carry the complete observed
+            # value when PDF layout truncates the referenced report. Accept it
+            # only when that exact authoritative document was independently
+            # retrieved and qualified; the matrix alone remains non-proof.
+            if not has_qualified and claim.source_authority == "COMPLIANCE_MATRIX":
+                quote_lower = claim.quote.lower()
+                linked_qualified = [
+                    q
+                    for q in qualifications
+                    if q.qualification_status == "QUALIFIED"
+                    and q.document_name.lower() in quote_lower
+                ]
+                has_qualified = bool(linked_qualified)
             any_contradiction_relevant = any(_is_contradiction_relevant(q) for q in claim_quals)
 
             # Parameter gate: skip claims whose evidence discusses a
             # demonstrably different quantity than this condition.
-            if all(condition_evidence_compatible(cond, q) is False for q in claim_quals):
+            claim_parameter_match = parameters_compatible(cond.parameter, claim.parameter, claim.quote)
+            is_tolerance_from_nominal = False
+            if "tolerance" in (cond.parameter or "").lower() and claim.claim_type == "threshold":
+                is_tolerance_from_nominal = any(
+                    sibling.condition_id != cond.condition_id
+                    and sibling.operator in ("==", "=")
+                    and parameters_compatible(sibling.parameter, claim.parameter, claim.quote) is True
+                    and are_units_compatible(sibling.unit, cond.unit)
+                    for sibling in contract.atomic_conditions
+                )
+            if claim.parameter and claim_parameter_match is False and not is_tolerance_from_nominal:
+                continue
+            if not claim.parameter and all(condition_evidence_compatible(cond, q) is False for q in claim_quals):
                 continue
 
             st = _numeric_condition_status(contract, cond, claim)
             if st == "PROVEN" and has_qualified:
                 status = "PROVEN"
-                evidence_ids.append(claim.claim_id)
-                quote = quote or claim.quote[:160]
-                reason = f"Condition established by qualified evidence: '{claim.quote[:120]}'"
+                candidate_ids = [q.evidence_id for q in directly_qualified]
+                candidate_quality = 2
+                if not candidate_ids and linked_qualified:
+                    # Keep the matrix quote and its backing report IDs together.
+                    # The matrix supplies the complete excerpt; the independently
+                    # retrieved report supplies empirical authority.
+                    candidate_ids = [q.evidence_id for q in claim_quals] + [
+                        q.evidence_id for q in linked_qualified
+                    ]
+                    candidate_quality = 1
+                if candidate_ids and candidate_quality >= attribution_quality:
+                    evidence_ids = list(dict.fromkeys(candidate_ids))
+                    quote = claim.quote[:160]
+                    reason = f"Condition established by qualified evidence: '{claim.quote[:120]}'"
+                    attribution_quality = candidate_quality
             elif st == "FAILED" and (has_qualified or any_contradiction_relevant):
                 violation = True
-                evidence_ids.append(claim.claim_id)
-                quote = quote or claim.quote[:160]
-                reason = f"Evidence violates condition {cond.condition_id}: '{claim.quote[:120]}'"
+                candidate_ids = [
+                    q.evidence_id
+                    for q in claim_quals
+                    if q.qualification_status == "QUALIFIED" or _is_contradiction_relevant(q)
+                ]
+                candidate_quality = 2 if directly_qualified else 1
+                if candidate_ids and candidate_quality >= attribution_quality:
+                    evidence_ids = list(dict.fromkeys(candidate_ids))
+                    quote = claim.quote[:160]
+                    reason = f"Evidence violates condition {cond.condition_id}: '{claim.quote[:120]}'"
+                    attribution_quality = candidate_quality
             elif st == "PENDING" and has_qualified:
                 pending_found = True
-                quote = quote or claim.quote[:160]
+                candidate_ids = [q.evidence_id for q in directly_qualified]
+                if candidate_ids and 2 >= attribution_quality:
+                    evidence_ids = list(dict.fromkeys(candidate_ids))
+                    quote = claim.quote[:160]
+                    reason = "Qualified evidence covers only part of this condition's required bounds."
+                    attribution_quality = 2
 
-            # PASS verdict mapping: only onto conditions the verdict addresses
-            if (claim.claim_type == "test_verdict" and (claim.test_result or "").upper() == "PASS"
-                    and has_qualified):
+            # Formal verdict mapping: only onto conditions the verdict
+            # addresses. Failure dominates proof for safety-critical results.
+            if claim.claim_type == "test_verdict" and has_qualified:
                 addresses = any(condition_evidence_compatible(cond, q) is True for q in claim_quals) \
                     or len(mand) == 1
-                if addresses:
+                verdict = (claim.test_result or "").upper()
+                if addresses and verdict == "FAIL":
+                    violation = True
+                    candidate_ids = [q.evidence_id for q in directly_qualified]
+                    if candidate_ids and 2 >= attribution_quality:
+                        evidence_ids = list(dict.fromkeys(candidate_ids))
+                        quote = claim.quote[:160]
+                        reason = f"Qualified verification record reports FAIL for this condition: '{claim.quote[:120]}'"
+                        attribution_quality = 2
+                elif addresses and verdict == "PASS":
                     status = "PROVEN"
-                    evidence_ids.append(claim.claim_id)
-                    quote = quote or claim.quote[:160]
-                    reason = f"Qualified verification record reports PASS covering this condition: '{claim.quote[:120]}'"
+                    candidate_ids = [q.evidence_id for q in directly_qualified]
+                    if candidate_ids and 2 >= attribution_quality:
+                        evidence_ids = list(dict.fromkeys(candidate_ids))
+                        quote = claim.quote[:160]
+                        reason = f"Qualified verification record reports PASS covering this condition: '{claim.quote[:120]}'"
+                        attribution_quality = 2
 
         if violation:
             final_status = "FAILED"
@@ -532,6 +739,9 @@ def condition_results_from_claims(
         elif pending_found:
             final_status = "PENDING"
             reason = "Qualified evidence covers only part of this condition's required bounds."
+        elif inconclusive_found:
+            final_status = "INCONCLUSIVE"
+            reason = "Relevant evidence exists, but it is not qualified to establish this condition."
         else:
             final_status = "UNTESTED"
 

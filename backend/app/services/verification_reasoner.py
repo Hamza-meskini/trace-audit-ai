@@ -33,14 +33,79 @@ from app.services.evidence_qualification import (
     format_qualification_annotation,
     has_qualified_evidence,
 )
+from app.schemas.claim import _isolate_relevant_passage
 from app.services.verdict_aggregator import (
     aggregate_condition_statuses,
+    condition_attribution_is_traceable,
     finalize_verdict,
     condition_results_from_claims,
     mandatory_conditions,
 )
 
 logger = logging.getLogger("traceaudit.verifier")
+
+
+def _reconcile_llm_conditions_with_deterministic_facts(
+    contract: RequirementContract,
+    analysis: VerificationAnalysisResult,
+    evidence_chunks: list[dict[str, Any]],
+    qualifications: list[EvidenceQualification],
+) -> VerificationAnalysisResult:
+    """Repair missing citations and enforce exact numeric facts before aggregation.
+
+    The LLM owns semantic interpretation. Python may only replace a condition
+    when qualified, traceable claim extraction has an exact numeric outcome, or
+    fill attribution that the LLM omitted for the same status.
+    """
+    claims = extract_all_evidence_claims(evidence_chunks, contract)
+    deterministic = {
+        result.condition_id: result
+        for result in condition_results_from_claims(contract, claims, qualifications)
+    }
+    conditions = {condition.condition_id: condition for condition in contract.atomic_conditions}
+    evidence_contents = {
+        f"E{index}": (chunk.get("content") or chunk.get("quote") or "")
+        for index, chunk in enumerate(evidence_chunks, 1)
+    }
+
+    for result in analysis.condition_results:
+        fallback = deterministic.get(result.condition_id)
+        condition = conditions.get(result.condition_id)
+        if fallback is None or condition is None:
+            continue
+
+        result_traceable = condition_attribution_is_traceable(result, evidence_contents)
+        fallback_traceable = condition_attribution_is_traceable(fallback, evidence_contents)
+        missing_attribution = not result.evidence_ids or not result.quote
+        if (
+            (missing_attribution or not result_traceable)
+            and fallback.status == result.status
+            and fallback_traceable
+        ):
+            result.evidence_ids = list(fallback.evidence_ids)
+            result.quote = fallback.quote
+            result.reason = result.reason or fallback.reason
+
+        is_numeric = (
+            condition.operator in ("<=", "<", ">=", ">", "==", "=", "between")
+            and (
+                isinstance(condition.threshold, (int, float))
+                or condition.min_value is not None
+                or condition.max_value is not None
+            )
+        )
+        if (
+            is_numeric
+            and fallback.status in ("PROVEN", "FAILED")
+            and fallback_traceable
+            and result.status != fallback.status
+        ):
+            result.status = fallback.status
+            result.evidence_ids = list(fallback.evidence_ids)
+            result.quote = fallback.quote
+            result.reason = fallback.reason
+
+    return analysis
 
 # Filenames that identify specification documents (self-referential, not independent evidence)
 SPEC_DOC_KEYWORDS = (
@@ -113,7 +178,9 @@ def build_verification_prompt(
         doc_name = c.get("document_name", "Document")
         page = c.get("page_number")
         page_str = f", Page {page}" if page else ""
-        content = (c.get("content") or c.get("quote") or "").strip()
+        content = _isolate_relevant_passage(
+            (c.get("content") or c.get("quote") or "").strip(), contract
+        )
         anno = format_qualification_annotation(q)
         formatted_evidence.append(
             f"--- [Evidence Excerpt #{i} ({q.evidence_id}): {doc_name}{page_str}] ---\n{anno}\n{content}\n"
@@ -152,16 +219,19 @@ STEP 1: EVIDENCE ATTRIBUTION & RELEVANCE CHECK (Filter Similarity Noise)
 STEP 2: CONDITION EVALUATION & COMPLIANCE RULES
 1. NUMERIC OPERATING ENVELOPE (SUPERSET PROOF):
    - When verifying an operating capability span [Rmin, Rmax], any empirical test envelope [Tmin, Tmax] where Tmin <= Rmin and Tmax >= Rmax (i.e. the tested range fully encompasses the required operational bounds) provides mathematical proof of capability and is PROVEN / SUPPORTED.
+   - A nominal target T with an explicit ± tolerance d is ONE composite interval [T-d, T+d]; do not require the observation to equal exactly T.
 2. DOCUMENT AUTHORITY & MODALITY DISCIPLINE:
    - When a requirement mandates physical laboratory/bench testing ('physical_test'), theoretical simulations (MATLAB, SPICE, CFD, Simulink), analytical calculations (FMEDA, formulas), or architecture drawings provide 0% empirical proof.
    - You must NOT mark conditions as 'PROVEN' or 'PENDING' based on simulation or calculation evidence when physical test is required. Mark condition status as 'UNTESTED' and overall requirement status as 'UNKNOWN' (NOT 'PARTIAL', NOT 'SUPPORTED').
-   - Reserve 'PARTIAL' strictly for when actual empirical lab testing was conducted across an incomplete operating envelope or subset of conditions.
+   - Reserve 'PARTIAL' strictly for when QUALIFIED empirical lab testing directly addressed the condition but covered an incomplete operating envelope or subset. A compliance matrix, design, simulation, or calculation alone is UNKNOWN, not PARTIAL.
    - If the requirement explicitly permits or specifies verification by simulation/analysis, simulation evidence is acceptable.
 3. COMPLIANCE MATRIX STATUS:
    - If an official compliance tracking matrix explicitly records 'NOT STARTED', 'MISSING', or 'TEST PENDING' for this requirement, the status is 'MISSING' (condition status: 'UNTESTED').
 4. COMPOUND CONDITIONS:
    - For multi-condition requirements, evaluate each condition in `condition_results` with status: 'PROVEN', 'FAILED', 'PENDING', or 'UNTESTED'.
    - Final status: 'SUPPORTED' only if ALL conditions PROVEN; 'PARTIAL' if some PROVEN and some PENDING/UNTESTED; 'CONFLICT' if any condition FAILED; 'MISSING' if no evidence / NOT STARTED; 'UNKNOWN' if only simulation / non-authoritative.
+   - Every PROVEN, FAILED, or PENDING condition MUST include at least one evidence ID (E1, E2, ...) and a verbatim quote from that evidence. Never return an attributed condition status without both fields.
+   - A local failure, violation, leakage, exceeded limit, or lower achieved rating dominates an earlier PASS word from a different sub-test in the same excerpt.
 
 Return your evaluation strictly as a valid JSON object matching the VerificationAnalysisResult schema.
 """
@@ -234,7 +304,9 @@ def rule_based_multi_condition_verification(
                     )
 
     quals = qualify_evidence_chunks(contract, non_spec_chunks)
-    claims = extract_all_evidence_claims(non_spec_chunks)
+    # Claim extraction must receive the contract so each multi-requirement page
+    # is sliced to the target requirement before numbers and verdicts are read.
+    claims = extract_all_evidence_claims(non_spec_chunks, contract)
     cond_results = condition_results_from_claims(contract, claims, quals)
     has_relevant = len(non_spec_chunks) > 0
 
@@ -275,7 +347,9 @@ def build_batch_verification_prompt(
             doc_name = c.get("document_name", "Document")
             page = c.get("page_number")
             page_str = f", Page {page}" if page else ""
-            content = (c.get("content") or c.get("quote") or "").strip()
+            content = _isolate_relevant_passage(
+                (c.get("content") or c.get("quote") or "").strip(), contract
+            )
             anno = format_qualification_annotation(q)
             formatted_evidence.append(
                 f"  [Excerpt #{j} ({q.evidence_id}): {doc_name}{page_str}]\n  {anno}\n  {content}"
@@ -316,16 +390,19 @@ STEP 1: EVIDENCE ATTRIBUTION & RELEVANCE CHECK (Filter Similarity Noise)
 STEP 2: CONDITION EVALUATION & COMPLIANCE RULES
 1. NUMERIC OPERATING ENVELOPE (SUPERSET PROOF):
    - When verifying an operating capability span [Rmin, Rmax], any empirical test envelope [Tmin, Tmax] where Tmin <= Rmin and Tmax >= Rmax (i.e. the tested range fully encompasses the required operational bounds) provides mathematical proof of capability and is PROVEN / SUPPORTED.
+   - A nominal target T with an explicit ± tolerance d is ONE composite interval [T-d, T+d]; do not require the observation to equal exactly T.
 2. DOCUMENT AUTHORITY & MODALITY DISCIPLINE:
    - When a requirement mandates physical laboratory/bench testing ('physical_test'), theoretical simulations (MATLAB, SPICE, CFD, Simulink), analytical calculations (FMEDA, formulas), or architecture drawings provide 0% empirical proof.
    - You must NOT mark conditions as 'PROVEN' or 'PENDING' based on simulation or calculation evidence when physical test is required. Mark condition status as 'UNTESTED' and overall requirement status as 'UNKNOWN' (NOT 'PARTIAL', NOT 'SUPPORTED').
-   - Reserve 'PARTIAL' strictly for when actual empirical lab testing was conducted across an incomplete operating envelope or subset of conditions.
+   - Reserve 'PARTIAL' strictly for when QUALIFIED empirical lab testing directly addressed the condition but covered an incomplete operating envelope or subset. A compliance matrix, design, simulation, or calculation alone is UNKNOWN, not PARTIAL.
    - If the requirement explicitly permits or specifies verification by simulation/analysis, simulation evidence is acceptable.
 3. COMPLIANCE MATRIX STATUS:
    - If an official compliance tracking matrix explicitly records 'NOT STARTED', 'MISSING', or 'TEST PENDING' for this requirement, the status is 'MISSING' (condition status: 'UNTESTED').
 4. COMPOUND CONDITIONS:
    - For each requirement item, return `condition_results: list[ConditionVerificationResult]` for each defined condition with status: 'PROVEN', 'FAILED', 'PENDING', or 'UNTESTED'.
    - Final status: 'SUPPORTED' if all conditions PROVEN; 'PARTIAL' if some PROVEN and some PENDING/UNTESTED; 'CONFLICT' if any condition FAILED or violated; 'MISSING' if no evidence / NOT STARTED; 'UNKNOWN' if only simulation / non-authoritative.
+   - Every PROVEN, FAILED, or PENDING condition MUST include at least one evidence ID (E1, E2, ...) and a verbatim quote from that evidence. Never return an attributed condition status without both fields.
+   - A local failure, violation, leakage, exceeded limit, or lower achieved rating dominates an earlier PASS word from a different sub-test in the same excerpt.
 
 Respond with a JSON object containing `batch_results: list[BatchVerificationItemResult]` with an item for each requirement.
 """
@@ -367,7 +444,12 @@ async def evaluate_batch_verification(
                     contract: RequirementContract = it["contract"]
                     cand_chunks: list[dict] = it.get("candidate_chunks", [])
                     quals = qualify_evidence_chunks(contract, cand_chunks)
-                    qual_contents = {q.evidence_id: (c.get("content") or c.get("quote") or "") for q, c in zip(quals, cand_chunks)}
+                    qual_contents = {
+                        q.evidence_id: _isolate_relevant_passage(
+                            (c.get("content") or c.get("quote") or ""), contract
+                        )
+                        for q, c in zip(quals, cand_chunks)
+                    }
                     has_relevant = any(not any(k in c.get("document_name", "").lower() for k in SPEC_DOC_KEYWORDS) for c in cand_chunks)
 
                     # Check if compliance matrix explicitly records NOT STARTED / PENDING
@@ -384,6 +466,12 @@ async def evaluate_batch_verification(
                         condition_results=item_res.condition_results,
                         reason=item_res.reason,
                         highlight=item_res.highlight,
+                    )
+                    provisional = _reconcile_llm_conditions_with_deterministic_facts(
+                        contract=contract,
+                        analysis=provisional,
+                        evidence_chunks=cand_chunks,
+                        qualifications=quals,
                     )
                     # Always recompute final verdict in Python
                     results[item_res.req_code] = finalize_verdict(
@@ -433,7 +521,18 @@ async def evaluate_requirement_verification(
         )
         if result and result.status in ("SUPPORTED", "PARTIAL", "MISSING", "UNKNOWN", "CONFLICT"):
             quals = qualify_evidence_chunks(contract, evidence_chunks, spec_doc_names=spec_doc_names)
-            qual_contents = {q.evidence_id: (c.get("content") or c.get("quote") or "") for q, c in zip(quals, evidence_chunks)}
+            result = _reconcile_llm_conditions_with_deterministic_facts(
+                contract=contract,
+                analysis=result,
+                evidence_chunks=evidence_chunks,
+                qualifications=quals,
+            )
+            qual_contents = {
+                q.evidence_id: _isolate_relevant_passage(
+                    (c.get("content") or c.get("quote") or ""), contract
+                )
+                for q, c in zip(quals, evidence_chunks)
+            }
             has_relevant = any(not any(k in c.get("document_name", "").lower() for k in SPEC_DOC_KEYWORDS) for c in evidence_chunks)
             # Python recomputes and owns final status
             return finalize_verdict(
@@ -447,4 +546,3 @@ async def evaluate_requirement_verification(
         logger.warning(f"Structured LLM verification call failed: {ex}. Falling back to deterministic engine.")
 
     return rule_based_multi_condition_verification(contract, evidence_chunks, spec_doc_names=spec_doc_names)
-

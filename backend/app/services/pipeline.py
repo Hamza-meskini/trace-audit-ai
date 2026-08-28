@@ -140,6 +140,10 @@ async def run_audit_pipeline(
                         category=er.category,
                         severity=er.severity,
                         source_document=doc.original_filename,
+                        extracted_parameters={
+                            "parameters": [p.model_dump() for p in er.parameters],
+                            "conditions": [c.model_dump() for c in er.conditions],
+                        },
                     )
                     db.add(req)
 
@@ -197,12 +201,13 @@ async def run_audit_pipeline(
             "title": req.title,
             "description": req.description,
             "category": req.category,
+            "conditions": (req.extracted_parameters or {}).get("conditions", []),
             "candidate_chunks": candidate_chunks,
         })
 
     # 4b. Batched hybrid verification: deterministic validators first,
     # LLM multi-condition reasoning (with Databricks cascade fallback) for
-    # inconclusive requirements — same engine as the evaluation benchmark.
+    # inconclusive requirements — same engine used by offline evaluation.
     assessments = await batch_assess_requirements(
         req_items=req_items,
         model=active_model,

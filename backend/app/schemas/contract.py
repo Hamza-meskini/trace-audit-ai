@@ -1,6 +1,6 @@
 """Structured Requirement Contract schema for formal auditing and validation."""
 
-from typing import Optional, Union, Literal
+from typing import Any, Optional, Union, Literal
 from pydantic import BaseModel, Field
 import re
 
@@ -89,6 +89,7 @@ def parse_requirement_contract(
     title: str,
     description: Optional[str] = None,
     category: str = "General",
+    structured_conditions: Optional[list[dict[str, Any]]] = None,
 ) -> RequirementContract:
     """Build a structured RequirementContract from requirement text deterministically.
     
@@ -112,7 +113,7 @@ def parse_requirement_contract(
         v_method = "inspection"
 
     # Determine scope / entity (single shared normalization path)
-    scope = normalize_entity_scope(full_text)
+    scope = normalize_entity_scope(f"{category} {full_text}")
 
     contract = RequirementContract(
         requirement_id=req_code,
@@ -125,6 +126,61 @@ def parse_requirement_contract(
         scope=scope,
         raw_text=full_text,
     )
+
+    # A structured condition tree is canonical whenever the caller has one.
+    # Prose parsing remains a fallback for ordinary uploaded requirements.
+    if structured_conditions:
+        for index, raw in enumerate(structured_conditions, 1):
+            condition_id = str(raw.get("condition_id") or f"{req_code}-C{index}")
+            operator = raw.get("operator")
+            threshold = raw.get("threshold")
+            min_value = raw.get("min_value")
+            max_value = raw.get("max_value")
+
+            if operator == "between" and isinstance(threshold, str):
+                bounds = re.findall(r"[+-]?\d+(?:\.\d+)?", threshold)
+                if len(bounds) >= 2:
+                    min_value, max_value = float(bounds[0]), float(bounds[1])
+            elif operator in ("<=", "<") and isinstance(threshold, (int, float)):
+                max_value = float(threshold)
+            elif operator in (">=", ">") and isinstance(threshold, (int, float)):
+                min_value = float(threshold)
+
+            contract.atomic_conditions.append(AtomicConditionContract(
+                condition_id=condition_id,
+                description=raw.get("description"),
+                parameter=raw.get("parameter"),
+                operator=operator,
+                threshold=threshold,
+                min_value=min_value,
+                max_value=max_value,
+                unit=raw.get("unit") or None,
+                scope=raw.get("scope") or scope,
+                mandatory=bool(raw.get("mandatory", True)),
+                verification_method=raw.get("verification_method") or v_method,
+            ))
+
+        first = contract.atomic_conditions[0]
+        contract.conditions = [c.description or c.condition_id for c in contract.atomic_conditions]
+        contract.parameter = first.parameter
+        contract.operator = first.operator
+        contract.expected_value = first.threshold
+        contract.min_value = first.min_value
+        contract.max_value = first.max_value
+        contract.unit = first.unit
+        if len(contract.atomic_conditions) > 1:
+            contract.requirement_type = "other"
+        elif first.operator == "between":
+            contract.requirement_type = "numeric_range"
+        elif first.operator in ("<=", "<", ">=", ">"):
+            contract.requirement_type = "duration" if (first.unit or "").lower() in {
+                "ns", "us", "µs", "ms", "s", "sec", "seconds", "min", "minutes", "h", "hours",
+            } else "threshold"
+        elif first.operator == "==" and isinstance(first.threshold, bool):
+            contract.requirement_type = "boolean"
+        elif first.operator == "==":
+            contract.requirement_type = "enumeration"
+        return contract
 
     # 1. Check for IP rating
     ip_match = IP_REGEX.search(full_text)
@@ -287,5 +343,17 @@ def parse_requirement_contract(
         ))
         return contract
 
+    contract.atomic_conditions.append(AtomicConditionContract(
+        condition_id=f"{req_code}-C1",
+        description=description or title,
+        parameter=contract.parameter,
+        operator=contract.operator,
+        threshold=contract.expected_value,
+        min_value=contract.min_value,
+        max_value=contract.max_value,
+        unit=contract.unit,
+        scope=scope,
+        verification_method=v_method,
+    ))
+    contract.conditions = [description or title]
     return contract
-
