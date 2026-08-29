@@ -84,3 +84,5 @@ evaluation/results/*_v2.xlsx
 evaluation/results/*.xlsx
 !evaluation/tests/*.py
 
+# Review tool temp files
+.review-tmp/

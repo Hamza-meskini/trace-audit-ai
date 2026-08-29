@@ -1,9 +1,11 @@
 """Excel Audit Trace Exporter for TraceAudit AI 100-Requirement Benchmark.
 
-Generates a rich 3-tab diagnostic workbook:
+Generates a rich 5-tab diagnostic workbook:
 1. Executive_Summary: KPI metrics, 5x5 confusion matrix, subsystem breakdown.
 2. Full_Pipeline_Trace: Detailed step-by-step trace across all 100 requirements with LLM reasoning, Python aggregation, and qualification.
 3. Mismatches_Deep_Dive: Root-cause diagnosis and discrepancy analysis for misclassified requirements.
+4. Atomic_Condition_Diagnostics: Raw LLM through final Python state for every condition.
+5. Contract_Field_Diagnostics: Parameter/operator/value/unit extraction mismatches.
 """
 
 from pathlib import Path
@@ -46,6 +48,7 @@ def export_benchmark_audit_trace_excel(
     failures: list[dict[str, Any]],
     excel_path: Path,
     pipeline_requirements: Optional[list[dict[str, Any]]] = None,
+    verification_evidence_by_req: Optional[dict[str, list[dict[str, Any]]]] = None,
 ):
     """Generate professional 3-tab Excel audit trace workbook."""
     wb = openpyxl.Workbook()
@@ -207,6 +210,7 @@ def export_benchmark_audit_trace_excel(
     failure_cat_desc = {
         "EXTRACTION_FAILURE": "Required contract was not extracted, so downstream retrieval/verification could not run",
         "CITATION_TRACEABILITY_FAILURE": "A condition quote was not found in the evidence ID attached to it",
+        "POST_LLM_DETERMINISTIC_REGRESSION": "The model's provisional final status matched ground truth, but deterministic post-processing changed it",
         "SOURCE_AUTHORITY_FAILURE": "Theoretical simulation / architecture spec confused with empirical physical test",
         "UNKNOWN_CLASSIFICATION_FAILURE": "Non-authoritative evidence modality misrouted by reasoner",
         "PARTIAL_COMPLIANCE_FAILURE": "Partial range envelope or sub-clause marked supported",
@@ -232,6 +236,28 @@ def export_benchmark_audit_trace_excel(
         c2.alignment = Alignment(horizontal="center")
         r_idx += 1
 
+    # Stage-isolation summary. These metrics distinguish model reasoning from
+    # deterministic post-processing and from end-to-end audit defensibility.
+    condition_metrics = results.get("condition_metrics", {})
+    stage_metrics = results.get("stage_diagnostics", {})
+    raw_llm_metrics = condition_metrics.get("raw_llm", {})
+    ws_sum.cell(row=15, column=6, value="Stage Isolation Metrics").font = Font(bold=True, size=11, color="1E293B")
+    ws_sum.cell(row=16, column=6, value="Metric").font = section_font
+    ws_sum.cell(row=16, column=6).fill = section_fill
+    ws_sum.cell(row=16, column=7, value="Value").font = section_font
+    ws_sum.cell(row=16, column=7).fill = section_fill
+    stage_rows = [
+        ("Raw LLM atomic accuracy", raw_llm_metrics.get("condition_accuracy")),
+        ("Final atomic accuracy", condition_metrics.get("condition_accuracy")),
+        ("Aggregation oracle accuracy", stage_metrics.get("aggregation_oracle", {}).get("accuracy")),
+        ("Audit-defensible accuracy", stage_metrics.get("audit_defensible_accuracy")),
+    ]
+    for row_index, (label, value) in enumerate(stage_rows, start=17):
+        ws_sum.cell(row=row_index, column=6, value=label).border = thin_border
+        value_cell = ws_sum.cell(row=row_index, column=7, value=(value / 100.0 if value is not None else None))
+        value_cell.number_format = "0.00%"
+        value_cell.border = thin_border
+
     # =========================================================================
     # TAB 2: FULL 100-REQUIREMENT PIPELINE TRACE
     # =========================================================================
@@ -250,8 +276,8 @@ def export_benchmark_audit_trace_excel(
         "Pipeline Predicted Status",
         "Verdict Match?",
         "Confidence (%)",
-        "Top Retrieved Document(s)",
-        "Retrieved Evidence Excerpt",
+        "Verifier Evidence Document(s)",
+        "Verifier Evidence Excerpt",
         "Evidence Authority",
         "AI Analysis / Justification",
         "AI Recommendation",
@@ -272,6 +298,7 @@ def export_benchmark_audit_trace_excel(
         requirement["req_code"]: requirement
         for requirement in (pipeline_requirements or [])
     }
+    verifier_evidence = verification_evidence_by_req or retrieved_by_req
 
     for r_idx, r in enumerate(ground_truth_reqs, start=2):
         req_id = r["requirement_id"]
@@ -309,7 +336,7 @@ def export_benchmark_audit_trace_excel(
         pipeline_conditions_text = "; ".join(pipeline_cond_strs) if pipeline_cond_strs else "[NO EXTRACTED CONDITIONS]"
 
         # Evidence retrieval: look in retrieved_by_req, or fallback to ground_truth_links
-        candidate_chunks = retrieved_by_req.get(req_id, [])
+        candidate_chunks = verifier_evidence.get(req_id, [])
         gt_link = links_by_id.get(req_id, {})
         expected_ev = gt_link.get("expected_evidence", [])
 
@@ -405,8 +432,8 @@ def export_benchmark_audit_trace_excel(
         "Expected Status",
         "Predicted Status",
         "Failure Category",
-        "Retrieved Document(s)",
-        "Evidence Excerpt",
+        "Verifier Evidence Document(s)",
+        "Verifier Evidence Excerpt",
         "AI Reasoning / Justification",
         "Technical Root Cause Diagnosis",
     ]
@@ -428,7 +455,7 @@ def export_benchmark_audit_trace_excel(
         predicted = f.get("predicted_status", "")
         err_cat = f.get("failure_category", "")
 
-        candidate_chunks = retrieved_by_req.get(req_id, [])
+        candidate_chunks = verifier_evidence.get(req_id, [])
         gt_link = links_by_id.get(req_id, {})
         expected_ev = gt_link.get("expected_evidence", [])
 
@@ -453,6 +480,8 @@ def export_benchmark_audit_trace_excel(
             diagnosis = f"Requirement was classified as UNKNOWN because evidence was tagged non-authoritative, but ground truth expected {expected}."
         elif err_cat == "CITATION_TRACEABILITY_FAILURE":
             diagnosis = "A condition quote and its cited evidence ID did not refer to the same retrieved passage, so Python conservatively rejected the proof."
+        elif err_cat == "POST_LLM_DETERMINISTIC_REGRESSION":
+            diagnosis = "The LLM provisional status matched the expected result, but deterministic reconciliation, evidence qualification, or aggregation changed the final decision. Inspect the atomic diagnostics transition columns."
         elif err_cat == "PARTIAL_COMPLIANCE_FAILURE":
             diagnosis = f"Requirement had multiple clauses or partial test envelope. Expected PARTIAL, but verifier concluded {predicted}."
         elif err_cat == "CONTRADICTION_FAILURE":
@@ -494,6 +523,88 @@ def export_benchmark_audit_trace_excel(
         row_fail_idx += 1
 
     # =========================================================================
+    # TAB 4: ATOMIC CONDITION STAGE DIAGNOSTICS
+    # =========================================================================
+    ws_atomic = wb.create_sheet(title="Atomic_Condition_Diagnostics")
+    ws_atomic.views.sheetView[0].showGridLines = True
+    atomic_headers = [
+        "Req ID", "Condition ID", "Parameter", "Ground Truth Status", "GT Label Source",
+        "Raw LLM Status", "Post-Reconciliation", "Pre-Qualification", "Final Status",
+        "Correct?", "Numeric Condition?", "Python Effect",
+    ]
+    ws_atomic.append(atomic_headers)
+    for col_num in range(1, len(atomic_headers) + 1):
+        cell = ws_atomic.cell(row=1, column=col_num)
+        cell.fill = header_fill
+        cell.font = header_font
+        cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+
+    for row_index, record in enumerate(condition_metrics.get("condition_records", []), start=2):
+        raw_status = record.get("llm_status")
+        final_status = record.get("final_status")
+        correct = bool(record.get("correct"))
+        expected_status = record.get("expected_status")
+        if raw_status is None:
+            python_effect = "NO_LLM_PATH"
+        elif raw_status == expected_status and final_status != expected_status:
+            python_effect = "DAMAGED"
+        elif raw_status != expected_status and final_status == expected_status:
+            python_effect = "CORRECTED"
+        elif correct:
+            python_effect = "UNCHANGED_CORRECT"
+        else:
+            python_effect = "UNCHANGED_WRONG"
+        row = [
+            record.get("requirement_id"), record.get("condition_id"), record.get("parameter"),
+            expected_status, record.get("ground_truth_source"), raw_status,
+            record.get("post_reconciliation_status"), record.get("pre_qualification_status"),
+            final_status, "YES" if correct else "NO",
+            "YES" if record.get("is_numeric_condition") else "NO", python_effect,
+        ]
+        ws_atomic.append(row)
+        for col_idx in range(1, len(row) + 1):
+            cell = ws_atomic.cell(row=row_index, column=col_idx)
+            cell.border = thin_border
+            cell.alignment = Alignment(vertical="top", wrap_text=True)
+        correctness_cell = ws_atomic.cell(row=row_index, column=10)
+        correctness_cell.fill = match_fill if correct else mismatch_fill
+        correctness_cell.font = match_font if correct else mismatch_font
+
+    # =========================================================================
+    # TAB 5: CONTRACT FIELD DIAGNOSTICS
+    # =========================================================================
+    ws_contract = wb.create_sheet(title="Contract_Field_Diagnostics")
+    ws_contract.views.sheetView[0].showGridLines = True
+    contract_headers = [
+        "Req ID", "Condition ID", "Failed Field(s)", "Expected Parameter", "Extracted Parameter",
+        "Expected Operator", "Extracted Operator", "Expected Threshold", "Extracted Threshold",
+        "Expected Unit", "Extracted Unit",
+    ]
+    ws_contract.append(contract_headers)
+    for col_num in range(1, len(contract_headers) + 1):
+        cell = ws_contract.cell(row=1, column=col_num)
+        cell.fill = header_fill
+        cell.font = header_font
+        cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    contract_mismatches = results.get("extraction_metrics", {}).get("contract_mismatches", [])
+    for row_index, mismatch in enumerate(contract_mismatches, start=2):
+        expected_contract = mismatch.get("expected", {})
+        extracted_contract = mismatch.get("extracted") or {}
+        row = [
+            mismatch.get("requirement_id"), mismatch.get("condition_id"),
+            ", ".join(mismatch.get("failed_fields", [])),
+            expected_contract.get("parameter"), extracted_contract.get("parameter"),
+            expected_contract.get("operator"), extracted_contract.get("operator"),
+            expected_contract.get("threshold"), extracted_contract.get("threshold"),
+            expected_contract.get("unit"), extracted_contract.get("unit"),
+        ]
+        ws_contract.append(row)
+        for col_idx in range(1, len(row) + 1):
+            cell = ws_contract.cell(row=row_index, column=col_idx)
+            cell.border = thin_border
+            cell.alignment = Alignment(vertical="top", wrap_text=True)
+
+    # =========================================================================
     # AUTO-FIT COLUMN WIDTHS ACROSS ALL SHEETS
     # =========================================================================
     col_widths = {
@@ -505,7 +616,15 @@ def export_benchmark_audit_trace_excel(
         },
         "Mismatches_Deep_Dive": {
             1: 14, 2: 18, 3: 26, 4: 14, 5: 14, 6: 25, 7: 28, 8: 45, 9: 45, 10: 45
-        }
+        },
+        "Atomic_Condition_Diagnostics": {
+            1: 14, 2: 16, 3: 24, 4: 18, 5: 24, 6: 18, 7: 20, 8: 20, 9: 16,
+            10: 12, 11: 16, 12: 20,
+        },
+        "Contract_Field_Diagnostics": {
+            1: 14, 2: 16, 3: 24, 4: 26, 5: 26, 6: 18, 7: 18, 8: 18, 9: 18,
+            10: 18, 11: 18,
+        },
     }
 
     for sheet_name, widths in col_widths.items():
@@ -517,6 +636,8 @@ def export_benchmark_audit_trace_excel(
     # Freeze header rows for easy scrolling
     ws_trace.freeze_panes = "A2"
     ws_fail.freeze_panes = "A2"
+    ws_atomic.freeze_panes = "A2"
+    ws_contract.freeze_panes = "A2"
 
     # 1. Determine next auto-incremented run version (e.g. benchmark_audit_trace_run1.xlsx, run2.xlsx, ...)
     import re

@@ -4,6 +4,7 @@ Combines deterministic Python comparison with structured LLM condition reasoning
 to evaluate complex compliance, multi-axis profiles, and cross-document contradictions.
 """
 
+import json
 import re
 import logging
 from typing import Optional, Any
@@ -40,9 +41,106 @@ from app.services.verdict_aggregator import (
     finalize_verdict,
     condition_results_from_claims,
     mandatory_conditions,
+    merge_qualification_into_conditions,
 )
 
 logger = logging.getLogger("traceaudit.verifier")
+
+
+def _structured_numeric_status(
+    condition: AtomicConditionContract,
+    result: ConditionVerificationResult,
+) -> tuple[Optional[str], Optional[str]]:
+    """Validate numeric facts emitted in structured LLM fields.
+
+    Unlike raw-text regex extraction, this comparison operates on the model's
+    explicit observed value and role. It therefore cannot confuse a nearby
+    requirement target with a measurement.
+    """
+    if result.evidence_value_role == "REQUIRED_OR_PLANNED":
+        return None, "The cited numeric value is marked required/planned, not observed."
+    if result.evidence_value_role not in ("OBSERVED", "UNCLEAR"):
+        return None, None
+    if not condition.unit or not result.observed_unit:
+        return None, None
+    if not are_units_compatible(result.observed_unit, condition.unit):
+        return None, (
+            f"Observed unit '{result.observed_unit}' is incompatible with required unit '{condition.unit}'."
+        )
+
+    op = (condition.operator or "").strip()
+    threshold = condition.threshold
+    numeric_threshold = (
+        float(threshold)
+        if isinstance(threshold, (int, float)) and not isinstance(threshold, bool)
+        else None
+    )
+
+    observed_value: Optional[float] = None
+    if result.observed_value is not None:
+        try:
+            observed_value = float(str(result.observed_value).replace(",", "").strip())
+        except ValueError:
+            observed_value = None
+    if observed_value is not None:
+        observed_value = convert_value(observed_value, result.observed_unit, condition.unit)
+
+    if numeric_threshold is not None and observed_value is not None:
+        if op in ("<=", "<"):
+            return ("PROVEN" if observed_value <= numeric_threshold else "FAILED"), None
+        if op in (">=", ">"):
+            return ("PROVEN" if observed_value >= numeric_threshold else "FAILED"), None
+        if op in ("==", "="):
+            tolerance = max(abs(numeric_threshold) * 0.025, 1e-9)
+            return ("PROVEN" if abs(observed_value - numeric_threshold) <= tolerance else "FAILED"), None
+
+    if (
+        condition.min_value is not None
+        and condition.max_value is not None
+        and result.observed_min_value is not None
+        and result.observed_max_value is not None
+    ):
+        observed_min = convert_value(result.observed_min_value, result.observed_unit, condition.unit)
+        observed_max = convert_value(result.observed_max_value, result.observed_unit, condition.unit)
+        if observed_min is None or observed_max is None:
+            return None, None
+        if observed_min <= condition.min_value and observed_max >= condition.max_value:
+            return "PROVEN", None
+        if observed_min <= condition.max_value and observed_max >= condition.min_value:
+            return "PENDING", None
+
+    return None, None
+
+
+def _snapshot_condition_results(
+    condition_results: list[ConditionVerificationResult],
+) -> list[dict[str, Any]]:
+    return [result.model_dump(exclude_none=True) for result in condition_results]
+
+
+def _record_reconciliation_diagnostics(
+    analysis: VerificationAnalysisResult,
+    original: list[dict[str, Any]],
+) -> None:
+    reconciled = _snapshot_condition_results(analysis.condition_results)
+    after_by_id = {item.get("condition_id"): item for item in reconciled}
+    transitions = []
+    for previous in original:
+        current = after_by_id.get(previous.get("condition_id"))
+        if current is None or previous.get("status") == current.get("status"):
+            continue
+        transitions.append({
+            "stage": "deterministic_reconciliation",
+            "condition_id": previous.get("condition_id"),
+            "from_status": previous.get("status"),
+            "to_status": current.get("status"),
+            "reason": current.get("reason"),
+        })
+    analysis._diagnostics.update({
+        "llm_condition_results": original,
+        "post_reconciliation_condition_results": reconciled,
+        "condition_transitions": transitions,
+    })
 
 
 def _reconcile_llm_conditions_with_deterministic_facts(
@@ -51,11 +149,13 @@ def _reconcile_llm_conditions_with_deterministic_facts(
     evidence_chunks: list[dict[str, Any]],
     qualifications: list[EvidenceQualification],
 ) -> VerificationAnalysisResult:
-    """Repair missing citations and enforce exact numeric facts before aggregation.
+    """Validate LLM conditions without making a second semantic decision.
 
-    The LLM owns semantic interpretation. Python may only replace a condition
-    when qualified, traceable claim extraction has an exact numeric outcome, or
-    fill attribution that the LLM omitted for the same status.
+    Deterministic claim extraction is an audit signal, not a condition judge.
+    It may repair attribution when it independently reaches the same result and
+    may flag a positive disagreement, but an extraction miss never changes the
+    model's status. This distinction is important: "parser found nothing" is
+    not evidence that a cited engineering conclusion is wrong.
     """
     claims = extract_all_evidence_claims(evidence_chunks, contract)
     deterministic = {
@@ -69,9 +169,16 @@ def _reconcile_llm_conditions_with_deterministic_facts(
     }
 
     for result in analysis.condition_results:
+        if result.semantic_status is None:
+            result.semantic_status = result.status
+        result.validation_state = "UNRESOLVED"
+        result.validation_notes = []
         fallback = deterministic.get(result.condition_id)
         condition = conditions.get(result.condition_id)
         if fallback is None or condition is None:
+            result.validation_notes.append(
+                "No deterministic condition mapping was available; semantic result was preserved."
+            )
             continue
 
         result_traceable = condition_attribution_is_traceable(result, evidence_contents)
@@ -89,21 +196,75 @@ def _reconcile_llm_conditions_with_deterministic_facts(
         is_numeric = (
             condition.operator in ("<=", "<", ">=", ">", "==", "=", "between")
             and (
-                isinstance(condition.threshold, (int, float))
+                (
+                    isinstance(condition.threshold, (int, float))
+                    and not isinstance(condition.threshold, bool)
+                )
                 or condition.min_value is not None
                 or condition.max_value is not None
             )
         )
+        structured_status, structured_problem = (
+            _structured_numeric_status(condition, result) if is_numeric else (None, None)
+        )
+        if structured_problem:
+            result.validation_state = (
+                "CONTRADICTED" if result.status in ("PROVEN", "FAILED") else "UNRESOLVED"
+            )
+            result.validation_notes.append(structured_problem)
+        elif (
+            structured_status
+            and result.status in ("PROVEN", "FAILED")
+            and result.status != structured_status
+        ):
+            result.validation_state = "CONTRADICTED"
+            result.validation_notes.append(
+                f"Structured observed values imply {structured_status}, while semantic status is {result.status}."
+            )
+        elif structured_status == result.status:
+            result.validation_state = "VALID"
+            result.validation_notes.append("Structured observed values confirm the semantic status.")
+
         if (
             is_numeric
             and fallback.status in ("PROVEN", "FAILED")
             and fallback_traceable
             and result.status != fallback.status
         ):
-            result.status = fallback.status
-            result.evidence_ids = list(fallback.evidence_ids)
-            result.quote = fallback.quote
-            result.reason = fallback.reason
+            result.validation_state = "CONTRADICTED"
+            result.validation_notes.append(
+                f"Deterministic structured comparison produced {fallback.status}, "
+                f"while the semantic model produced {result.status}; status was preserved for review."
+            )
+        elif fallback.status == result.status and fallback_traceable and result.validation_state != "CONTRADICTED":
+            result.validation_state = "VALID"
+            result.validation_notes.append(
+                "Independent deterministic comparison confirmed the model status."
+            )
+        elif (
+            is_numeric
+            and result.status in ("PROVEN", "FAILED", "PENDING")
+            and result.validation_state not in ("VALID", "CONTRADICTED")
+        ):
+            result.validation_notes.append(
+                "Numeric parser could not independently confirm the semantic comparison; "
+                "this is unresolved rather than a verdict override."
+            )
+        elif result_traceable and result.validation_state != "CONTRADICTED":
+            result.validation_state = "VALID"
+            result.validation_notes.append("The model's evidence attribution is traceable.")
+
+        expected_relationship = {
+            "PROVEN": "SATISFIES",
+            "FAILED": "VIOLATES",
+            "PENDING": "PARTIAL_COVERAGE",
+        }.get(result.status)
+        if expected_relationship and result.relationship not in ("UNCLEAR", expected_relationship):
+            if result.validation_state != "CONTRADICTED":
+                result.validation_state = "UNRESOLVED"
+            result.validation_notes.append(
+                f"Structured relationship {result.relationship} is inconsistent with status {result.status}."
+            )
 
     return analysis
 
@@ -222,13 +383,16 @@ STEP 2: CONDITION EVALUATION & COMPLIANCE RULES
    - A nominal target T with an explicit ± tolerance d is ONE composite interval [T-d, T+d]; do not require the observation to equal exactly T.
 2. DOCUMENT AUTHORITY & MODALITY DISCIPLINE:
    - When a requirement mandates physical laboratory/bench testing ('physical_test'), theoretical simulations (MATLAB, SPICE, CFD, Simulink), analytical calculations (FMEDA, formulas), or architecture drawings provide 0% empirical proof.
-   - You must NOT mark conditions as 'PROVEN' or 'PENDING' based on simulation or calculation evidence when physical test is required. Mark condition status as 'UNTESTED' and overall requirement status as 'UNKNOWN' (NOT 'PARTIAL', NOT 'SUPPORTED').
+   - You must NOT mark conditions as 'PROVEN' or 'PENDING' based on simulation or calculation evidence when physical test is required. Relevant but method-incompatible evidence is 'INCONCLUSIVE' and the overall requirement is 'UNKNOWN' (NOT 'PARTIAL', NOT 'SUPPORTED').
    - Reserve 'PARTIAL' strictly for when QUALIFIED empirical lab testing directly addressed the condition but covered an incomplete operating envelope or subset. A compliance matrix, design, simulation, or calculation alone is UNKNOWN, not PARTIAL.
    - If the requirement explicitly permits or specifies verification by simulation/analysis, simulation evidence is acceptable.
 3. COMPLIANCE MATRIX STATUS:
    - If an official compliance tracking matrix explicitly records 'NOT STARTED', 'MISSING', or 'TEST PENDING' for this requirement, the status is 'MISSING' (condition status: 'UNTESTED').
 4. COMPOUND CONDITIONS:
-   - For multi-condition requirements, evaluate each condition in `condition_results` with status: 'PROVEN', 'FAILED', 'PENDING', or 'UNTESTED'.
+   - For multi-condition requirements, evaluate each condition in `condition_results` using exactly one state: PROVEN (qualified evidence establishes it), FAILED (qualified/relevant hard evidence contradicts it), PENDING (qualified empirical work directly covers only part of it), UNTESTED (no relevant verification evidence exists), or INCONCLUSIVE (relevant evidence exists but has insufficient authority, method, scope, parameter alignment, or detail).
+   - For every condition, also return the exact observed parameter/value/unit, `evidence_value_role` (OBSERVED, REQUIRED_OR_PLANNED, STATUS_ONLY, NOT_ADDRESSED, or UNCLEAR), and `relationship` (SATISFIES, VIOLATES, PARTIAL_COVERAGE, NOT_ADDRESSED, or UNCLEAR).
+   - A required, target, planned, scheduled, pending, or not-yet-tested value is NOT an observation. Never use it as measured proof. Set `evidence_value_role` to REQUIRED_OR_PLANNED.
+   - Use `observed_min_value` and `observed_max_value` for an observed range. Use `observed_value` for a scalar, boolean, or categorical observation. Copy the observed unit exactly.
    - Final status: 'SUPPORTED' only if ALL conditions PROVEN; 'PARTIAL' if some PROVEN and some PENDING/UNTESTED; 'CONFLICT' if any condition FAILED; 'MISSING' if no evidence / NOT STARTED; 'UNKNOWN' if only simulation / non-authoritative.
    - Every PROVEN, FAILED, or PENDING condition MUST include at least one evidence ID (E1, E2, ...) and a verbatim quote from that evidence. Never return an attributed condition status without both fields.
    - A local failure, violation, leakage, exceeded limit, or lower achieved rating dominates an earlier PASS word from a different sub-test in the same excerpt.
@@ -393,13 +557,16 @@ STEP 2: CONDITION EVALUATION & COMPLIANCE RULES
    - A nominal target T with an explicit ± tolerance d is ONE composite interval [T-d, T+d]; do not require the observation to equal exactly T.
 2. DOCUMENT AUTHORITY & MODALITY DISCIPLINE:
    - When a requirement mandates physical laboratory/bench testing ('physical_test'), theoretical simulations (MATLAB, SPICE, CFD, Simulink), analytical calculations (FMEDA, formulas), or architecture drawings provide 0% empirical proof.
-   - You must NOT mark conditions as 'PROVEN' or 'PENDING' based on simulation or calculation evidence when physical test is required. Mark condition status as 'UNTESTED' and overall requirement status as 'UNKNOWN' (NOT 'PARTIAL', NOT 'SUPPORTED').
+   - You must NOT mark conditions as 'PROVEN' or 'PENDING' based on simulation or calculation evidence when physical test is required. Relevant but method-incompatible evidence is 'INCONCLUSIVE' and the overall requirement is 'UNKNOWN' (NOT 'PARTIAL', NOT 'SUPPORTED').
    - Reserve 'PARTIAL' strictly for when QUALIFIED empirical lab testing directly addressed the condition but covered an incomplete operating envelope or subset. A compliance matrix, design, simulation, or calculation alone is UNKNOWN, not PARTIAL.
    - If the requirement explicitly permits or specifies verification by simulation/analysis, simulation evidence is acceptable.
 3. COMPLIANCE MATRIX STATUS:
    - If an official compliance tracking matrix explicitly records 'NOT STARTED', 'MISSING', or 'TEST PENDING' for this requirement, the status is 'MISSING' (condition status: 'UNTESTED').
 4. COMPOUND CONDITIONS:
-   - For each requirement item, return `condition_results: list[ConditionVerificationResult]` for each defined condition with status: 'PROVEN', 'FAILED', 'PENDING', or 'UNTESTED'.
+   - For each requirement item, return `condition_results: list[ConditionVerificationResult]` for every defined condition using exactly one state: PROVEN (qualified evidence establishes it), FAILED (qualified/relevant hard evidence contradicts it), PENDING (qualified empirical work directly covers only part of it), UNTESTED (no relevant verification evidence exists), or INCONCLUSIVE (relevant evidence exists but has insufficient authority, method, scope, parameter alignment, or detail).
+   - For every condition, also return the exact observed parameter/value/unit, `evidence_value_role` (OBSERVED, REQUIRED_OR_PLANNED, STATUS_ONLY, NOT_ADDRESSED, or UNCLEAR), and `relationship` (SATISFIES, VIOLATES, PARTIAL_COVERAGE, NOT_ADDRESSED, or UNCLEAR).
+   - A required, target, planned, scheduled, pending, or not-yet-tested value is NOT an observation. Never use it as measured proof. Set `evidence_value_role` to REQUIRED_OR_PLANNED.
+   - Use `observed_min_value` and `observed_max_value` for an observed range. Use `observed_value` for a scalar, boolean, or categorical observation. Copy the observed unit exactly.
    - Final status: 'SUPPORTED' if all conditions PROVEN; 'PARTIAL' if some PROVEN and some PENDING/UNTESTED; 'CONFLICT' if any condition FAILED or violated; 'MISSING' if no evidence / NOT STARTED; 'UNKNOWN' if only simulation / non-authoritative.
    - Every PROVEN, FAILED, or PENDING condition MUST include at least one evidence ID (E1, E2, ...) and a verbatim quote from that evidence. Never return an attributed condition status without both fields.
    - A local failure, violation, leakage, exceeded limit, or lower achieved rating dominates an earlier PASS word from a different sub-test in the same excerpt.
@@ -407,6 +574,157 @@ STEP 2: CONDITION EVALUATION & COMPLIANCE RULES
 Respond with a JSON object containing `batch_results: list[BatchVerificationItemResult]` with an item for each requirement.
 """
     return prompt, system_instruction
+
+
+async def _repair_contradicted_conditions(
+    contract: RequirementContract,
+    analysis: VerificationAnalysisResult,
+    evidence_chunks: list[dict[str, Any]],
+    qualifications: list[EvidenceQualification],
+    model: str,
+    thinking_level: Optional[str],
+) -> VerificationAnalysisResult:
+    """Ask the LLM—not Python—to resolve positively detected inconsistencies."""
+    challenged = []
+    for result in analysis.condition_results:
+        heuristic_review = any(
+            note.startswith("Qualification heuristics")
+            or note.startswith("Lexical parameter mapping")
+            for note in result.validation_notes
+        )
+        if result.validation_state == "CONTRADICTED" or heuristic_review:
+            challenged.append(result)
+    if not challenged:
+        return analysis
+
+    evidence_block = []
+    for qualification, chunk in zip(qualifications, evidence_chunks):
+        content = _isolate_relevant_passage(
+            (chunk.get("content") or chunk.get("quote") or "").strip(), contract
+        )
+        evidence_block.append(
+            f"[{qualification.evidence_id}] {chunk.get('document_name', 'Document')}\n"
+            f"{format_qualification_annotation(qualification)}\n{content}"
+        )
+
+    challenged_payload = [item.model_dump(exclude_none=True) for item in challenged]
+    prompt = f"""Re-audit only the challenged atomic conditions below.
+
+Requirement: {contract.req_code}
+Specification: {contract.raw_text}
+Atomic contracts: {json.dumps([c.model_dump(exclude_none=True) for c in contract.atomic_conditions], ensure_ascii=False)}
+
+Previous semantic results and validator signals:
+{json.dumps(challenged_payload, ensure_ascii=False)}
+
+Evidence excerpts:
+{chr(10).join(evidence_block)}
+
+The validator signal is a request for fresh semantic review, not an answer. Read the cited text yourself.
+Return a VerificationAnalysisResult containing a corrected condition result for every challenged condition ID.
+For each result, provide status, exact evidence IDs, a verbatim quote, observed parameter/value/unit,
+evidence_value_role, relationship, and a concise reason. Required/planned/pending targets are not observations.
+Do not include conditions that were not challenged. The top-level status is provisional and will be aggregated in Python.
+"""
+    try:
+        repaired = await generate_structured(
+            prompt=prompt,
+            response_model=VerificationAnalysisResult,
+            model=model,
+            system_instruction=(
+                "You are the focused second-pass engineering evidence reviewer. Resolve only the listed "
+                "condition inconsistencies from the specification and verbatim evidence."
+            ),
+            thinking_level=thinking_level or settings.GEMINI_THINKING_LEVEL,
+        )
+    except Exception as ex:
+        logger.warning("Focused condition repair failed: %s", ex)
+        analysis._diagnostics["semantic_repair_error"] = str(ex)
+        return analysis
+
+    if not repaired or not repaired.condition_results:
+        return analysis
+
+    challenged_ids = {item.condition_id for item in challenged}
+    replacements = {
+        item.condition_id: item
+        for item in repaired.condition_results
+        if item.condition_id in challenged_ids
+    }
+    if not replacements:
+        return analysis
+
+    before = _snapshot_condition_results(analysis.condition_results)
+    merged: list[ConditionVerificationResult] = []
+    for current in analysis.condition_results:
+        replacement = replacements.get(current.condition_id)
+        if replacement is None:
+            merged.append(current)
+            continue
+        replacement.semantic_status = replacement.status
+        replacement.validation_notes = [
+            "Condition status was produced by a focused semantic repair pass."
+        ]
+        replacement.validation_state = "UNRESOLVED"
+        merged.append(replacement)
+    analysis.condition_results = merged
+
+    after = _snapshot_condition_results(analysis.condition_results)
+    after_by_id = {item.get("condition_id"): item for item in after}
+    transitions = list(analysis._diagnostics.get("condition_transitions", []))
+    for previous in before:
+        current = after_by_id.get(previous.get("condition_id"))
+        if current and previous.get("status") != current.get("status"):
+            transitions.append({
+                "stage": "semantic_repair",
+                "condition_id": previous.get("condition_id"),
+                "from_status": previous.get("status"),
+                "to_status": current.get("status"),
+                "reason": current.get("reason"),
+            })
+    analysis._diagnostics["condition_transitions"] = transitions
+    analysis._diagnostics["semantic_repair_performed"] = True
+
+    # Re-run validators only to annotate the repaired semantic answer. As in
+    # the first pass, validator disagreement cannot overwrite its status.
+    analysis = _reconcile_llm_conditions_with_deterministic_facts(
+        contract, analysis, evidence_chunks, qualifications
+    )
+    analysis._diagnostics["post_reconciliation_condition_results"] = (
+        _snapshot_condition_results(analysis.condition_results)
+    )
+    return analysis
+
+
+def _apply_pre_repair_qualification_validation(
+    contract: RequirementContract,
+    analysis: VerificationAnalysisResult,
+    qualifications: list[EvidenceQualification],
+    qualified_contents: dict[str, str],
+) -> VerificationAnalysisResult:
+    """Expose qualification signals before deciding whether LLM repair is needed."""
+    before = _snapshot_condition_results(analysis.condition_results)
+    analysis.condition_results = merge_qualification_into_conditions(
+        contract,
+        [item.model_copy(deep=True) for item in analysis.condition_results],
+        qualifications,
+        qualified_contents,
+    )
+    after = _snapshot_condition_results(analysis.condition_results)
+    after_by_id = {item.get("condition_id"): item for item in after}
+    transitions = list(analysis._diagnostics.get("condition_transitions", []))
+    for previous in before:
+        current = after_by_id.get(previous.get("condition_id"))
+        if current and previous.get("status") != current.get("status"):
+            transitions.append({
+                "stage": "hard_evidence_validation",
+                "condition_id": previous.get("condition_id"),
+                "from_status": previous.get("status"),
+                "to_status": current.get("status"),
+                "reason": current.get("reason"),
+            })
+    analysis._diagnostics["condition_transitions"] = transitions
+    return analysis
 
 
 async def evaluate_batch_verification(
@@ -467,11 +785,31 @@ async def evaluate_batch_verification(
                         reason=item_res.reason,
                         highlight=item_res.highlight,
                     )
+                    original_conditions = _snapshot_condition_results(provisional.condition_results)
+                    provisional._diagnostics = {
+                        "decision_source": "llm",
+                        "llm_provisional_status": provisional.status,
+                    }
                     provisional = _reconcile_llm_conditions_with_deterministic_facts(
                         contract=contract,
                         analysis=provisional,
                         evidence_chunks=cand_chunks,
                         qualifications=quals,
+                    )
+                    _record_reconciliation_diagnostics(provisional, original_conditions)
+                    provisional = _apply_pre_repair_qualification_validation(
+                        contract,
+                        provisional,
+                        quals,
+                        qual_contents,
+                    )
+                    provisional = await _repair_contradicted_conditions(
+                        contract=contract,
+                        analysis=provisional,
+                        evidence_chunks=cand_chunks,
+                        qualifications=quals,
+                        model=active_model,
+                        thinking_level=thinking_level,
                     )
                     # Always recompute final verdict in Python
                     results[item_res.req_code] = finalize_verdict(
@@ -520,19 +858,39 @@ async def evaluate_requirement_verification(
             thinking_level=thinking_level or settings.GEMINI_THINKING_LEVEL,
         )
         if result and result.status in ("SUPPORTED", "PARTIAL", "MISSING", "UNKNOWN", "CONFLICT"):
+            original_conditions = _snapshot_condition_results(result.condition_results)
+            result._diagnostics = {
+                "decision_source": "llm",
+                "llm_provisional_status": result.status,
+            }
             quals = qualify_evidence_chunks(contract, evidence_chunks, spec_doc_names=spec_doc_names)
-            result = _reconcile_llm_conditions_with_deterministic_facts(
-                contract=contract,
-                analysis=result,
-                evidence_chunks=evidence_chunks,
-                qualifications=quals,
-            )
             qual_contents = {
                 q.evidence_id: _isolate_relevant_passage(
                     (c.get("content") or c.get("quote") or ""), contract
                 )
                 for q, c in zip(quals, evidence_chunks)
             }
+            result = _reconcile_llm_conditions_with_deterministic_facts(
+                contract=contract,
+                analysis=result,
+                evidence_chunks=evidence_chunks,
+                qualifications=quals,
+            )
+            _record_reconciliation_diagnostics(result, original_conditions)
+            result = _apply_pre_repair_qualification_validation(
+                contract,
+                result,
+                quals,
+                qual_contents,
+            )
+            result = await _repair_contradicted_conditions(
+                contract=contract,
+                analysis=result,
+                evidence_chunks=evidence_chunks,
+                qualifications=quals,
+                model=active_model,
+                thinking_level=thinking_level,
+            )
             has_relevant = any(not any(k in c.get("document_name", "").lower() for k in SPEC_DOC_KEYWORDS) for c in evidence_chunks)
             # Python recomputes and owns final status
             return finalize_verdict(

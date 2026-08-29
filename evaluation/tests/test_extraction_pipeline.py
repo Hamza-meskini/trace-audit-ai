@@ -18,6 +18,9 @@ from evaluation.run_complex_benchmark import (
     _build_pipeline_requirements,
     _count_exactly_matched_conditions,
     _count_semantically_matched_conditions,
+    _decomposed_contract_metrics,
+    _ground_truth_condition_status,
+    _match_extracted_contracts,
 )
 
 
@@ -164,6 +167,73 @@ class TestBenchmarkRequirementSource(unittest.TestCase):
         self.assertEqual(
             _count_exactly_matched_conditions(ground_truth, {extracted.req_code: extracted}),
             0,
+        )
+
+    def test_oracle_evidence_mode_does_not_oracle_the_contract(self):
+        extracted = [requirement("REQ-AUT-001", "extracted voltage clause")]
+        ground_truth = [{
+            "requirement_id": "REQ-AUT-001",
+            "title": "oracle title",
+            "requirement_text": "oracle requirement text",
+            "category": "Electrical",
+            "conditions": [{"condition_id": "C-001-1", "description": "oracle condition"}],
+        }]
+
+        evidence_oracle = _build_pipeline_requirements("oracle-evidence", extracted, ground_truth)
+        combined_oracle = _build_pipeline_requirements("oracle-contracts-evidence", extracted, ground_truth)
+
+        self.assertEqual(evidence_oracle[0]["description"], "extracted voltage clause")
+        self.assertEqual(combined_oracle[0]["description"], "oracle requirement text")
+
+    def test_contract_metrics_separate_field_failures(self):
+        extracted = requirement("REQ-AUT-001", "phase overcurrent threshold")
+        extracted.conditions[0].parameter = "phase overcurrent threshold"
+        extracted.conditions[0].operator = "<"
+        ground_truth = [{
+            "requirement_id": "REQ-AUT-001",
+            "conditions": [{
+                "condition_id": "C-001-1",
+                "description": "current threshold",
+                "parameter": "current_threshold",
+                "operator": "<=",
+                "threshold": 12.0,
+                "unit": "V",
+            }],
+        }]
+
+        result = _decomposed_contract_metrics(
+            _match_extracted_contracts(ground_truth, {extracted.req_code: extracted})
+        )
+
+        self.assertEqual(result["metrics"]["decomposition_recall"], 100.0)
+        self.assertEqual(result["metrics"]["operator_accuracy"], 0.0)
+        self.assertEqual(result["metrics"]["threshold_accuracy"], 100.0)
+        self.assertEqual(result["metrics"]["full_exact_recall"], 0.0)
+
+    def test_explicit_atomic_truth_overrides_legacy_inference(self):
+        requirement_data = {"expected_status": "CONFLICT"}
+        link = {"condition_statuses": {"C1": "PROVEN", "C2": "FAILED"}}
+
+        self.assertEqual(
+            _ground_truth_condition_status(requirement_data, link, {"condition_id": "C1"}),
+            ("PROVEN", "explicit"),
+        )
+        self.assertEqual(
+            _ground_truth_condition_status(requirement_data, link, {"condition_id": "C2"}),
+            ("FAILED", "explicit"),
+        )
+
+    def test_legacy_atomic_truth_is_marked_inferred(self):
+        requirement_data = {"expected_status": "PARTIAL"}
+        link = {"missing_conditions": ["C2 (pending test)"]}
+
+        self.assertEqual(
+            _ground_truth_condition_status(requirement_data, link, {"condition_id": "C1"}),
+            ("PROVEN", "inferred_from_requirement"),
+        )
+        self.assertEqual(
+            _ground_truth_condition_status(requirement_data, link, {"condition_id": "C2"}),
+            ("PENDING", "inferred_from_requirement"),
         )
 
 

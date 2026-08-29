@@ -179,8 +179,15 @@ def scopes_compatible(
     if r_family == e_family:
         return True
 
-    # Different specific entities (includes component evidence for a
-    # system-level requirement).
+    # A generic System scope is often a parser fallback rather than an
+    # affirmative claim that only whole-system evidence is admissible. A
+    # specific component therefore remains unresolved (letting the semantic
+    # reasoner inspect the requirement text) instead of becoming a false hard
+    # mismatch. Two different *specific* entities are still incompatible.
+    if r == "system":
+        return None
+
+    # Different specific entities.
     return False
 
 

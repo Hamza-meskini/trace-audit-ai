@@ -1,11 +1,14 @@
 """Pydantic Schema for Structured Multi-Condition Verification Reasoning."""
 
 from typing import Literal, Optional, Any
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, PrivateAttr, field_validator
 
 
 AtomicConditionStatus = Literal["PROVEN", "FAILED", "PENDING", "UNTESTED", "NOT_APPLICABLE", "INCONCLUSIVE"]
 VerificationTopLevelStatus = Literal["SUPPORTED", "PARTIAL", "MISSING", "UNKNOWN", "CONFLICT"]
+ConditionValidationState = Literal["VALID", "UNRESOLVED", "CONTRADICTED"]
+EvidenceRelationship = Literal["SATISFIES", "VIOLATES", "PARTIAL_COVERAGE", "NOT_ADDRESSED", "UNCLEAR"]
+EvidenceValueRole = Literal["OBSERVED", "REQUIRED_OR_PLANNED", "STATUS_ONLY", "NOT_ADDRESSED", "UNCLEAR"]
 
 
 # Canonical synonym mapping dictionaries for real-world enterprise engineering vocabularies
@@ -52,7 +55,6 @@ _CONDITION_STATUS_SYNONYMS: dict[str, AtomicConditionStatus] = {
     "NO_EVIDENCE": "UNTESTED",
     "OPEN": "UNTESTED",
     "NO_DATA": "UNTESTED",
-    "UNKNOWN": "UNTESTED",
     # Exempt / Waived
     "NOT_APPLICABLE": "NOT_APPLICABLE",
     "N_A": "NOT_APPLICABLE",
@@ -61,6 +63,7 @@ _CONDITION_STATUS_SYNONYMS: dict[str, AtomicConditionStatus] = {
     "EXEMPT": "NOT_APPLICABLE",
     # Inconclusive
     "INCONCLUSIVE": "INCONCLUSIVE",
+    "UNKNOWN": "INCONCLUSIVE",
     "AMBIGUOUS": "INCONCLUSIVE",
     "UNRESOLVED": "INCONCLUSIVE",
 }
@@ -128,6 +131,19 @@ class ConditionVerificationResult(BaseModel):
     condition_id: str
     description: Optional[str] = None
     status: AtomicConditionStatus = "UNTESTED"
+    # These fields make the model's semantic comparison auditable.
+    # `semantic_status` and validation fields are populated/overwritten by the
+    # pipeline; observed facts and their role are produced by the LLM.
+    semantic_status: Optional[AtomicConditionStatus] = None
+    validation_state: ConditionValidationState = "UNRESOLVED"
+    validation_notes: list[str] = Field(default_factory=list)
+    observed_parameter: Optional[str] = None
+    observed_value: Optional[str] = None
+    observed_min_value: Optional[float] = None
+    observed_max_value: Optional[float] = None
+    observed_unit: Optional[str] = None
+    evidence_value_role: EvidenceValueRole = "UNCLEAR"
+    relationship: EvidenceRelationship = "UNCLEAR"
     evidence_ids: list[str] = Field(default_factory=list)
     quote: Optional[str] = None
     reason: Optional[str] = None
@@ -136,6 +152,11 @@ class ConditionVerificationResult(BaseModel):
     @classmethod
     def _validate_status(cls, v: Any) -> str:
         return normalize_condition_status(v)
+
+    @field_validator("semantic_status", mode="before")
+    @classmethod
+    def _validate_semantic_status(cls, v: Any) -> Any:
+        return None if v is None else normalize_condition_status(v)
 
 
 class EvidenceFinding(BaseModel):
@@ -159,6 +180,12 @@ class VerificationAnalysisResult(BaseModel):
     evidence_findings: list[EvidenceFinding] = Field(default_factory=list)
     reason: str
     highlight: Optional[str] = None
+
+    # Internal-only pipeline provenance.  A private attribute keeps diagnostic
+    # bookkeeping out of the structured-output schema sent to the LLM while
+    # still allowing the benchmark and API adapters to explain every
+    # deterministic rewrite performed after model inference.
+    _diagnostics: dict[str, Any] = PrivateAttr(default_factory=dict)
 
     @field_validator("status", mode="before")
     @classmethod

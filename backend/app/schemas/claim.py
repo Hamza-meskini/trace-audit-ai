@@ -294,6 +294,39 @@ def _infer_claim_parameter(snippet: str, unit: Optional[str]) -> Optional[str]:
     return normalize_parameter(found[0]) if found else None
 
 
+_NON_OBSERVED_VALUE_MARKERS = (
+    "pending", "planned", "scheduled", "not tested", "not yet tested",
+    "not yet verified", "to be tested", "target", "required", "requirement",
+    "shall", "remaining", "future", "TBD",
+)
+_OBSERVED_VALUE_MARKERS = (
+    "tested", "measured", "observed", "recorded", "achieved", "actual",
+    "completed", "verified", "operated", "reached", "result",
+)
+
+
+def _numeric_value_is_non_observed(text: str, start: int, end: int) -> bool:
+    """Reject target/planned numbers before they become measured claims.
+
+    The check is deliberately clause-local so an observed value in one
+    semicolon-separated clause does not turn a pending target in another
+    clause into an observation.
+    """
+    left = max(text.rfind(";", 0, start), text.rfind("\n", 0, start), text.rfind(".", 0, start))
+    right_candidates = [pos for pos in (text.find(";", end), text.find("\n", end), text.find(".", end)) if pos >= 0]
+    right = min(right_candidates) if right_candidates else len(text)
+    clause = text[left + 1:right].lower()
+    has_non_observed = any(marker.lower() in clause for marker in _NON_OBSERVED_VALUE_MARKERS)
+    has_observed = any(marker in clause for marker in _OBSERVED_VALUE_MARKERS)
+    # Explicit negated/pending modality wins even if the phrase contains the
+    # token "tested" (for example, "not yet tested to 20,000 rpm").
+    explicit_negative = any(marker in clause for marker in (
+        "pending", "planned", "scheduled", "not tested", "not yet",
+        "to be tested", "remaining", "future", "tbd",
+    ))
+    return explicit_negative or (has_non_observed and not has_observed)
+
+
 def extract_claims_from_chunk(
     chunk: dict,
     contract: Optional[RequirementContract] = None,
@@ -339,6 +372,8 @@ def extract_claims_from_chunk(
     # 2. Extract numeric range claims (e.g. "tested from -20.0 °C to +70.0 °C", "400.0 V to 750.0 V DC")
     for m in RANGE_REGEX.finditer(target_text):
         try:
+            if _numeric_value_is_non_observed(target_text, m.start(), m.end()):
+                continue
             min_v = float(m.group(1))
             unit_pre = m.group(2)
             max_v = float(m.group(3))
@@ -380,6 +415,8 @@ def extract_claims_from_chunk(
     points_by_unit: dict[str, list[tuple[float, str]]] = {}
     for m in NUM_WITH_UNIT_PATTERN.finditer(target_text):
         try:
+            if _numeric_value_is_non_observed(target_text, m.start(), m.end()):
+                continue
             val = float(m.group(1).replace(",", ""))
             u = m.group(2).strip()
             if u and len(u) <= 8 and not any(ch.isdigit() for ch in u):

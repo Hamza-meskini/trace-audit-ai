@@ -84,7 +84,39 @@ class TestEvaluationFramework(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             output = Path(temp_dir) / "benchmark_audit_trace.xlsx"
             export_benchmark_audit_trace_excel(
-                results={"evaluation_mode": "end-to-end"},
+                results={
+                    "evaluation_mode": "end-to-end",
+                    "condition_metrics": {
+                        "condition_accuracy": 100.0,
+                        "raw_llm": {"condition_accuracy": 0.0},
+                        "condition_records": [{
+                            "requirement_id": "REQ-001",
+                            "condition_id": "GT-C1",
+                            "parameter": "voltage",
+                            "expected_status": "PROVEN",
+                            "ground_truth_source": "explicit",
+                            "llm_status": "INCONCLUSIVE",
+                            "post_reconciliation_status": "PROVEN",
+                            "pre_qualification_status": "PROVEN",
+                            "final_status": "PROVEN",
+                            "correct": True,
+                            "is_numeric_condition": True,
+                        }],
+                    },
+                    "stage_diagnostics": {
+                        "aggregation_oracle": {"accuracy": 100.0},
+                        "audit_defensible_accuracy": 100.0,
+                    },
+                    "extraction_metrics": {
+                        "contract_mismatches": [{
+                            "requirement_id": "REQ-001",
+                            "condition_id": "GT-C1",
+                            "failed_fields": ["parameter"],
+                            "expected": {"parameter": "voltage"},
+                            "extracted": {"parameter": "pack_voltage"},
+                        }],
+                    },
+                },
                 ground_truth_reqs=ground_truth,
                 links_by_id={},
                 retrieved_by_req=retrieved,
@@ -101,6 +133,9 @@ class TestEvaluationFramework(unittest.TestCase):
                 self.assertEqual(sheet["E2"].value, "Actual extracted requirement text")
                 self.assertIn("EXT-C1", sheet["G2"].value)
                 self.assertEqual(sheet["N2"].value, "COMPLIANCE_MATRIX + EMPIRICAL_TEST")
+                self.assertEqual(workbook["Atomic_Condition_Diagnostics"]["L2"].value, "CORRECTED")
+                self.assertEqual(workbook["Contract_Field_Diagnostics"]["C2"].value, "parameter")
+                self.assertEqual(workbook["Executive_Summary"]["G17"].value, 0.0)
             finally:
                 workbook.close()
 

@@ -35,11 +35,25 @@ from app.services.retrieval import (
     retrieve_candidate_evidence,
 )
 from app.services.classification import batch_assess_requirements
+from app.schemas.contract import parse_requirement_contract
+from app.schemas.evidence_qualification import normalize_parameter
+from app.schemas.verification_result import ConditionVerificationResult
+from app.services.units import are_units_compatible
+from app.services.verdict_aggregator import aggregate_condition_statuses
 from app.config import settings
 
 # Benchmark 5 Status Classes
 BENCHMARK_CLASSES = ["SUPPORTED", "PARTIAL", "CONFLICT", "MISSING", "UNKNOWN"]
+CONDITION_CLASSES = ["PROVEN", "FAILED", "PENDING", "UNTESTED", "INCONCLUSIVE", "NOT_APPLICABLE"]
 SRS_DOC_NAME = "01_System_Requirements_Specification_SRS.docx"
+
+MODE_ALIASES = {
+    "oracle": "oracle-contracts",
+    "oracle-contracts": "oracle-contracts",
+    "oracle-evidence": "oracle-evidence",
+    "oracle-contracts-evidence": "oracle-contracts-evidence",
+    "end-to-end": "end-to-end",
+}
 
 
 def _normalized_tokens(value: str) -> list[str]:
@@ -90,7 +104,7 @@ def _build_pipeline_requirements(
 ) -> list[dict[str, Any]]:
     """Choose pipeline inputs without leaking ground truth into end-to-end mode."""
     normalized_mode = mode.strip().lower()
-    if normalized_mode == "oracle":
+    if normalized_mode in {"oracle", "oracle-contracts", "oracle-contracts-evidence"}:
         return [
             {
                 "req_code": item["requirement_id"],
@@ -102,8 +116,8 @@ def _build_pipeline_requirements(
             }
             for item in ground_truth_reqs
         ]
-    if normalized_mode != "end-to-end":
-        raise ValueError("mode must be 'end-to-end' or 'oracle'")
+    if normalized_mode not in {"end-to-end", "oracle-evidence"}:
+        raise ValueError(f"unsupported benchmark mode: {mode}")
 
     return [
         {
@@ -124,12 +138,15 @@ def _predicted_condition_status(
 ) -> str:
     """Align evaluator-only condition labels without altering pipeline inputs."""
     expected_id = expected_condition.get("condition_id", "")
+    def get_field(result: Any, field: str) -> Any:
+        return result.get(field) if isinstance(result, dict) else getattr(result, field, None)
+
     direct = next(
-        (result for result in predicted_results if result.condition_id == expected_id),
+        (result for result in predicted_results if get_field(result, "condition_id") == expected_id),
         None,
     )
     if direct is not None:
-        return direct.status
+        return get_field(direct, "status") or "UNTESTED"
 
     expected_text = " ".join(
         str(value)
@@ -150,7 +167,7 @@ def _predicted_condition_status(
                 expected_text,
                 " ".join(
                     str(value)
-                    for value in (result.description, result.reason)
+                    for value in (get_field(result, "description"), get_field(result, "reason"))
                     if value
                 ),
             ),
@@ -161,8 +178,101 @@ def _predicted_condition_status(
     if scored:
         score, best = max(scored, key=lambda item: item[0])
         if score >= 0.45:
-            return best.status
+            return get_field(best, "status") or "UNTESTED"
     return "UNTESTED"
+
+
+def _predicted_condition_result(
+    expected_condition: dict[str, Any],
+    predicted_results: list[Any],
+) -> Optional[Any]:
+    """Return the aligned result object using the same policy as status scoring."""
+    expected_id = expected_condition.get("condition_id", "")
+
+    def get_field(result: Any, field: str) -> Any:
+        return result.get(field) if isinstance(result, dict) else getattr(result, field, None)
+
+    direct = next(
+        (result for result in predicted_results if get_field(result, "condition_id") == expected_id),
+        None,
+    )
+    if direct is not None:
+        return direct
+    expected_text = " ".join(
+        str(item)
+        for item in (
+            expected_condition.get("parameter"),
+            expected_condition.get("description"),
+            expected_condition.get("operator"),
+            expected_condition.get("threshold"),
+            expected_condition.get("min_value"),
+            expected_condition.get("max_value"),
+            expected_condition.get("unit"),
+        )
+        if item is not None
+    )
+    scored = [
+        (
+            _token_f1(
+                expected_text,
+                " ".join(
+                    str(item)
+                    for item in (get_field(result, "description"), get_field(result, "reason"))
+                    if item
+                ),
+            ),
+            result,
+        )
+        for result in predicted_results
+    ]
+    if not scored:
+        return None
+    score, best = max(scored, key=lambda item: item[0])
+    return best if score >= 0.45 else None
+
+
+def _ground_truth_condition_status(
+    requirement: dict[str, Any],
+    ground_truth_link: dict[str, Any],
+    condition: dict[str, Any],
+) -> tuple[str, str]:
+    """Resolve atomic truth and report whether it is explicit or inferred.
+
+    Historical benchmark files only label the final requirement state and a
+    list of missing condition references.  Those labels remain available for
+    backward-compatible scoring, but are marked as inferred so they are not
+    mistaken for independently annotated atomic ground truth.
+    """
+    explicit = condition.get("expected_status") or condition.get("expected_condition_status")
+    condition_statuses = ground_truth_link.get("condition_statuses", {})
+    condition_id = condition.get("condition_id", "")
+    if not explicit and isinstance(condition_statuses, dict):
+        explicit = condition_statuses.get(condition_id)
+    if explicit:
+        status = str(explicit).strip().upper()
+        return (status if status in CONDITION_CLASSES else "INCONCLUSIVE", "explicit")
+
+    expected_status = normalize_status_5(requirement.get("expected_status"))
+    missing_refs = ground_truth_link.get("missing_conditions", [])
+    parameter = condition.get("parameter")
+    is_missing = any(
+        condition_id in str(reference)
+        or (parameter and str(parameter).lower() in str(reference).lower())
+        for reference in missing_refs
+    )
+    if expected_status == "SUPPORTED":
+        status = "PROVEN"
+    elif expected_status == "MISSING":
+        status = "UNTESTED"
+    elif expected_status == "UNKNOWN":
+        status = "INCONCLUSIVE"
+    elif expected_status == "CONFLICT":
+        status = "FAILED"
+    elif expected_status == "PARTIAL":
+        status = "PENDING" if is_missing else "PROVEN"
+    else:
+        status = "UNTESTED"
+    return status, "inferred_from_requirement"
 
 
 def _condition_similarity(expected: dict[str, Any], extracted: Any) -> float:
@@ -272,10 +382,217 @@ def _count_exactly_matched_conditions(
     return matched
 
 
+def _match_extracted_contracts(
+    ground_truth_reqs: list[dict[str, Any]],
+    extracted_by_id: dict[str, Any],
+) -> list[dict[str, Any]]:
+    """One-to-one expected/extracted pairs used by decomposed contract metrics."""
+    pairs: list[dict[str, Any]] = []
+    for requirement in ground_truth_reqs:
+        extracted_req = extracted_by_id.get(requirement["requirement_id"])
+        actual_conditions = list(extracted_req.conditions) if extracted_req is not None else []
+        used_indices: set[int] = set()
+        for expected in requirement.get("conditions", []):
+            candidates = [
+                (_condition_similarity(expected, actual), index, actual)
+                for index, actual in enumerate(actual_conditions)
+                if index not in used_indices
+            ]
+            if not candidates:
+                pairs.append({"requirement_id": requirement["requirement_id"], "expected": expected, "actual": None, "similarity": 0.0})
+                continue
+            score, index, actual = max(candidates, key=lambda item: item[0])
+            if score >= 0.45:
+                used_indices.add(index)
+                pairs.append({
+                    "requirement_id": requirement["requirement_id"],
+                    "expected": expected,
+                    "actual": actual.model_dump(exclude_none=True),
+                    "similarity": round(score, 4),
+                })
+            else:
+                pairs.append({"requirement_id": requirement["requirement_id"], "expected": expected, "actual": None, "similarity": round(score, 4)})
+    return pairs
+
+
+def _percent(correct: int, total: int) -> Optional[float]:
+    return round(correct / total * 100.0, 2) if total else None
+
+
+def _decomposed_contract_metrics(pairs: list[dict[str, Any]]) -> dict[str, Any]:
+    """Separate decomposition, naming, operator, values, and units."""
+    field_totals = Counter()
+    field_correct = Counter()
+    mismatches: list[dict[str, Any]] = []
+    matched = 0
+    exact = 0
+    for pair in pairs:
+        expected = pair["expected"]
+        actual = pair["actual"]
+        if actual is not None:
+            matched += 1
+            exact += int(_condition_contract_exact(expected, _ContractView(actual)))
+
+        failed_fields: list[str] = []
+        for field in ("parameter", "operator", "threshold", "min_value", "max_value", "unit"):
+            if expected.get(field) is None:
+                continue
+            field_totals[field] += 1
+            actual_value = actual.get(field) if actual else None
+            expected_value = expected.get(field)
+            if field == "operator":
+                left = "==" if expected_value == "=" else expected_value
+                right = "==" if actual_value == "=" else actual_value
+                matches = left == right
+            else:
+                matches = _normalized_contract_value(expected_value) == _normalized_contract_value(actual_value)
+            if matches:
+                field_correct[field] += 1
+            else:
+                failed_fields.append(field)
+
+        if expected.get("parameter") is not None:
+            field_totals["parameter_canonical"] += 1
+            expected_parameter = normalize_parameter(str(expected.get("parameter") or ""))
+            actual_parameter = normalize_parameter(str(actual.get("parameter") or "")) if actual else None
+            if expected_parameter and expected_parameter == actual_parameter:
+                field_correct["parameter_canonical"] += 1
+        if expected.get("unit") is not None:
+            field_totals["unit_compatible"] += 1
+            if actual and are_units_compatible(expected.get("unit"), actual.get("unit")):
+                field_correct["unit_compatible"] += 1
+
+        if failed_fields:
+            mismatches.append({
+                "requirement_id": pair["requirement_id"],
+                "condition_id": expected.get("condition_id"),
+                "failed_fields": failed_fields,
+                "expected": expected,
+                "extracted": actual,
+            })
+
+    total = len(pairs)
+    metrics = {
+        "total_expected_conditions": total,
+        "semantically_matched_conditions": matched,
+        "decomposition_recall": _percent(matched, total),
+        "full_exact_recall": _percent(exact, total),
+        "parameter_exact_accuracy": _percent(field_correct["parameter"], field_totals["parameter"]),
+        "parameter_canonical_accuracy": _percent(field_correct["parameter_canonical"], field_totals["parameter_canonical"]),
+        "operator_accuracy": _percent(field_correct["operator"], field_totals["operator"]),
+        "threshold_accuracy": _percent(field_correct["threshold"], field_totals["threshold"]),
+        "min_value_accuracy": _percent(field_correct["min_value"], field_totals["min_value"]),
+        "max_value_accuracy": _percent(field_correct["max_value"], field_totals["max_value"]),
+        "unit_exact_accuracy": _percent(field_correct["unit"], field_totals["unit"]),
+        "unit_compatible_accuracy": _percent(field_correct["unit_compatible"], field_totals["unit_compatible"]),
+        "field_denominators": dict(field_totals),
+    }
+    return {"metrics": metrics, "mismatches": mismatches}
+
+
+class _ContractView:
+    """Tiny adapter so exact-match logic can score serialized conditions."""
+
+    def __init__(self, data: dict[str, Any]):
+        self._data = data
+
+    def model_dump(self, exclude_none: bool = True) -> dict[str, Any]:
+        if not exclude_none:
+            return dict(self._data)
+        return {key: value for key, value in self._data.items() if value is not None}
+
+
+def _oracle_evidence_chunks(
+    ground_truth_link: dict[str, Any],
+    all_chunks: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Build a verifier input from annotated evidence, bypassing retrieval only."""
+    oracle_chunks: list[dict[str, Any]] = []
+    for index, evidence in enumerate(ground_truth_link.get("expected_evidence", []), 1):
+        document = evidence.get("document", "Oracle evidence")
+        quote = evidence.get("quote", "")
+        match = next(
+            (
+                chunk for chunk in all_chunks
+                if chunk.get("document_name", "").lower() == document.lower()
+                and _passage_matches(quote, chunk.get("content", ""))
+            ),
+            None,
+        )
+        if match:
+            selected = dict(match)
+        else:
+            suffix = Path(document).suffix.lower()
+            selected = {
+                "id": f"oracle-{ground_truth_link.get('requirement_id', 'REQ')}-{index}",
+                "document_id": Path(document).stem,
+                "document_name": document,
+                "doc_type": "Compliance matrix" if suffix == ".xlsx" else "Test report",
+                "page_number": evidence.get("page"),
+                "content": quote,
+            }
+        selected["score"] = 1.0
+        selected["oracle_evidence"] = True
+        oracle_chunks.append(selected)
+    return oracle_chunks
+
+
+def _aggregation_oracle_metrics(
+    ground_truth_reqs: list[dict[str, Any]],
+    links_by_id: dict[str, dict[str, Any]],
+) -> dict[str, Any]:
+    """Experiment D: give the aggregator expected atomic states directly."""
+    correct = 0
+    records = []
+    for requirement in ground_truth_reqs:
+        req_id = requirement["requirement_id"]
+        link = links_by_id.get(req_id, {})
+        contract = parse_requirement_contract(
+            req_code=req_id,
+            title=requirement.get("title", ""),
+            description=requirement.get("requirement_text", ""),
+            category=requirement.get("category", "General"),
+            structured_conditions=requirement.get("conditions", []),
+        )
+        conditions = [
+            ConditionVerificationResult(
+                condition_id=condition.get("condition_id", ""),
+                description=condition.get("description"),
+                status=_ground_truth_condition_status(requirement, link, condition)[0],
+            )
+            for condition in requirement.get("conditions", [])
+        ]
+        expected = normalize_status_5(requirement.get("expected_status"))
+        predicted, _, reason = aggregate_condition_statuses(
+            contract,
+            conditions,
+            has_relevant_evidence=expected != "MISSING",
+            evidence_absent=expected == "MISSING",
+        )
+        matches = normalize_status_5(predicted) == expected
+        correct += int(matches)
+        if not matches:
+            records.append({
+                "requirement_id": req_id,
+                "expected_status": expected,
+                "aggregated_status": normalize_status_5(predicted),
+                "reason": reason,
+            })
+    return {
+        "total_requirements": len(ground_truth_reqs),
+        "correct_requirements": correct,
+        "accuracy": _percent(correct, len(ground_truth_reqs)),
+        "mismatches": records,
+    }
+
+
 async def run_benchmark(mode: str = "end-to-end"):
-    mode = mode.strip().lower()
-    if mode not in {"end-to-end", "oracle"}:
-        raise ValueError("mode must be 'end-to-end' or 'oracle'")
+    requested_mode = mode.strip().lower()
+    if requested_mode not in MODE_ALIASES:
+        raise ValueError(f"mode must be one of: {', '.join(MODE_ALIASES)}")
+    mode = MODE_ALIASES[requested_mode]
+    contract_oracle = mode in {"oracle-contracts", "oracle-contracts-evidence"}
+    evidence_oracle = mode in {"oracle-evidence", "oracle-contracts-evidence"}
     print("=" * 75)
     print("     TRACEAUDIT AI - 100-REQUIREMENT COMPLEX AUTOMOTIVE BENCHMARK")
     print(f"     MODE: {mode.upper()}")
@@ -365,6 +682,9 @@ async def run_benchmark(mode: str = "end-to-end"):
     exact_condition_recall = (
         exact_matched_extracted_conditions / total_gt_conditions * 100.0 if total_gt_conditions else 0.0
     )
+    contract_diagnostics = _decomposed_contract_metrics(
+        _match_extracted_contracts(ground_truth_reqs, extracted_dict)
+    )
 
     print(f"  • Ground Truth Requirements : {len(ground_truth_reqs)}")
     print(f"  • Extracted Requirements    : {len(extracted_reqs)}")
@@ -374,6 +694,13 @@ async def run_benchmark(mode: str = "end-to-end"):
     print(f"  • Requirement ID Recall     : {id_tp_extract / len(ground_truth_reqs) * 100.0:.2f}%")
     print(f"  • Atomic Condition Recall   : {ext_condition_recall:.2f}%")
     print(f"  • Exact Contract Recall     : {exact_condition_recall:.2f}%")
+    print(
+        "  • Contract Field Accuracy  : "
+        f"parameter={contract_diagnostics['metrics']['parameter_exact_accuracy']}%, "
+        f"canonical-parameter={contract_diagnostics['metrics']['parameter_canonical_accuracy']}%, "
+        f"operator={contract_diagnostics['metrics']['operator_accuracy']}%, "
+        f"unit={contract_diagnostics['metrics']['unit_exact_accuracy']}%"
+    )
 
     pipeline_requirements = _build_pipeline_requirements(
         mode,
@@ -383,7 +710,7 @@ async def run_benchmark(mode: str = "end-to-end"):
     pipeline_by_id = {item["req_code"]: item for item in pipeline_requirements}
     print(
         f"  • Downstream Requirement Source: "
-        f"{'EXTRACTED CONTRACTS' if mode == 'end-to-end' else 'GROUND-TRUTH ORACLE CONTRACTS'}"
+        f"{'GROUND-TRUTH ORACLE CONTRACTS' if contract_oracle else 'EXTRACTED CONTRACTS'}"
     )
 
     # 4. Evidence Retrieval Evaluation (Document Recall@K vs Passage Recall@K)
@@ -502,10 +829,25 @@ async def run_benchmark(mode: str = "end-to-end"):
 
     # 5. Verification Assessment Evaluation (5-Class Verification)
     print(f"\n[5/5] Executing 5-Class Multi-Condition Compliance Verification...")
+    verification_evidence_by_req = (
+        {
+            requirement["requirement_id"]: _oracle_evidence_chunks(
+                links_by_id.get(requirement["requirement_id"], {}),
+                all_chunks,
+            )
+            for requirement in ground_truth_reqs
+        }
+        if evidence_oracle
+        else retrieved_by_req
+    )
+    print(
+        "  • Downstream Evidence Source: "
+        f"{'GROUND-TRUTH ORACLE PASSAGES' if evidence_oracle else 'RETRIEVED TOP-5 PASSAGES'}"
+    )
     req_items = [
         {
             **source_req,
-            "candidate_chunks": retrieved_by_req.get(source_req["req_code"], []),
+            "candidate_chunks": verification_evidence_by_req.get(source_req["req_code"], []),
         }
         for source_req in pipeline_requirements
     ]
@@ -535,6 +877,17 @@ async def run_benchmark(mode: str = "end-to-end"):
 
     numerical_total = 0
     numerical_correct = 0
+    condition_confusion = {
+        expected: {actual: 0 for actual in CONDITION_CLASSES}
+        for expected in CONDITION_CLASSES
+    }
+    condition_label_sources = Counter()
+    condition_source_correct = Counter()
+    raw_llm_total = 0
+    raw_llm_correct = 0
+    python_transition_effect = Counter()
+    audit_defensible_count = 0
+    condition_records: list[dict[str, Any]] = []
     unsupported_claims = 0  # Missing evidence falsely claimed as SUPPORTED
     extraction_missing_count = 0
 
@@ -546,6 +899,7 @@ async def run_benchmark(mode: str = "end-to-end"):
         actual_status = normalize_status_5(actual_raw)
         gt_link = links_by_id.get(req_id, {})
         retrieved_chunks = retrieved_by_req.get(req_id, [])
+        diagnostics = dict(assessment.pipeline_diagnostics if assessment else {})
 
         predictions[req_id] = {
             "expected": expected_status,
@@ -555,11 +909,12 @@ async def run_benchmark(mode: str = "end-to-end"):
             "condition_results": [
                 result.model_dump() for result in (assessment.condition_results if assessment else [])
             ],
+            "pipeline_diagnostics": diagnostics,
         }
 
         matrix[expected_status][actual_status] += 1
 
-        extraction_missing = mode == "end-to-end" and req_id not in pipeline_by_id
+        extraction_missing = not contract_oracle and req_id not in pipeline_by_id
         if extraction_missing:
             extraction_missing_count += 1
         is_correct = bool(assessment) and not extraction_missing and (expected_status == actual_status)
@@ -574,10 +929,13 @@ async def run_benchmark(mode: str = "end-to-end"):
                 "could not be traced to the referenced evidence" in (result.reason or "")
                 for result in (assessment.condition_results if assessment else [])
             )
+            provisional_status = normalize_status_5(diagnostics.get("llm_provisional_status"))
 
             if extraction_missing:
                 cat = "EXTRACTION_FAILURE"
-            elif retrieval_missed:
+            elif diagnostics.get("decision_source") == "llm" and provisional_status == expected_status:
+                cat = "POST_LLM_DETERMINISTIC_REGRESSION"
+            elif retrieval_missed and not evidence_oracle:
                 cat = "RETRIEVAL_FAILURE"
             elif citation_traceability_failed:
                 cat = "CITATION_TRACEABILITY_FAILURE"
@@ -606,41 +964,42 @@ async def run_benchmark(mode: str = "end-to-end"):
                 "failure_category": cat,
                 "reason": assessment.ai_analysis if assessment else "No analysis produced",
                 "retrieved_evidence": [c["content"][:100] for c in retrieved_chunks[:2]],
+                "verification_evidence": [
+                    c.get("content", "")[:100]
+                    for c in verification_evidence_by_req.get(req_id, [])[:2]
+                ],
                 "ground_truth_note": gt_link.get("notes", ""),
+                "pipeline_diagnostics": diagnostics,
             })
 
         # Atomic Condition Evaluation
         conds = r.get("conditions", [])
-        missing_cond_refs = gt_link.get("missing_conditions", [])
-
         predicted_condition_results = list(assessment.condition_results if assessment else [])
+        raw_llm_results = list(diagnostics.get("llm_condition_results", []))
+        reconciled_results = list(diagnostics.get("post_reconciliation_condition_results", []))
+        pre_qualification_results = list(diagnostics.get("pre_qualification_condition_results", []))
+        requirement_conditions_correct = True
+        requirement_attribution_complete = True
 
         for cond in conds:
             total_atomic_conditions += 1
             cid = cond.get("condition_id", "")
-            
-            # Determine ground truth expectation for this atomic condition
-            if expected_status == "SUPPORTED":
-                gt_cond_status = "PROVEN"
-            elif expected_status == "MISSING":
-                gt_cond_status = "UNTESTED"
-            elif expected_status == "UNKNOWN":
-                gt_cond_status = "INCONCLUSIVE"
-            elif expected_status == "CONFLICT":
-                gt_cond_status = "FAILED"
-            elif expected_status == "PARTIAL":
-                is_missing = any(cid in mc or (cond.get("parameter") and cond["parameter"] in mc) for mc in missing_cond_refs)
-                gt_cond_status = "PENDING" if is_missing else "PROVEN"
-            else:
-                gt_cond_status = "UNTESTED"
+            gt_cond_status, label_source = _ground_truth_condition_status(r, gt_link, cond)
+            condition_label_sources[label_source] += 1
 
             # Score the verifier's actual per-condition output. Missing condition
             # IDs are conservatively UNTESTED; no ground-truth status is used to
             # manufacture a prediction.
             pred_cond_status = _predicted_condition_status(cond, predicted_condition_results)
+            if pred_cond_status not in CONDITION_CLASSES:
+                pred_cond_status = "INCONCLUSIVE"
+            condition_confusion[gt_cond_status][pred_cond_status] += 1
+            condition_matches = pred_cond_status == gt_cond_status
+            requirement_conditions_correct = requirement_conditions_correct and condition_matches
 
-            if pred_cond_status == gt_cond_status:
+            if condition_matches:
                 correct_atomic_conditions += 1
+                condition_source_correct[label_source] += 1
 
             if gt_cond_status == "PROVEN":
                 if pred_cond_status == "PROVEN":
@@ -653,13 +1012,67 @@ async def run_benchmark(mode: str = "end-to-end"):
                 else:
                     cond_tn += 1
 
-            if cond.get("operator") in ("<=", "<", ">=", ">", "between", "==") and (
-                isinstance(cond.get("threshold"), (int, float))
-                or (isinstance(cond.get("threshold"), str) and any(ch.isdigit() for ch in cond["threshold"]))
-            ):
+            is_numeric_condition = cond.get("operator") in ("<=", "<", ">=", ">", "between", "==", "=") and any(
+                isinstance(cond.get(field), (int, float))
+                or (isinstance(cond.get(field), str) and any(ch.isdigit() for ch in cond[field]))
+                for field in ("threshold", "min_value", "max_value")
+            )
+            if is_numeric_condition:
                 numerical_total += 1
-                if pred_cond_status == gt_cond_status:
+                if condition_matches:
                     numerical_correct += 1
+
+            raw_cond_status = None
+            if raw_llm_results:
+                raw_llm_total += 1
+                raw_cond_status = _predicted_condition_status(cond, raw_llm_results)
+                raw_matches = raw_cond_status == gt_cond_status
+                raw_llm_correct += int(raw_matches)
+                if raw_matches and not condition_matches:
+                    python_transition_effect["damaged"] += 1
+                elif not raw_matches and condition_matches:
+                    python_transition_effect["corrected"] += 1
+                elif raw_matches and condition_matches:
+                    python_transition_effect["unchanged_correct"] += 1
+                else:
+                    python_transition_effect["unchanged_wrong"] += 1
+
+            aligned_result = _predicted_condition_result(cond, predicted_condition_results)
+            if pred_cond_status in {"PROVEN", "FAILED", "PENDING"}:
+                evidence_ids = (
+                    aligned_result.get("evidence_ids", [])
+                    if isinstance(aligned_result, dict)
+                    else getattr(aligned_result, "evidence_ids", [])
+                ) if aligned_result is not None else []
+                quote = (
+                    aligned_result.get("quote")
+                    if isinstance(aligned_result, dict)
+                    else getattr(aligned_result, "quote", None)
+                ) if aligned_result is not None else None
+                requirement_attribution_complete = requirement_attribution_complete and bool(evidence_ids and quote)
+
+            condition_records.append({
+                "requirement_id": req_id,
+                "condition_id": cid,
+                "parameter": cond.get("parameter"),
+                "expected_status": gt_cond_status,
+                "ground_truth_source": label_source,
+                "llm_status": raw_cond_status,
+                "post_reconciliation_status": (
+                    _predicted_condition_status(cond, reconciled_results)
+                    if reconciled_results else None
+                ),
+                "pre_qualification_status": (
+                    _predicted_condition_status(cond, pre_qualification_results)
+                    if pre_qualification_results else None
+                ),
+                "final_status": pred_cond_status,
+                "correct": condition_matches,
+                "is_numeric_condition": is_numeric_condition,
+            })
+
+        if is_correct and requirement_conditions_correct and requirement_attribution_complete:
+            audit_defensible_count += 1
 
         # Unsupported claims (Hallucination on MISSING)
         if expected_status == "MISSING" and actual_status == "SUPPORTED":
@@ -706,7 +1119,25 @@ async def run_benchmark(mode: str = "end-to-end"):
     cond_f1 = (2 * cond_prec * cond_rec / (cond_prec + cond_rec)) if (cond_prec + cond_rec) > 0 else 0.0
 
     num_acc = (numerical_correct / numerical_total * 100.0) if numerical_total else 0.0
-    unsupported_rate = (unsupported_claims / 20.0 * 100.0)  # 20 MISSING cases
+    missing_requirement_count = sum(
+        1 for requirement in ground_truth_reqs
+        if normalize_status_5(requirement.get("expected_status")) == "MISSING"
+    )
+    unsupported_rate = (
+        unsupported_claims / missing_requirement_count * 100.0
+        if missing_requirement_count else 0.0
+    )
+    raw_llm_accuracy = _percent(raw_llm_correct, raw_llm_total)
+    audit_defensible_accuracy = _percent(audit_defensible_count, total_eval)
+    condition_accuracy_by_label_source = {
+        source: {
+            "total": count,
+            "correct": condition_source_correct[source],
+            "accuracy": _percent(condition_source_correct[source], count),
+        }
+        for source, count in condition_label_sources.items()
+    }
+    aggregation_oracle = _aggregation_oracle_metrics(ground_truth_reqs, links_by_id)
     elapsed_time = round(time.time() - start_time, 2)
 
 
@@ -730,16 +1161,27 @@ async def run_benchmark(mode: str = "end-to-end"):
     print(f"  • UNKNOWN Detection F1     : {per_class_metrics['UNKNOWN']['f1']:.2f}%")
     print(f"  • Unsupported Claim Rate   : {unsupported_rate:.2f}% ({unsupported_claims} false verifications on missing)")
     print(f"  • Condition-Level Accuracy : {cond_acc:.2f}% (P: {cond_prec:.2f}%, R: {cond_rec:.2f}%, F1: {cond_f1:.2f}%)")
-    print(f"  • Numerical / Range Accuracy: {num_acc:.2f}%")
+    print(f"  • Numeric-Condition Verdict Accuracy: {num_acc:.2f}%")
+    if raw_llm_accuracy is not None:
+        print(f"  • Raw LLM Condition Accuracy: {raw_llm_accuracy:.2f}% ({raw_llm_total} LLM-scored conditions)")
+        print(
+            "  • Python Transition Effect : "
+            f"corrected={python_transition_effect['corrected']}, "
+            f"damaged={python_transition_effect['damaged']}, "
+            f"unchanged-wrong={python_transition_effect['unchanged_wrong']}"
+        )
+    print(f"  • Aggregation Oracle Accuracy: {aggregation_oracle['accuracy']:.2f}%")
+    print(f"  • Audit-Defensible Accuracy : {audit_defensible_accuracy:.2f}%")
+    if not condition_label_sources.get("explicit"):
+        print("  • Atomic Ground Truth       : INFERRED from requirement labels (no explicit condition labels present)")
     print(f"  • Total Benchmark Runtime  : {elapsed_time}s")
 
     # Output JSON results
     benchmark_results = {
         "benchmark_name": "TraceAudit AI 100-Requirement Complex Automotive Benchmark",
         "evaluation_mode": mode,
-        "downstream_requirement_source": (
-            "extracted_contracts" if mode == "end-to-end" else "ground_truth_oracle_contracts"
-        ),
+        "downstream_requirement_source": "ground_truth_oracle_contracts" if contract_oracle else "extracted_contracts",
+        "downstream_evidence_source": "ground_truth_oracle_passages" if evidence_oracle else "retrieved_top_5_passages",
         "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
         "total_requirements": total_eval,
         "runtime_seconds": elapsed_time,
@@ -752,6 +1194,8 @@ async def run_benchmark(mode: str = "end-to-end"):
             "atomic_condition_recall": round(ext_condition_recall, 2),
             "atomic_condition_exact_recall": round(exact_condition_recall, 2),
             "missing_required_ids": extraction_missing_count,
+            "decomposed_contract_metrics": contract_diagnostics["metrics"],
+            "contract_mismatches": contract_diagnostics["mismatches"],
         },
         "retrieval_metrics": {
             "document_recall_at_1": round(doc_r1, 2),
@@ -770,8 +1214,8 @@ async def run_benchmark(mode: str = "end-to-end"):
             "accuracy": round(acc, 2),
             "accuracy_definition": (
                 "end-to-end: requirement must be extracted and classified correctly"
-                if mode == "end-to-end"
-                else "oracle: classification correctness using ground-truth contracts"
+                if not contract_oracle
+                else "contract oracle: classification correctness using ground-truth contracts"
             ),
             "macro_precision": round(macro_p, 2),
             "macro_recall": round(macro_r, 2),
@@ -786,6 +1230,29 @@ async def run_benchmark(mode: str = "end-to-end"):
             "condition_precision": round(cond_prec, 2),
             "condition_recall": round(cond_rec, 2),
             "condition_f1": round(cond_f1, 2),
+            "ground_truth_note": (
+                "Atomic labels are scored separately by provenance. Historical inferred labels are derived "
+                "from final requirement status and missing_conditions; explicit labels are authoritative."
+            ),
+            "ground_truth_label_sources": dict(condition_label_sources),
+            "accuracy_by_ground_truth_source": condition_accuracy_by_label_source,
+            "status_confusion_matrix": condition_confusion,
+            "raw_llm": {
+                "total_conditions": raw_llm_total,
+                "correct_conditions": raw_llm_correct,
+                "condition_accuracy": raw_llm_accuracy,
+            },
+            "python_transition_effect": dict(python_transition_effect),
+            "condition_records": condition_records,
+        },
+        "stage_diagnostics": {
+            "aggregation_oracle": aggregation_oracle,
+            "audit_defensible_requirements": audit_defensible_count,
+            "audit_defensible_accuracy": audit_defensible_accuracy,
+            "audit_defensible_definition": (
+                "Final verdict correct, every atomic verdict correct, and every decisive PROVEN/FAILED/PENDING "
+                "condition contains an evidence ID and quote."
+            ),
         },
         "specialty_metrics": {
             "conflict_f1": per_class_metrics["CONFLICT"]["f1"],
@@ -795,12 +1262,17 @@ async def run_benchmark(mode: str = "end-to-end"):
             "unsupported_claim_rate": round(unsupported_rate, 2),
             "condition_accuracy": round(cond_acc, 2),
             "condition_f1": round(cond_f1, 2),
+            "numeric_condition_verdict_accuracy": round(num_acc, 2),
+            # Backward-compatible alias. This is not a pure arithmetic metric;
+            # it is atomic verdict accuracy restricted to numeric contracts.
             "numerical_range_accuracy": round(num_acc, 2),
+            "numerical_range_accuracy_definition": "Deprecated alias of numeric_condition_verdict_accuracy",
         },
         "failures_count": len(failures),
         "failures": failures,
         "predictions": predictions,
         "retrieval_trace": retrieved_by_req,
+        "verification_evidence_trace": verification_evidence_by_req,
         "extracted_requirements": [
             requirement.model_dump(exclude_none=True)
             for requirement in extracted_reqs
@@ -830,6 +1302,7 @@ async def run_benchmark(mode: str = "end-to-end"):
             failures=failures,
             excel_path=excel_path,
             pipeline_requirements=pipeline_requirements,
+            verification_evidence_by_req=verification_evidence_by_req,
         )
     except Exception as ex:
         print(f"  [WARN] Failed exporting Excel Audit Trace: {ex}")
@@ -845,6 +1318,13 @@ def generate_markdown_report(results: dict, failures: list[dict]):
     em = results["extraction_metrics"]
     sm = results["specialty_metrics"]
     cm_data = results.get("condition_metrics", {})
+    stage_data = results.get("stage_diagnostics", {})
+    raw_llm_data = cm_data.get("raw_llm", {})
+    raw_llm_acc = raw_llm_data.get("condition_accuracy")
+    audit_defensible_acc = stage_data.get("audit_defensible_accuracy")
+    aggregation_oracle_acc = stage_data.get("aggregation_oracle", {}).get("accuracy")
+    transition_effect = cm_data.get("python_transition_effect", {})
+    label_sources = cm_data.get("ground_truth_label_sources", {})
     matrix = vm["confusion_matrix"]
 
     failure_cat_counts = Counter(f["failure_category"] for f in failures)
@@ -871,6 +1351,7 @@ def generate_markdown_report(results: dict, failures: list[dict]):
 > **Benchmark Date:** {results['timestamp']}  
 > **Evaluation Mode:** {results.get('evaluation_mode', 'oracle').upper()}
 > **Downstream Requirement Source:** {results.get('downstream_requirement_source', 'ground_truth_oracle_contracts')}
+> **Downstream Evidence Source:** {results.get('downstream_evidence_source', 'retrieved_top_5_passages')}
 > **Total Requirements Evaluated:** 100  
 > **Total Atomic Conditions Evaluated:** {cm_data.get('total_conditions', 172)}  
 > **Total Technical Documents:** 20 (DOCX, PDF, XLSX)  
@@ -891,8 +1372,13 @@ Pipeline Performance Summary:
   • Document-qualified Passage Recall@3: {rm['passage_recall_at_3']:.2f}% | Recall@5: {rm['passage_recall_at_5']:.2f}% (MRR: {rm['passage_mrr']:.4f})
   • 5-Class Requirement Macro F1: {vm['macro_f1']:.2f}% (Accuracy: {vm['accuracy']:.2f}%)
   • Atomic Condition Accuracy  : {cm_data.get('condition_accuracy', sm.get('condition_accuracy', 0)):.2f}% (F1: {cm_data.get('condition_f1', 0):.2f}%)
+  • Raw LLM Atomic Accuracy    : {f'{raw_llm_acc:.2f}%' if raw_llm_acc is not None else 'N/A (no LLM path)'}
+  • Aggregation Oracle Accuracy: {f'{aggregation_oracle_acc:.2f}%' if aggregation_oracle_acc is not None else 'N/A'}
+  • Audit-Defensible Accuracy  : {f'{audit_defensible_acc:.2f}%' if audit_defensible_acc is not None else 'N/A'}
   • Unsupported Claim Rate    : {sm['unsupported_claim_rate']:.2f}% (Evidence-grounded)
 ```
+
+Atomic ground-truth provenance: **{label_sources.get('explicit', 0)} explicit** condition labels and **{label_sources.get('inferred_from_requirement', 0)} inferred** labels. Inferred labels are derived from the final requirement status and `missing_conditions`; they are useful for regression tracking but are not independently annotated atomic truth.
 
 ---
 
@@ -927,7 +1413,8 @@ Pipeline Performance Summary:
 | **UNKNOWN Detection F1** | **{sm.get('unknown_f1', 0):.2f}%** | >= 70.0% | {'✅ Met' if sm.get('unknown_f1', 0) >= 70 else '⚠️ Review Needed'} |
 | **Atomic Condition Accuracy** | **{cm_data.get('condition_accuracy', 0):.2f}%** | >= 90.0% | {'✅ Met' if cm_data.get('condition_accuracy', 0) >= 90 else '⚠️ Review Needed'} |
 | **Atomic Condition F1** | **{cm_data.get('condition_f1', 0):.2f}%** | >= 85.0% | {'✅ Met' if cm_data.get('condition_f1', 0) >= 85 else '⚠️ Review Needed'} |
-| **Numerical & Range Accuracy** | **{sm['numerical_range_accuracy']:.2f}%** | >= 90.0% | {'✅ Met' if sm['numerical_range_accuracy'] >= 90 else '⚠️ Review Needed'} |
+| **Numeric-Condition Verdict Accuracy** | **{sm['numeric_condition_verdict_accuracy']:.2f}%** | >= 90.0% | {'✅ Met' if sm['numeric_condition_verdict_accuracy'] >= 90 else '⚠️ Review Needed'} |
+| **Audit-Defensible Accuracy** | **{(audit_defensible_acc or 0):.2f}%** | >= 90.0% | {'✅ Met' if (audit_defensible_acc or 0) >= 90 else '⚠️ Review Needed'} |
 | **Unsupported Claim Rate** | **{sm['unsupported_claim_rate']:.2f}%** | <= 5.0% | {'✅ Safe' if sm['unsupported_claim_rate'] <= 5 else '❌ High Risk'} |
 
 ---
@@ -955,8 +1442,14 @@ Failure Categorization:
 
 ### 🔍 Main Bottleneck:
 """
-    if rm['document_recall_at_5'] < 90.0:
+    if aggregation_oracle_acc is not None and aggregation_oracle_acc < 100.0:
+        content += "- **Aggregation Policy** is inconsistent with the benchmark's atomic-state semantics even when expected condition states are supplied directly.\n"
+    elif transition_effect.get("damaged", 0) > transition_effect.get("corrected", 0):
+        content += "- **Deterministic Post-Processing** causes more atomic regressions than corrections. Inspect qualification and reconciliation transitions in the atomic diagnostics sheet.\n"
+    elif rm['document_recall_at_5'] < 90.0:
         content += "- **Retrieval & Evidence Ranking** is the primary bottleneck. Evidence chunks for complex cross-system requirements were missed in the top-5 candidate pool.\n"
+    elif raw_llm_acc is not None and raw_llm_acc < 90.0:
+        content += "- **LLM Atomic Evidence Interpretation** is the primary measured bottleneck after separating it from Python post-processing.\n"
     elif vm['macro_f1'] < 90.0:
         content += "- **Multi-Condition Reasoner & Scope Discrimination** is the primary bottleneck. Retrieval succeeded in finding candidate chunks, but multi-condition boundaries or component scope limits were misclassified.\n"
     else:
@@ -964,9 +1457,9 @@ Failure Categorization:
 
     content += """
 ### 🚀 Recommended Next Improvements:
-1. **Adaptive Chunk Reranking:** Integrate cross-encoder reranker for dense technical terms (e.g. distinguishing battery coolant temperature vs ASIC junction temperature).
-2. **Atomic Condition Decomposition:** Pass extracted condition trees directly into the LLM verification reasoner prompt to evaluate each sub-condition as a formal boolean clause.
-3. **Document Authority Layer:** Explicitly tag supplier datasheets vs system validation reports in evidence prompts to enforce scope hierarchy rules.
+1. **Annotate Explicit Atomic Truth:** Add an expected state for every benchmark condition so atomic accuracy no longer depends on labels inferred from the final requirement verdict.
+2. **Use Oracle Ablations:** Compare end-to-end, contract-oracle, evidence-oracle, and combined-oracle runs before changing a production stage.
+3. **Review Stage Transitions:** Prioritize cases marked `DAMAGED`, then address `UNCHANGED_WRONG`; do not tune aggregation based only on final-status mismatches.
 """
 
     with open(md_path, "w", encoding="utf-8") as f:
@@ -978,11 +1471,12 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run the TraceAudit complex benchmark")
     parser.add_argument(
         "--mode",
-        choices=("end-to-end", "oracle"),
+        choices=tuple(MODE_ALIASES),
         default="end-to-end",
         help=(
-            "end-to-end feeds extracted contracts into retrieval/verification; "
-            "oracle isolates retrieval/verifier behavior with benchmark contracts"
+            "end-to-end uses extracted contracts and retrieved evidence; oracle-contracts bypasses extraction; "
+            "oracle-evidence bypasses retrieval; oracle-contracts-evidence bypasses both. "
+            "The legacy 'oracle' name aliases oracle-contracts."
         ),
     )
     args = parser.parse_args()

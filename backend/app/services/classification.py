@@ -51,6 +51,7 @@ class RequirementAssessment:
     evidence_links: list[EvidenceLinkAssessment] = field(default_factory=list)
     contract: Optional[RequirementContract] = None
     condition_results: list[ConditionVerificationResult] = field(default_factory=list)
+    pipeline_diagnostics: dict[str, Any] = field(default_factory=dict)
 
 
 RECOMMENDATIONS = {
@@ -129,6 +130,7 @@ def _missing_assessment(contract: RequirementContract, empty_index: bool = False
         evidence_links=[],
         contract=contract,
         condition_results=_condition_results_for_status(contract, "MISSING"),
+        pipeline_diagnostics={"decision_source": "deterministic_precheck", "final_status": "MISSING"},
     )
 
 
@@ -161,6 +163,7 @@ def _conflict_assessment(
         evidence_links=links,
         contract=contract,
         condition_results=_condition_results_for_status(contract, "CONFLICT"),
+        pipeline_diagnostics={"decision_source": "deterministic_contradiction", "final_status": "CONFLICT"},
     )
 
 
@@ -241,6 +244,10 @@ def _verdict_assessment(
             condition_results
             or _condition_results_for_status(contract, verdict_outcome.status)
         ),
+        pipeline_diagnostics={
+            "decision_source": "deterministic_workflow_record",
+            "final_status": verdict_outcome.status,
+        },
     )
 
 
@@ -321,6 +328,7 @@ def _finalize_assessment(
     contract: RequirementContract,
     non_spec_items: list[dict],
     outcome: Optional[ValidationOutcome],
+    pipeline_diagnostics: Optional[dict[str, Any]] = None,
 ) -> RequirementAssessment:
     """Map a validation outcome into a RequirementAssessment with evidence links."""
     status_mapping = {
@@ -367,6 +375,10 @@ def _finalize_assessment(
         evidence_links=links,
         contract=contract,
         condition_results=(outcome.condition_results or _condition_results_for_status(contract, outcome.status)),
+        pipeline_diagnostics=dict(pipeline_diagnostics or {
+            "decision_source": "deterministic_validator",
+            "final_status": outcome.status,
+        }),
     )
 
 
@@ -409,7 +421,12 @@ def assess_requirement_coverage(
         condition_results=reasoner_result.condition_results,
     )
 
-    return _finalize_assessment(contract, non_spec_items, validation_outcome)
+    return _finalize_assessment(
+        contract,
+        non_spec_items,
+        validation_outcome,
+        pipeline_diagnostics=getattr(reasoner_result, "_diagnostics", {}),
+    )
 
 
 async def assess_requirement_coverage_async(
@@ -457,7 +474,12 @@ async def assess_requirement_coverage_async(
         condition_results=reasoner_result.condition_results,
     )
 
-    return _finalize_assessment(contract, non_spec_items, validation_outcome)
+    return _finalize_assessment(
+        contract,
+        non_spec_items,
+        validation_outcome,
+        pipeline_diagnostics=getattr(reasoner_result, "_diagnostics", {}),
+    )
 
 
 async def batch_assess_requirements(
@@ -558,7 +580,12 @@ async def batch_assess_requirements(
                     confidence=75.0,
                     reason="Evaluated through compliance assessment engine.",
                 )
-            assessments[req_code] = _finalize_assessment(item["contract"], item["non_spec_items"], outcome)
+            assessments[req_code] = _finalize_assessment(
+                item["contract"],
+                item["non_spec_items"],
+                outcome,
+                pipeline_diagnostics=(getattr(res, "_diagnostics", {}) if res else {}),
+            )
 
         done_count = min(i + len(batch), len(pre_processed))
         first_code = batch_codes[0] if batch_codes else "?"

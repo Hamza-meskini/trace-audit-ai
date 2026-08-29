@@ -193,6 +193,35 @@ class TestLLMFinalVerdictOverride(unittest.TestCase):
         self.assertIn(final.status, ("UNKNOWN", "MISSING", "PARTIAL"))
         self.assertNotEqual(final.status, "SUPPORTED")
 
+    def test_heuristic_qualification_is_advisory_and_preserves_semantic_status(self):
+        llm = VerificationAnalysisResult(
+            status="PARTIAL",
+            confidence=90,
+            condition_results=[cr("C1", "PENDING", ["E1"], "test remains pending")],
+            reason="Model classified incomplete work as pending.",
+        )
+        llm._diagnostics = {
+            "decision_source": "llm",
+            "llm_provisional_status": "PARTIAL",
+            "llm_condition_results": [llm.condition_results[0].model_dump()],
+        }
+        unqualified = [qual("E1", "analysis.pdf", "NOT_QUALIFIED", True, True)]
+
+        final = finalize_verdict(
+            make_contract(conditions=[cond("C1")]),
+            llm,
+            unqualified,
+            qualified_contents={"E1": "test remains pending"},
+        )
+
+        self.assertEqual(llm.condition_results[0].status, "PENDING")
+        self.assertEqual(final.condition_results[0].status, "PENDING")
+        self.assertEqual(final.condition_results[0].semantic_status, "PENDING")
+        self.assertEqual(final.condition_results[0].validation_state, "UNRESOLVED")
+        self.assertEqual(final._diagnostics["pre_qualification_condition_results"][0]["status"], "PENDING")
+        self.assertEqual(final._diagnostics["post_qualification_condition_results"][0]["status"], "PENDING")
+        self.assertEqual(final._diagnostics["condition_transitions"], [])
+
 
 class TestDeterministicPassFallback(unittest.TestCase):
     """Spec Phase 3: generic PASS must not become SUPPORTED without full mapping."""
@@ -304,8 +333,8 @@ class TestEntityScopeQualification(unittest.TestCase):
         ds_content = "ASIC absolute maximum standoff voltage 750 V DC."
         q = qualify_evidence(contract, "E1", ds_doc, ds_content)
 
-        # Even an LLM FAILED claim from the wrong-scope document must not
-        # create a requirement conflict through aggregation.
+        # Scope normalization is advisory after semantic reasoning. The status
+        # survives, but is explicitly marked unresolved for audit/review.
         llm = VerificationAnalysisResult(
             status="CONFLICT", confidence=90,
             condition_results=[cr("C2", "FAILED", ["E1"], quote=ds_content[:60])],
@@ -313,7 +342,8 @@ class TestEntityScopeQualification(unittest.TestCase):
         )
         final = finalize_verdict(contract, llm, [q], qualified_contents={"E1": ds_content})
         self.assertEqual(q.qualification_status, "NOT_QUALIFIED")
-        self.assertNotEqual(final.status, "CONFLICT")
+        self.assertEqual(final.status, "CONFLICT")
+        self.assertEqual(final.condition_results[0].validation_state, "UNRESOLVED")
 
     def test_12_asic_requirement_conflicting_asic_datasheet_conflict(self):
         contract = make_contract(
@@ -363,14 +393,16 @@ class TestParameterQualification(unittest.TestCase):
         self.assertEqual(q.qualification_status, "NOT_QUALIFIED")
         self.assertFalse(q.parameter_compatible)
 
-        # LLM tries to prove pyro latency with contactor measurement
+        # The handcrafted semantic result is preserved; lexical parameter
+        # normalization only flags it for review rather than overriding it.
         llm = VerificationAnalysisResult(
             status="SUPPORTED", confidence=90,
             condition_results=[cr("C1", "PROVEN", ["E1"], quote=content[:60])],
             reason="Latency of 4 ms satisfies.",
         )
         final = finalize_verdict(contract, llm, [q], qualified_contents={"E1": content})
-        self.assertNotEqual(final.status, "SUPPORTED")
+        self.assertEqual(final.status, "SUPPORTED")
+        self.assertEqual(final.condition_results[0].validation_state, "UNRESOLVED")
 
     def test_temperature_kinds_are_distinct(self):
         contract = make_contract(
@@ -692,6 +724,11 @@ class TestSchemaStatusNormalization(unittest.TestCase):
             c = ConditionVerificationResult(condition_id="C1", status=raw)
             self.assertEqual(c.status, "UNTESTED", f"Failed for {raw}")
 
+        # Unknown means evidence could not establish a conclusion. It is not
+        # equivalent to the absence of testing/evidence.
+        c = ConditionVerificationResult(condition_id="C1", status="unknown")
+        self.assertEqual(c.status, "INCONCLUSIVE")
+
         # Pending / In Progress synonyms
         for raw in ["PENDING", "in_progress", "partial", "partially_tested", "deferred", "ongoing", "incomplete"]:
             c = ConditionVerificationResult(condition_id="C1", status=raw)
@@ -729,4 +766,3 @@ class TestSchemaStatusNormalization(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

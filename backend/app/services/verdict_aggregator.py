@@ -53,6 +53,36 @@ logger = logging.getLogger("traceaudit.aggregator")
 HARD_RATING_AUTHORITIES = ("DATASHEET", "ARCHITECTURE_SPEC")
 
 
+def _condition_snapshot(
+    condition_results: list[ConditionVerificationResult],
+) -> list[dict[str, Any]]:
+    """Serialize condition decisions at one pipeline boundary."""
+    return [result.model_dump(exclude_none=True) for result in condition_results]
+
+
+def _condition_transitions(
+    before: list[dict[str, Any]],
+    after: list[dict[str, Any]],
+    stage: str,
+) -> list[dict[str, Any]]:
+    """Describe condition-status rewrites without guessing their correctness."""
+    after_by_id = {item.get("condition_id"): item for item in after}
+    transitions: list[dict[str, Any]] = []
+    for previous in before:
+        condition_id = previous.get("condition_id")
+        current = after_by_id.get(condition_id)
+        if current is None or previous.get("status") == current.get("status"):
+            continue
+        transitions.append({
+            "stage": stage,
+            "condition_id": condition_id,
+            "from_status": previous.get("status"),
+            "to_status": current.get("status"),
+            "reason": current.get("reason"),
+        })
+    return transitions
+
+
 # ── Mandatory condition resolution ──────────────────────────────────────────
 
 def mandatory_conditions(contract: Any) -> list[AtomicConditionContract]:
@@ -182,24 +212,42 @@ def _is_contradiction_relevant(q: EvidenceQualification) -> bool:
     return q.scope_compatible is True and q.parameter_compatible is True
 
 
+def _add_validation_note(
+    result: ConditionVerificationResult,
+    state: str,
+    note: str,
+) -> None:
+    """Record validator output without silently replacing semantic meaning."""
+    if result.semantic_status is None:
+        result.semantic_status = result.status
+    # A confirmed citation failure is stronger than an unresolved heuristic;
+    # otherwise the latest qualification result may refine an earlier VALID.
+    if result.validation_state != "CONTRADICTED" or state == "CONTRADICTED":
+        result.validation_state = state  # type: ignore[assignment]
+    if note not in result.validation_notes:
+        result.validation_notes.append(note)
+
+
 def merge_qualification_into_conditions(
     contract: RequirementContract,
     condition_results: list[ConditionVerificationResult],
     qualifications: list[EvidenceQualification],
     qualified_contents: Optional[dict[str, str]] = None,
 ) -> list[ConditionVerificationResult]:
-    """Enforce evidence qualification on condition-level claims.
+    """Attach qualification validation while preserving semantic judgments.
 
-    PROVEN requires at least one QUALIFIED backing (explicit evidence_ids,
-    or an exact quote inside a qualified chunk — citation check).
-    FAILED additionally survives on contradiction-relevant evidence
-    (scope/parameter matched, even when the verification method is not).
+    Python may reject fabricated/untraceable attribution and evidence whose
+    verification method is objectively inadmissible. Scope and parameter
+    normalization are intentionally advisory: those lightweight heuristics
+    must not overwrite the LLM's cited semantic interpretation.
     """
     qual_by_id = {q.evidence_id: q for q in qualifications}
     qualified_contents = qualified_contents or {}
     conditions_by_id = {c.condition_id: c for c in contract.atomic_conditions}
 
     for cr in condition_results:
+        if cr.semantic_status is None:
+            cr.semantic_status = cr.status
         if cr.status == "UNTESTED":
             cond = conditions_by_id.get(cr.condition_id)
             relevant_unqualified = any(
@@ -212,11 +260,13 @@ def merge_qualification_into_conditions(
                 for q in qualifications
             )
             if relevant_unqualified:
-                cr.status = "INCONCLUSIVE"
-                cr.reason = (
-                    (cr.reason or "")
-                    + " [Relevant evidence exists, but its authority, method, scope, or parameter coverage is insufficient.]"
-                ).strip()
+                _add_validation_note(
+                    cr,
+                    "UNRESOLVED",
+                    "Relevant evidence exists, but qualification could not establish that it addresses this condition.",
+                )
+            else:
+                _add_validation_note(cr, "VALID", "No attributed proof claim requires qualification.")
             continue
         if cr.status not in ("PROVEN", "FAILED", "PENDING"):
             continue
@@ -233,6 +283,11 @@ def merge_qualification_into_conditions(
         if cr.quote and cited_contents and not _quote_is_traceable(cr.quote, cited_contents):
             old = cr.status
             cr.status = "INCONCLUSIVE"
+            _add_validation_note(
+                cr,
+                "CONTRADICTED",
+                "The cited quote could not be traced to the referenced evidence.",
+            )
             cr.reason = (
                 (cr.reason or "")
                 + f" [Downgraded from {old}: cited quote could not be traced to the referenced evidence.]"
@@ -248,6 +303,20 @@ def merge_qualification_into_conditions(
                 if _quote_is_traceable(cr.quote, [content])
             }
             backing = [qual_by_id[evidence_id] for evidence_id in matching_ids if evidence_id in qual_by_id]
+
+        if not backing:
+            old = cr.status
+            cr.status = "INCONCLUSIVE"
+            _add_validation_note(
+                cr,
+                "CONTRADICTED",
+                "No existing evidence item can be tied to this attributed condition result.",
+            )
+            cr.reason = (
+                (cr.reason or "")
+                + f" [Downgraded from {old}: no traceable evidence attribution was supplied.]"
+            ).strip()
+            continue
 
         if cr.status == "PROVEN":
             ok = any(b.qualification_status == "QUALIFIED" for b in backing)
@@ -274,14 +343,36 @@ def merge_qualification_into_conditions(
             )
 
         if not ok:
-            old = cr.status
-            cr.status = "INCONCLUSIVE"
-            cr.reason = (
-                (cr.reason or "") +
-                f" [Downgraded from {old}: referenced evidence is not qualified to "
-                f"establish or refute this requirement's conditions.]"
-            ).strip()
+            # A verification-method mismatch is objective (e.g. simulation
+            # cannot prove a required physical bench test), so it remains a
+            # hard guardrail. Parameter and scope qualification are lexical
+            # heuristics and therefore produce review metadata only.
+            hard_method_mismatch = (
+                cr.status in ("PROVEN", "PENDING")
+                and backing
+                and all(b.method_compatible is False for b in backing)
+            )
+            if hard_method_mismatch:
+                old = cr.status
+                cr.status = "INCONCLUSIVE"
+                _add_validation_note(
+                    cr,
+                    "CONTRADICTED",
+                    "The cited evidence uses a verification method that cannot satisfy the required method.",
+                )
+                cr.reason = (
+                    (cr.reason or "")
+                    + f" [Downgraded from {old}: cited evidence method cannot satisfy the required verification method.]"
+                ).strip()
+            else:
+                _add_validation_note(
+                    cr,
+                    "UNRESOLVED",
+                    "Qualification heuristics did not confirm scope/parameter alignment; semantic status was preserved.",
+                )
             continue
+
+        _add_validation_note(cr, "VALID", "Evidence attribution and admissibility checks passed.")
 
         # Per-condition parameter check on qualified backing.
         if cr.status == "PROVEN" and cond is not None and cond.parameter:
@@ -291,12 +382,12 @@ def merge_qualification_into_conditions(
             quote_params = set(extract_parameters_from_text(cr.quote or ""))
             quote_supports_parameter = bool(cond_param and cond_param in quote_params)
             if not quote_supports_parameter and compat and all(c is False for c in compat):
-                cr.status = "INCONCLUSIVE"
-                cr.reason = (
-                    (cr.reason or "") +
-                    f" [Downgraded from PROVEN: qualified evidence discusses a different "
-                    f"parameter than condition '{cond.condition_id}' ({cond.parameter}).]"
-                ).strip()
+                _add_validation_note(
+                    cr,
+                    "UNRESOLVED",
+                    f"Lexical parameter mapping did not confirm condition '{cond.condition_id}' "
+                    f"({cond.parameter}); semantic status was preserved.",
+                )
 
     return condition_results
 
@@ -401,7 +492,11 @@ def finalize_verdict(
     The input analysis's top-level `status` is IGNORED. Only its
     condition-level findings survive, after qualification enforcement.
     """
-    crs = list(analysis.condition_results or [])
+    diagnostics = dict(getattr(analysis, "_diagnostics", {}) or {})
+    provisional_conditions = _condition_snapshot(list(analysis.condition_results or []))
+    # Qualification mutates condition objects; use a deep copy so callers can
+    # still inspect the reasoner's pre-qualification decision independently.
+    crs = [result.model_copy(deep=True) for result in (analysis.condition_results or [])]
     crs = merge_qualification_into_conditions(contract, crs, qualifications, qualified_contents)
     if not crs:
         crs = [ConditionVerificationResult(condition_id=c.condition_id, status="UNTESTED")
@@ -431,7 +526,7 @@ def finalize_verdict(
     else:
         final_reason = (analysis.reason or "").strip() or reason
 
-    return VerificationAnalysisResult(
+    finalized = VerificationAnalysisResult(
         status=status,
         confidence=confidence,
         requirement_conditions=analysis.requirement_conditions,
@@ -440,6 +535,24 @@ def finalize_verdict(
         reason=final_reason,
         highlight=analysis.highlight,
     )
+    qualified_conditions = _condition_snapshot(crs)
+    transitions = list(diagnostics.get("condition_transitions", []))
+    transitions.extend(_condition_transitions(
+        provisional_conditions,
+        qualified_conditions,
+        "evidence_qualification",
+    ))
+    diagnostics.update({
+        "pre_qualification_status": provisional,
+        "pre_qualification_condition_results": provisional_conditions,
+        "post_qualification_condition_results": qualified_conditions,
+        "final_status": status,
+        "aggregator_overrode_status": bool(provisional and provisional != status),
+        "condition_transitions": transitions,
+        "qualification": [q.model_dump(exclude_none=True) for q in qualifications],
+    })
+    finalized._diagnostics = diagnostics
+    return finalized
 
 
 # ── Deterministic condition mapping from evidence claims ────────────────────

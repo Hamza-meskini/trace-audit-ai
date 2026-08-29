@@ -76,6 +76,7 @@
   {
     "requirement_id": "REQ-AUT-005",
     "expected_status": "CONFLICT",
+    "condition_statuses": {"C-005-1": "FAILED"},
     "supporting_evidence_ids": [],
     "contradicting_evidence_ids": [
       "EV-DOC03-001"
@@ -93,6 +94,7 @@
   {
     "requirement_id": "REQ-AUT-006",
     "expected_status": "CONFLICT",
+    "condition_statuses": {"C-006-1": "FAILED"},
     "supporting_evidence_ids": [],
     "contradicting_evidence_ids": [
       "EV-DOC08-004"
@@ -255,6 +257,7 @@
   {
     "requirement_id": "REQ-AUT-015",
     "expected_status": "CONFLICT",
+    "condition_statuses": {"C-015-1": "FAILED"},
     "supporting_evidence_ids": [],
     "contradicting_evidence_ids": [
       "EV-DOC07-001"
@@ -272,6 +275,7 @@
   {
     "requirement_id": "REQ-AUT-016",
     "expected_status": "CONFLICT",
+    "condition_statuses": {"C-016-1": "FAILED"},
     "supporting_evidence_ids": [],
     "contradicting_evidence_ids": [
       "EV-DOC08-009"
@@ -431,6 +435,10 @@
   {
     "requirement_id": "REQ-AUT-025",
     "expected_status": "CONFLICT",
+    "condition_statuses": {
+      "C-025-1": "FAILED",
+      "C-025-2": "PROVEN"
+    },
     "supporting_evidence_ids": [],
     "contradicting_evidence_ids": [
       "EV-DOC06-001"
@@ -448,6 +456,7 @@
   {
     "requirement_id": "REQ-AUT-026",
     "expected_status": "CONFLICT",
+    "condition_statuses": {"C-026-1": "FAILED"},
     "supporting_evidence_ids": [],
     "contradicting_evidence_ids": [
       "EV-DOC18-005"
@@ -607,6 +616,7 @@
   {
     "requirement_id": "REQ-AUT-035",
     "expected_status": "CONFLICT",
+    "condition_statuses": {"C-035-1": "FAILED"},
     "supporting_evidence_ids": [],
     "contradicting_evidence_ids": [
       "EV-DOC19-005"
@@ -624,6 +634,10 @@
   {
     "requirement_id": "REQ-AUT-036",
     "expected_status": "CONFLICT",
+    "condition_statuses": {
+      "C-036-1": "FAILED",
+      "C-036-2": "FAILED"
+    },
     "supporting_evidence_ids": [],
     "contradicting_evidence_ids": [
       "EV-DOC19-006"
@@ -782,6 +796,7 @@
   {
     "requirement_id": "REQ-AUT-045",
     "expected_status": "CONFLICT",
+    "condition_statuses": {"C-045-1": "FAILED"},
     "supporting_evidence_ids": [],
     "contradicting_evidence_ids": [
       "EV-DOC04-001"
@@ -799,6 +814,11 @@
   {
     "requirement_id": "REQ-AUT-046",
     "expected_status": "CONFLICT",
+    "condition_statuses": {
+      "C-046-1": "PROVEN",
+      "C-046-2": "PROVEN",
+      "C-046-3": "FAILED"
+    },
     "supporting_evidence_ids": [],
     "contradicting_evidence_ids": [
       "EV-DOC13-005"
@@ -957,6 +977,7 @@
   {
     "requirement_id": "REQ-AUT-055",
     "expected_status": "CONFLICT",
+    "condition_statuses": {"C-055-1": "FAILED"},
     "supporting_evidence_ids": [],
     "contradicting_evidence_ids": [
       "EV-DOC03-002"
@@ -974,6 +995,7 @@
   {
     "requirement_id": "REQ-AUT-056",
     "expected_status": "CONFLICT",
+    "condition_statuses": {"C-056-1": "FAILED"},
     "supporting_evidence_ids": [],
     "contradicting_evidence_ids": [
       "EV-DOC15-002"
@@ -1132,6 +1154,7 @@
   {
     "requirement_id": "REQ-AUT-065",
     "expected_status": "CONFLICT",
+    "condition_statuses": {"C-065-1": "FAILED"},
     "supporting_evidence_ids": [],
     "contradicting_evidence_ids": [
       "EV-DOC16-005"
@@ -1149,6 +1172,7 @@
   {
     "requirement_id": "REQ-AUT-066",
     "expected_status": "CONFLICT",
+    "condition_statuses": {"C-066-1": "FAILED"},
     "supporting_evidence_ids": [],
     "contradicting_evidence_ids": [
       "EV-DOC16-006"
@@ -1306,6 +1330,7 @@
   {
     "requirement_id": "REQ-AUT-075",
     "expected_status": "CONFLICT",
+    "condition_statuses": {"C-075-1": "FAILED"},
     "supporting_evidence_ids": [],
     "contradicting_evidence_ids": [
       "EV-DOC08-014"
@@ -1323,6 +1348,7 @@
   {
     "requirement_id": "REQ-AUT-076",
     "expected_status": "CONFLICT",
+    "condition_statuses": {"C-076-1": "FAILED"},
     "supporting_evidence_ids": [],
     "contradicting_evidence_ids": [
       "EV-DOC08-015"
@@ -1483,6 +1509,7 @@
   {
     "requirement_id": "REQ-AUT-085",
     "expected_status": "CONFLICT",
+    "condition_statuses": {"C-085-1": "FAILED"},
     "supporting_evidence_ids": [],
     "contradicting_evidence_ids": [
       "EV-DOC17-005"
@@ -1500,6 +1527,7 @@
   {
     "requirement_id": "REQ-AUT-086",
     "expected_status": "CONFLICT",
+    "condition_statuses": {"C-086-1": "FAILED"},
     "supporting_evidence_ids": [],
     "contradicting_evidence_ids": [
       "EV-DOC17-006"
@@ -1657,6 +1685,7 @@
   {
     "requirement_id": "REQ-AUT-095",
     "expected_status": "CONFLICT",
+    "condition_statuses": {"C-095-1": "FAILED"},
     "supporting_evidence_ids": [],
     "contradicting_evidence_ids": [
       "EV-DOC10-002"
@@ -1674,6 +1703,11 @@
   {
     "requirement_id": "REQ-AUT-096",
     "expected_status": "CONFLICT",
+    "condition_statuses": {
+      "C-096-1": "PROVEN",
+      "C-096-2": "UNTESTED",
+      "C-096-3": "FAILED"
+    },
     "supporting_evidence_ids": [],
     "contradicting_evidence_ids": [
       "EV-DOC12-002"

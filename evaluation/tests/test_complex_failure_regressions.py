@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "backend"))
 
-from app.schemas.claim import classify_source_authority, extract_all_evidence_claims
+from app.schemas.claim import classify_source_authority, extract_all_evidence_claims, extract_claims_from_chunk
 from app.schemas.contract import parse_requirement_contract
 from app.schemas.evidence_qualification import extract_parameters_from_text
 from app.schemas.verification_result import ConditionVerificationResult, VerificationAnalysisResult
@@ -26,6 +26,7 @@ from app.services.verdict_aggregator import (
     finalize_verdict,
 )
 from app.services.verification_reasoner import (
+    _repair_contradicted_conditions,
     _reconcile_llm_conditions_with_deterministic_facts,
     rule_based_multi_condition_verification,
 )
@@ -406,7 +407,7 @@ class TestObservedComplexBenchmarkFailures(unittest.TestCase):
         self.assertNotEqual(result.status, "SUPPORTED")
         self.assertEqual(result.condition_results[0].status, "INCONCLUSIVE")
 
-    def test_run5_unknown_cases_cannot_become_partial_from_matrix_or_analysis(self):
+    def test_run5_heuristic_qualification_flags_without_overriding_semantics(self):
         cases = {
             "REQ-AUT-009": (
                 "13_Thermal_Runaway_Venting_Validation_Report.pdf",
@@ -449,8 +450,9 @@ class TestObservedComplexBenchmarkFailures(unittest.TestCase):
                         "E2": candidates[1]["content"],
                     },
                 )
-                self.assertEqual(result.status, "UNKNOWN")
-                self.assertEqual(result.condition_results[0].status, "INCONCLUSIVE")
+                self.assertEqual(result.status, "PARTIAL")
+                self.assertEqual(result.condition_results[0].status, "PENDING")
+                self.assertEqual(result.condition_results[0].validation_state, "UNRESOLVED")
 
     def test_req_041_nominal_tolerance_and_load_are_composite_numeric_proof(self):
         result = rule_based_multi_condition_verification(
@@ -598,6 +600,152 @@ class TestObservedComplexBenchmarkFailures(unittest.TestCase):
         self.assertEqual(assessment.coverage_status, "Unknown")
         self.assertTrue(
             all(result.status == "INCONCLUSIVE" for result in assessment.condition_results)
+        )
+
+    def test_numeric_parser_miss_does_not_override_semantic_condition(self):
+        contract = contract_for("REQ-AUT-030")
+        candidates = [chunk(
+            "13_Thermal_Runaway_Venting_Validation_Report.pdf",
+            "PTC heater soft-start took 32.4 seconds to reach 5.4 kW. Verdict: PASS.",
+        )]
+        qualifications = qualify_evidence_chunks(contract, candidates)
+        provisional = VerificationAnalysisResult(
+            status="SUPPORTED",
+            confidence=92,
+            condition_results=[ConditionVerificationResult(
+                condition_id="C-030-1",
+                status="PROVEN",
+                evidence_ids=["E1"],
+                quote=candidates[0]["content"],
+                reason="The model confused a 5.4 kW heater value with a 5 A inrush limit.",
+            )],
+            reason="Inrush was claimed as supported.",
+        )
+
+        reconciled = _reconcile_llm_conditions_with_deterministic_facts(
+            contract,
+            provisional,
+            candidates,
+            qualifications,
+        )
+
+        result = reconciled.condition_results[0]
+        self.assertEqual(result.status, "PROVEN")
+        self.assertEqual(result.semantic_status, "PROVEN")
+        self.assertEqual(result.validation_state, "UNRESOLVED")
+        self.assertIn("parser could not independently confirm", result.validation_notes[0])
+
+    def test_pending_target_is_not_extracted_as_an_observed_numeric_claim(self):
+        contract = contract_for("REQ-AUT-014")
+        claims = extract_claims_from_chunk(
+            chunk(
+                "motor_speed_validation.pdf",
+                "Resolver rotor angle tracking operation was tested to 15,000 rpm; "
+                "extension to 20,000 rpm is pending.",
+            ),
+            contract,
+        )
+
+        observed_points = [
+            value
+            for claim in claims
+            for value in (
+                claim.discrete_points
+                or ([claim.value] if isinstance(claim.value, (int, float)) and not isinstance(claim.value, bool) else [])
+            )
+        ]
+        self.assertIn(15000.0, observed_points)
+        self.assertNotIn(20000.0, observed_points)
+
+    def test_structured_observation_flags_cross_parameter_unit_confusion(self):
+        contract = contract_for("REQ-AUT-030")
+        candidates = [chunk(
+            "heater_validation.pdf",
+            "PTC heater soft-start reached 5.4 kW. Verdict: PASS.",
+        )]
+        result = VerificationAnalysisResult(
+            status="SUPPORTED",
+            confidence=90,
+            condition_results=[ConditionVerificationResult(
+                condition_id="C-030-1",
+                status="PROVEN",
+                observed_parameter="heater_power",
+                observed_value="5.4",
+                observed_unit="kW",
+                evidence_value_role="OBSERVED",
+                relationship="SATISFIES",
+                evidence_ids=["E1"],
+                quote=candidates[0]["content"],
+            )],
+            reason="Claimed inrush compliance.",
+        )
+
+        reconciled = _reconcile_llm_conditions_with_deterministic_facts(
+            contract,
+            result,
+            candidates,
+            qualify_evidence_chunks(contract, candidates),
+        )
+
+        condition = reconciled.condition_results[0]
+        self.assertEqual(condition.status, "PROVEN")
+        self.assertEqual(condition.validation_state, "CONTRADICTED")
+        self.assertIn("incompatible", " ".join(condition.validation_notes))
+
+    def test_focused_semantic_repair_not_python_chooses_replacement_status(self):
+        contract = contract_for("REQ-AUT-030")
+        candidates = [chunk(
+            "heater_validation.pdf",
+            "PTC heater soft-start reached 5.4 kW. Verdict: PASS.",
+        )]
+        qualifications = qualify_evidence_chunks(contract, candidates)
+        analysis = VerificationAnalysisResult(
+            status="SUPPORTED",
+            confidence=90,
+            condition_results=[ConditionVerificationResult(
+                condition_id="C-030-1",
+                status="PROVEN",
+                semantic_status="PROVEN",
+                validation_state="CONTRADICTED",
+                validation_notes=["Observed unit 'kW' is incompatible with required unit 'A'."],
+                evidence_ids=["E1"],
+                quote=candidates[0]["content"],
+            )],
+            reason="Initial semantic decision.",
+        )
+        repaired_response = VerificationAnalysisResult(
+            status="UNKNOWN",
+            confidence=94,
+            condition_results=[ConditionVerificationResult(
+                condition_id="C-030-1",
+                status="INCONCLUSIVE",
+                evidence_ids=["E1"],
+                quote=candidates[0]["content"],
+                evidence_value_role="OBSERVED",
+                relationship="NOT_ADDRESSED",
+                reason="Heater power does not establish the inrush-current limit.",
+            )],
+            reason="Focused review corrected the semantic mapping.",
+        )
+
+        with patch(
+            "app.services.verification_reasoner.generate_structured",
+            new=AsyncMock(return_value=repaired_response),
+        ):
+            repaired = asyncio.run(_repair_contradicted_conditions(
+                contract,
+                analysis,
+                candidates,
+                qualifications,
+                model="test-model",
+                thinking_level="low",
+            ))
+
+        self.assertEqual(repaired.condition_results[0].status, "INCONCLUSIVE")
+        self.assertTrue(repaired._diagnostics["semantic_repair_performed"])
+        self.assertEqual(
+            repaired._diagnostics["condition_transitions"][0]["stage"],
+            "semantic_repair",
         )
 
     def test_req_092_jump_start_simulation_phrase_is_a_physical_test(self):
