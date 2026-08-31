@@ -22,7 +22,7 @@ from app.services.verdict_aggregator import (
     aggregate_condition_statuses,
     condition_results_from_claims,
     finalize_verdict,
-    merge_qualification_into_conditions,
+    audit_condition_evidence,
 )
 from app.services.evidence_qualification import qualify_evidence
 
@@ -110,11 +110,11 @@ class TestAggregationPrecedence(unittest.TestCase):
             self.contract, [cr("C1", "PROVEN"), cr("C2", "PROVEN"), cr("C3", "UNTESTED")])
         self.assertEqual(status, "PARTIAL")
 
-    def test_4_all_untested_with_evidence_unknown(self):
+    def test_4_all_untested_is_missing_regardless_of_retrieved_noise(self):
         status, _, _ = aggregate_condition_statuses(
             self.contract, [cr("C1", "UNTESTED"), cr("C2", "UNTESTED"), cr("C3", "UNTESTED")],
             has_relevant_evidence=True)
-        self.assertEqual(status, "UNKNOWN")
+        self.assertEqual(status, "MISSING")
 
     def test_5_no_evidence_missing(self):
         status, _, _ = aggregate_condition_statuses(
@@ -193,7 +193,7 @@ class TestLLMFinalVerdictOverride(unittest.TestCase):
         self.assertIn(final.status, ("UNKNOWN", "MISSING", "PARTIAL"))
         self.assertNotEqual(final.status, "SUPPORTED")
 
-    def test_heuristic_qualification_is_advisory_and_preserves_semantic_status(self):
+    def test_heuristic_qualification_is_advisory_and_preserves_condition_status(self):
         llm = VerificationAnalysisResult(
             status="PARTIAL",
             confidence=90,
@@ -216,7 +216,6 @@ class TestLLMFinalVerdictOverride(unittest.TestCase):
 
         self.assertEqual(llm.condition_results[0].status, "PENDING")
         self.assertEqual(final.condition_results[0].status, "PENDING")
-        self.assertEqual(final.condition_results[0].semantic_status, "PENDING")
         self.assertEqual(final.condition_results[0].validation_state, "UNRESOLVED")
         self.assertEqual(final._diagnostics["pre_qualification_condition_results"][0]["status"], "PENDING")
         self.assertEqual(final._diagnostics["post_qualification_condition_results"][0]["status"], "PENDING")
@@ -274,7 +273,7 @@ class TestDeterministicPassFallback(unittest.TestCase):
 class TestEvidenceMethodQualification(unittest.TestCase):
     """Spec Phase 6: verification-method compatibility."""
 
-    def test_9_physical_requirement_simulation_only_unknown(self):
+    def test_9_physical_requirement_simulation_warning_does_not_override_llm(self):
         contract = make_contract(
             req_code="REQ-SIM-001",
             title="THD <= 5% verified by physical bench test",
@@ -292,7 +291,9 @@ class TestEvidenceMethodQualification(unittest.TestCase):
         )
         final = finalize_verdict(contract, llm, [q], qualified_contents={"E1": sim_content})
         self.assertEqual(q.qualification_status, "NOT_QUALIFIED")
-        self.assertEqual(final.status, "UNKNOWN")
+        self.assertEqual(final.status, "SUPPORTED")
+        self.assertEqual(final.condition_results[0].status, "PROVEN")
+        self.assertEqual(final.condition_results[0].validation_state, "CONTRADICTED")
 
     def test_10_simulation_requirement_simulation_evidence_can_support(self):
         contract = make_contract(
@@ -393,8 +394,8 @@ class TestParameterQualification(unittest.TestCase):
         self.assertEqual(q.qualification_status, "NOT_QUALIFIED")
         self.assertFalse(q.parameter_compatible)
 
-        # The handcrafted semantic result is preserved; lexical parameter
-        # normalization only flags it for review rather than overriding it.
+        # Qualification records the parameter problem but does not replace the
+        # LLM's semantic status.
         llm = VerificationAnalysisResult(
             status="SUPPORTED", confidence=90,
             condition_results=[cr("C1", "PROVEN", ["E1"], quote=content[:60])],
@@ -402,7 +403,8 @@ class TestParameterQualification(unittest.TestCase):
         )
         final = finalize_verdict(contract, llm, [q], qualified_contents={"E1": content})
         self.assertEqual(final.status, "SUPPORTED")
-        self.assertEqual(final.condition_results[0].validation_state, "UNRESOLVED")
+        self.assertEqual(final.condition_results[0].status, "PROVEN")
+        self.assertNotEqual(final.condition_results[0].validation_state, "VALID")
 
     def test_temperature_kinds_are_distinct(self):
         contract = make_contract(
@@ -472,21 +474,22 @@ class TestNumericEnvelopeSemantics(unittest.TestCase):
         self.assertEqual(status, "CONFLICT")
 
 
-class TestMergeQualificationEnforcement(unittest.TestCase):
-    """Direct checks of the qualification merge on condition results."""
+class TestConditionEvidenceAudit(unittest.TestCase):
+    """Evidence qualification emits warnings without replacing LLM statuses."""
 
-    def test_proven_without_evidence_reference_downgraded(self):
+    def test_proven_without_evidence_reference_is_flagged_not_downgraded(self):
         contract = make_contract(conditions=[cond("C1")])
         qualifications = [qual("E1", "lab.pdf", "QUALIFIED", True, True)]
         crs = [cr("C1", "PROVEN")]  # no evidence_ids, no quote
-        merged = merge_qualification_into_conditions(contract, crs, qualifications, {"E1": "x"})
-        self.assertEqual(merged[0].status, "INCONCLUSIVE")
+        merged = audit_condition_evidence(contract, crs, qualifications, {"E1": "x"})
+        self.assertEqual(merged[0].status, "PROVEN")
+        self.assertEqual(merged[0].validation_state, "CONTRADICTED")
 
     def test_proven_with_quote_in_qualified_chunk_accepted(self):
         contract = make_contract(conditions=[cond("C1")])
         qualifications = [qual("E1", "lab.pdf", "QUALIFIED", True, True)]
         crs = [cr("C1", "PROVEN", quote="measured quiescent current 142 uA")]
-        merged = merge_qualification_into_conditions(contract, crs, qualifications,
+        merged = audit_condition_evidence(contract, crs, qualifications,
                                                      {"E1": "We measured quiescent current 142 uA on the bench"})
         self.assertEqual(merged[0].status, "PROVEN")
 
@@ -494,8 +497,47 @@ class TestMergeQualificationEnforcement(unittest.TestCase):
         contract = make_contract(conditions=[cond("C1")])
         qualifications = [qual("E2", "lab.pdf", "QUALIFIED", True, True)]
         crs = [cr("C1", "PROVEN", evidence_ids=["Evidence 2"])]
-        merged = merge_qualification_into_conditions(contract, crs, qualifications, {})
+        merged = audit_condition_evidence(contract, crs, qualifications, {})
         self.assertEqual(merged[0].status, "PROVEN")
+
+    def test_qualification_cannot_be_borrowed_from_unrelated_cited_document(self):
+        contract = make_contract(conditions=[cond("C1")])
+        unqualified = qual("E1", "simulation.pdf", "NOT_QUALIFIED", True, True)
+        unqualified.method_compatible = False
+        qualified = qual("E2", "lab.pdf", "QUALIFIED", True, True)
+        quote = "Simulation predicts the condition may be satisfied after calibration"
+        crs = [cr("C1", "PENDING", evidence_ids=["E1", "E2"], quote=quote)]
+
+        merged = audit_condition_evidence(
+            contract,
+            crs,
+            [unqualified, qualified],
+            {
+                "E1": quote,
+                "E2": "Independent laboratory report about a different measurement.",
+            },
+        )
+
+        self.assertEqual(merged[0].status, "PENDING")
+        self.assertEqual(merged[0].validation_state, "CONTRADICTED")
+
+    def test_proven_requires_fully_qualified_exact_quote_source(self):
+        contract = make_contract(conditions=[cond("C1")])
+        matrix = qual("E1", "matrix.xlsx", "PARTIALLY_QUALIFIED", True, True)
+        architecture = qual("E2", "architecture.pdf", "NOT_QUALIFIED", True, True)
+        architecture.method_compatible = False
+        quote = "Architecture section defines the resistor sizing and timing diagram."
+        crs = [cr("C1", "PROVEN", evidence_ids=["E1", "E2"], quote=quote)]
+
+        merged = audit_condition_evidence(
+            contract,
+            crs,
+            [matrix, architecture],
+            {"E1": quote, "E2": quote},
+        )
+
+        self.assertEqual(merged[0].status, "PROVEN")
+        self.assertNotEqual(merged[0].validation_state, "VALID")
 
 
 class TestBuildVerificationPrompt(unittest.TestCase):
@@ -527,6 +569,8 @@ class TestBuildVerificationPrompt(unittest.TestCase):
         self.assertIn("REQ-AUD-001", prompt)
         self.assertIn("lab_report.pdf", prompt)
         self.assertIn("formal compliance", system_instruction)
+        self.assertIn("JUDGE EVERY CONDITION INDEPENDENTLY", prompt)
+        self.assertIn("Never use PENDING merely because the overall requirement is PARTIAL", prompt)
         # Verify no duplicate excerpts or unformatted tags
         self.assertEqual(prompt.count("[Evidence Excerpt #1"), 1)
 
@@ -606,6 +650,7 @@ class TestFullPipelineToApiResponse(unittest.TestCase):
                 status=final_verdict.status,
                 confidence=float(final_verdict.confidence),
                 reason=final_verdict.reason,
+                condition_results=final_verdict.condition_results,
             ),
         )
 
@@ -677,11 +722,13 @@ class TestFullPipelineToApiResponse(unittest.TestCase):
                 status=final_verdict.status,
                 confidence=float(final_verdict.confidence),
                 reason=final_verdict.reason,
+                condition_results=final_verdict.condition_results,
             ),
         )
 
         self.assertEqual(assessment.coverage_status, "Supported")
         self.assertEqual(assessment.review_state, "Reviewed")
+        self.assertTrue(assessment.pipeline_diagnostics["review_gate"]["auto_close_eligible"])
 
         # 4. API serialization into public RequirementResponse
         api_response = RequirementResponse(
@@ -703,8 +750,155 @@ class TestFullPipelineToApiResponse(unittest.TestCase):
             updated_at=datetime.now(timezone.utc),
         )
 
+    def test_supported_with_contradicted_proof_requires_review_without_changing_verdict(self):
+        """A false-supported risk is routed to review, never silently reclassified."""
+        from app.services.classification import _finalize_assessment, _format_evidence_items
+        from app.services.validators import ValidationOutcome
+
+        contradicted = ConditionVerificationResult(
+            condition_id="REQ-BAT-001-C1",
+            status="PROVEN",
+            validation_state="CONTRADICTED",
+            validation_notes=["Simulation cannot prove a required physical test."],
+            evidence_ids=["E1"],
+            quote="CFD simulation predicts acceptable performance.",
+        )
+        assessment = _finalize_assessment(
+            contract=self.contract,
+            non_spec_items=_format_evidence_items(self.candidate_chunks),
+            outcome=ValidationOutcome(
+                status="SUPPORTED",
+                confidence=95.0,
+                reason="The model predicted support.",
+                condition_results=[contradicted],
+            ),
+            pipeline_diagnostics={"decision_source": "llm", "final_status": "SUPPORTED"},
+        )
+
+        self.assertEqual(assessment.coverage_status, "Supported")
+        self.assertEqual(assessment.review_state, "Needs review")
+        self.assertFalse(assessment.pipeline_diagnostics["review_gate"]["auto_close_eligible"])
+        self.assertIn("contradicted", assessment.pipeline_diagnostics["review_gate"]["reasons"][0].lower())
+        self.assertIn("automatic closure is disabled", assessment.ai_recommendation)
+
+    def test_low_confidence_supported_requires_review_without_changing_verdict(self):
+        """Confidence controls workflow review, not the semantic category."""
+        from app.services.classification import _finalize_assessment
+        from app.services.validators import ValidationOutcome
+
+        valid = ConditionVerificationResult(
+            condition_id="REQ-BAT-001-C1",
+            status="PROVEN",
+            validation_state="VALID",
+        )
+        assessment = _finalize_assessment(
+            contract=self.contract,
+            non_spec_items=[],
+            outcome=ValidationOutcome(
+                status="SUPPORTED",
+                confidence=95.0,
+                reason="Support predicted with limited confidence.",
+                condition_results=[valid],
+            ),
+            pipeline_diagnostics={
+                "decision_source": "llm",
+                "llm_provisional_status": "SUPPORTED",
+                "llm_provisional_confidence": 79.0,
+                "final_status": "SUPPORTED",
+            },
+        )
+
+        self.assertEqual(assessment.coverage_status, "Supported")
+        self.assertEqual(assessment.review_state, "Needs review")
+        self.assertIn("LLM confidence 79.0%", assessment.pipeline_diagnostics["review_gate"]["reasons"][0])
+
+    def test_provisional_partial_aggregated_supported_requires_review(self):
+        """Holistic/atomic disagreement flags likely under-decomposition."""
+        from app.services.classification import _finalize_assessment
+        from app.services.validators import ValidationOutcome
+
+        valid = ConditionVerificationResult(
+            condition_id="REQ-BAT-001-C1",
+            status="PROVEN",
+            validation_state="VALID",
+        )
+        assessment = _finalize_assessment(
+            contract=self.contract,
+            non_spec_items=[],
+            outcome=ValidationOutcome(
+                status="SUPPORTED",
+                confidence=95.0,
+                reason="Mechanical aggregation found all extracted conditions proven.",
+                condition_results=[valid],
+            ),
+            pipeline_diagnostics={
+                "decision_source": "llm",
+                "llm_provisional_status": "PARTIAL",
+                "final_status": "SUPPORTED",
+            },
+        )
+
+        self.assertEqual(assessment.coverage_status, "Supported")
+        self.assertEqual(assessment.review_state, "Needs review")
+        self.assertIn("disagrees", assessment.pipeline_diagnostics["review_gate"]["reasons"][0])
+
+    def test_incomplete_extracted_contract_blocks_supported_auto_closure(self):
+        """All extracted conditions may be proven while a source obligation is missing."""
+        from app.schemas.contract import ClauseCoverageContract
+        from app.services.classification import _finalize_assessment
+        from app.services.validators import ValidationOutcome
+
+        incomplete_contract = self.contract.model_copy(deep=True)
+        incomplete_contract.contract_complete = False
+        incomplete_contract.clause_coverage = [
+            ClauseCoverageContract(
+                clause="Complete recovery within three seconds",
+                condition_ids=["REQ-BAT-001-C2"],
+            )
+        ]
+        incomplete_contract.unmapped_obligations = ["Boot the golden image successfully"]
+        proven = [
+            ConditionVerificationResult(
+                condition_id=condition.condition_id,
+                status="PROVEN",
+                validation_state="VALID",
+            )
+            for condition in incomplete_contract.atomic_conditions
+        ]
+
+        assessment = _finalize_assessment(
+            contract=incomplete_contract,
+            non_spec_items=[],
+            outcome=ValidationOutcome(
+                status="SUPPORTED",
+                confidence=95.0,
+                reason="All extracted atomic conditions are proven.",
+                condition_results=proven,
+            ),
+            pipeline_diagnostics={
+                "decision_source": "llm",
+                "llm_provisional_status": "SUPPORTED",
+                "llm_provisional_confidence": 95.0,
+                "final_status": "SUPPORTED",
+            },
+        )
+
+        self.assertEqual(assessment.coverage_status, "Supported")
+        self.assertEqual(assessment.review_state, "Needs review")
+        self.assertFalse(assessment.pipeline_diagnostics["review_gate"]["auto_close_eligible"])
+        self.assertIn(
+            "Boot the golden image successfully",
+            assessment.pipeline_diagnostics["review_gate"]["reasons"][0],
+        )
+
 class TestSchemaStatusNormalization(unittest.TestCase):
     """Test suite proving robust lenient status normalization across global supplier vocabularies."""
+
+    def test_pipeline_validation_fields_are_hidden_from_llm_schema(self):
+        properties = ConditionVerificationResult.model_json_schema()["properties"]
+        self.assertNotIn("validation_state", properties)
+        self.assertNotIn("validation_notes", properties)
+        self.assertNotIn("semantic_status", properties)
 
     def test_condition_status_normalizes_real_world_synonyms(self):
         from app.schemas.verification_result import ConditionVerificationResult
@@ -762,6 +956,30 @@ class TestSchemaStatusNormalization(unittest.TestCase):
         self.assertEqual(item.req_code, "REQ-AUT-069")
         self.assertEqual(item.condition_results[0].status, "UNTESTED")
         self.assertEqual(item.condition_results[1].status, "PROVEN")
+
+    def test_batch_verification_result_tolerates_numeric_scalar_variants(self):
+        from app.schemas.verification_result import BatchVerificationResult
+
+        parsed = BatchVerificationResult.model_validate({
+            "batch_results": [{
+                "req_code": "REQ-SCHEMA-001",
+                "status": "SUPPORTED",
+                "confidence": 90,
+                "condition_results": [{
+                    "condition_id": "C1",
+                    "status": "PROVEN",
+                    "observed_value": 4000,
+                    "observed_min_value": "-40.0°C",
+                    "observed_max_value": "2.0°C",
+                }],
+                "reason": "Measured values satisfy the condition.",
+            }],
+        })
+
+        result = parsed.batch_results[0].condition_results[0]
+        self.assertEqual(result.observed_value, "4000")
+        self.assertEqual(result.observed_min_value, -40.0)
+        self.assertEqual(result.observed_max_value, 2.0)
 
 
 if __name__ == "__main__":

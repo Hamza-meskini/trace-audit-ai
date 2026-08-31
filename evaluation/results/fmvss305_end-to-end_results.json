@@ -1,0 +1,4854 @@
+{
+  "benchmark_id": "fmvss305-public-evidence-v1",
+  "benchmark_version": "1.0.0",
+  "mode": "end-to-end",
+  "model": "system.ai.meta-llama-3-3-70b-instruct",
+  "thinking_level": "HIGH",
+  "runtime_seconds": 204.91,
+  "validation": {
+    "valid": true,
+    "errors": [],
+    "warnings": [],
+    "requirements": 11,
+    "atomic_conditions": 30,
+    "quote_checks": [
+      {
+        "requirement_id": "FMVSS-305-S5.1",
+        "condition_id": "S5.1-C1",
+        "page": 12,
+        "token_coverage": 1.0
+      },
+      {
+        "requirement_id": "FMVSS-305-S5.1",
+        "condition_id": "S5.1-C2",
+        "page": 11,
+        "token_coverage": 1.0
+      },
+      {
+        "requirement_id": "FMVSS-305-S5.1",
+        "condition_id": "S5.1-C2",
+        "page": 12,
+        "token_coverage": 1.0
+      },
+      {
+        "requirement_id": "FMVSS-305-S5.1",
+        "condition_id": "S5.1-C3",
+        "page": 6,
+        "token_coverage": 1.0
+      },
+      {
+        "requirement_id": "FMVSS-305-S5.1",
+        "condition_id": "S5.1-C3",
+        "page": 12,
+        "token_coverage": 1.0
+      },
+      {
+        "requirement_id": "FMVSS-305-S5.2",
+        "condition_id": "S5.2-C1",
+        "page": 6,
+        "token_coverage": 1.0
+      },
+      {
+        "requirement_id": "FMVSS-305-S5.2",
+        "condition_id": "S5.2-C1",
+        "page": 11,
+        "token_coverage": 1.0
+      },
+      {
+        "requirement_id": "FMVSS-305-S5.2",
+        "condition_id": "S5.2-C2",
+        "page": 11,
+        "token_coverage": 1.0
+      },
+      {
+        "requirement_id": "FMVSS-305-S5.3",
+        "condition_id": "S5.3-PATH-A",
+        "page": 11,
+        "token_coverage": 0.619
+      },
+      {
+        "requirement_id": "FMVSS-305-S5.3",
+        "condition_id": "S5.3-PATH-A",
+        "page": 13,
+        "token_coverage": 1.0
+      },
+      {
+        "requirement_id": "FMVSS-305-S6.3",
+        "condition_id": "S6.3-C1",
+        "page": 6,
+        "token_coverage": 1.0
+      },
+      {
+        "requirement_id": "FMVSS-305-S6.3",
+        "condition_id": "S6.3-C2",
+        "page": 6,
+        "token_coverage": 1.0
+      },
+      {
+        "requirement_id": "FMVSS-305-S6.3",
+        "condition_id": "S6.3-C5",
+        "page": 6,
+        "token_coverage": 1.0
+      },
+      {
+        "requirement_id": "FMVSS-305-S6.4",
+        "condition_id": "S6.4-C1",
+        "page": 12,
+        "token_coverage": 0.6
+      },
+      {
+        "requirement_id": "FMVSS-305-S6.4",
+        "condition_id": "S6.4-C1",
+        "page": 14,
+        "token_coverage": 0.765
+      },
+      {
+        "requirement_id": "FMVSS-305-S6.4",
+        "condition_id": "S6.4-C2",
+        "page": 12,
+        "token_coverage": 1.0
+      },
+      {
+        "requirement_id": "FMVSS-305-S6.4",
+        "condition_id": "S6.4-C3",
+        "page": 6,
+        "token_coverage": 1.0
+      },
+      {
+        "requirement_id": "FMVSS-305-S6.4",
+        "condition_id": "S6.4-C4",
+        "page": 13,
+        "token_coverage": 1.0
+      },
+      {
+        "requirement_id": "FMVSS-305-S6.4",
+        "condition_id": "S6.4-C4",
+        "page": 14,
+        "token_coverage": 1.0
+      },
+      {
+        "requirement_id": "FMVSS-305-S7.1C",
+        "condition_id": "S7.1C-C1",
+        "page": 9,
+        "token_coverage": 1.0
+      },
+      {
+        "requirement_id": "FMVSS-305-S7.1C",
+        "condition_id": "S7.1C-C2",
+        "page": 9,
+        "token_coverage": 1.0
+      },
+      {
+        "requirement_id": "FMVSS-305-S7.2",
+        "condition_id": "S7.2-C1",
+        "page": 10,
+        "token_coverage": 1.0
+      },
+      {
+        "requirement_id": "FMVSS-305-S7.2",
+        "condition_id": "S7.2-C1",
+        "page": 10,
+        "token_coverage": 1.0
+      },
+      {
+        "requirement_id": "FMVSS-305-S7.6.2",
+        "condition_id": "S7.6.2-C1",
+        "page": 11,
+        "token_coverage": 0.8
+      },
+      {
+        "requirement_id": "FMVSS-305-S7.6.2",
+        "condition_id": "S7.6.2-C1",
+        "page": 12,
+        "token_coverage": 0.8
+      },
+      {
+        "requirement_id": "FMVSS-305-S7.6.6",
+        "condition_id": "S7.6.6-C1",
+        "page": 11,
+        "token_coverage": 1.0
+      },
+      {
+        "requirement_id": "FMVSS-305-S7.6.6",
+        "condition_id": "S7.6.6-C2",
+        "page": 11,
+        "token_coverage": 0.75
+      },
+      {
+        "requirement_id": "FMVSS-305-S7.6.6",
+        "condition_id": "S7.6.6-C3",
+        "page": 11,
+        "token_coverage": 0.8
+      },
+      {
+        "requirement_id": "FMVSS-305-S7.6.6",
+        "condition_id": "S7.6.6-C4",
+        "page": 11,
+        "token_coverage": 0.75
+      },
+      {
+        "requirement_id": "FMVSS-305-S5.4.1.1",
+        "condition_id": "S5.4.1.1-C1",
+        "page": 17,
+        "token_coverage": 1.0
+      },
+      {
+        "requirement_id": "FMVSS-305-S5.4.1.1",
+        "condition_id": "S5.4.1.1-C2",
+        "page": 18,
+        "token_coverage": 1.0
+      },
+      {
+        "requirement_id": "FMVSS-305-S5.4.1.1",
+        "condition_id": "S5.4.1.1-C3",
+        "page": 17,
+        "token_coverage": 1.0
+      }
+    ]
+  },
+  "documents": {
+    "requirements": {
+      "filename": "FMVSS_305_Requirements_2024-11-27.pdf",
+      "role": "SPECIFICATION",
+      "effective_date": "2024-11-27"
+    },
+    "evidence": {
+      "filename": "305-2400152-TEST.pdf",
+      "role": "TEST_REPORT",
+      "expected_source_authority": "EMPIRICAL_TEST",
+      "test_date": "2024-11-27"
+    }
+  },
+  "metrics": {
+    "extraction": {
+      "selected_clause_recall": 100.0,
+      "matched_selected_clauses": 11,
+      "selected_clauses": 11,
+      "atomic_condition_recall": 23.33,
+      "matched_atomic_conditions": 7,
+      "atomic_conditions": 30,
+      "source": "LLM-extracted contracts",
+      "total_extracted_requirements": 47,
+      "matches": {
+        "FMVSS-305-S5.1": "S5.1",
+        "FMVSS-305-S5.2": "S5.2",
+        "FMVSS-305-S5.3": "S5.3",
+        "FMVSS-305-S6.3": "S6.3",
+        "FMVSS-305-S6.4": "S6.4",
+        "FMVSS-305-S7.1C": "49 CFR 571.305 S5.4.6.2",
+        "FMVSS-305-S7.2": "49 CFR 571.305 S7.2",
+        "FMVSS-305-S7.6.2": "49 CFR 571.305 S7.6.2",
+        "FMVSS-305-S7.6.6": "S7.6.6",
+        "FMVSS-305-S5.4.1.1": "S5.4.1.1",
+        "FMVSS-305-S5.4.6.3": "S5.4.6.3"
+      }
+    },
+    "retrieval": {
+      "evaluated_requirements": 10,
+      "recall_at_1": 50.0,
+      "recall_at_3": 80.0,
+      "recall_at_5": 90.0,
+      "mrr": 0.6533,
+      "details": {
+        "FMVSS-305-S5.1": {
+          "expected_pages": [
+            6,
+            11,
+            12
+          ],
+          "retrieved_pages": [
+            12,
+            11,
+            9,
+            16,
+            6
+          ],
+          "first_hit_rank": 1
+        },
+        "FMVSS-305-S5.2": {
+          "expected_pages": [
+            6,
+            11
+          ],
+          "retrieved_pages": [
+            9,
+            16,
+            11,
+            10,
+            6
+          ],
+          "first_hit_rank": 3
+        },
+        "FMVSS-305-S5.3": {
+          "expected_pages": [
+            11,
+            13
+          ],
+          "retrieved_pages": [
+            6,
+            10,
+            14,
+            5,
+            11
+          ],
+          "first_hit_rank": 5
+        },
+        "FMVSS-305-S6.3": {
+          "expected_pages": [
+            6
+          ],
+          "retrieved_pages": [
+            6,
+            10,
+            11,
+            12,
+            14
+          ],
+          "first_hit_rank": 1
+        },
+        "FMVSS-305-S6.4": {
+          "expected_pages": [
+            6,
+            12,
+            13,
+            14
+          ],
+          "retrieved_pages": [
+            12,
+            14,
+            11,
+            10,
+            6
+          ],
+          "first_hit_rank": 1
+        },
+        "FMVSS-305-S7.1C": {
+          "expected_pages": [
+            9
+          ],
+          "retrieved_pages": [
+            9,
+            10,
+            5,
+            6,
+            14
+          ],
+          "first_hit_rank": 1
+        },
+        "FMVSS-305-S7.2": {
+          "expected_pages": [
+            10
+          ],
+          "retrieved_pages": [
+            10,
+            6,
+            11,
+            2,
+            14
+          ],
+          "first_hit_rank": 1
+        },
+        "FMVSS-305-S7.6.2": {
+          "expected_pages": [
+            11,
+            12
+          ],
+          "retrieved_pages": [
+            10,
+            11,
+            12,
+            13,
+            3
+          ],
+          "first_hit_rank": 2
+        },
+        "FMVSS-305-S7.6.6": {
+          "expected_pages": [
+            11
+          ],
+          "retrieved_pages": [
+            10,
+            11,
+            14,
+            9,
+            6
+          ],
+          "first_hit_rank": 2
+        },
+        "FMVSS-305-S5.4.1.1": {
+          "expected_pages": [
+            17,
+            18
+          ],
+          "retrieved_pages": [
+            10,
+            11,
+            12,
+            16,
+            9
+          ],
+          "first_hit_rank": null
+        }
+      }
+    },
+    "source_authority": {
+      "authority_accuracy": 0.0,
+      "authoritative_qualification_rate": 0.0,
+      "checks": 19,
+      "details": [
+        {
+          "requirement_id": "FMVSS-305-S5.1",
+          "page": 12,
+          "expected_authority": "EMPIRICAL_TEST",
+          "actual_authority": "UNKNOWN",
+          "authority_correct": false,
+          "qualification_status": "NOT_QUALIFIED",
+          "is_authoritative": false,
+          "reason": "Evidence method 'unknown' cannot satisfy required verification method 'physical_test'."
+        },
+        {
+          "requirement_id": "FMVSS-305-S5.1",
+          "page": 11,
+          "expected_authority": "EMPIRICAL_TEST",
+          "actual_authority": "UNKNOWN",
+          "authority_correct": false,
+          "qualification_status": "NOT_QUALIFIED",
+          "is_authoritative": false,
+          "reason": "Evidence method 'unknown' cannot satisfy required verification method 'physical_test'."
+        },
+        {
+          "requirement_id": "FMVSS-305-S5.1",
+          "page": 6,
+          "expected_authority": "EMPIRICAL_TEST",
+          "actual_authority": "UNKNOWN",
+          "authority_correct": false,
+          "qualification_status": "NOT_QUALIFIED",
+          "is_authoritative": false,
+          "reason": "Evidence method 'unknown' cannot satisfy required verification method 'physical_test'."
+        },
+        {
+          "requirement_id": "FMVSS-305-S5.2",
+          "page": 6,
+          "expected_authority": "EMPIRICAL_TEST",
+          "actual_authority": "UNKNOWN",
+          "authority_correct": false,
+          "qualification_status": "NOT_QUALIFIED",
+          "is_authoritative": false,
+          "reason": "Evidence method 'unknown' cannot satisfy required verification method 'physical_test'."
+        },
+        {
+          "requirement_id": "FMVSS-305-S5.2",
+          "page": 11,
+          "expected_authority": "EMPIRICAL_TEST",
+          "actual_authority": "UNKNOWN",
+          "authority_correct": false,
+          "qualification_status": "NOT_QUALIFIED",
+          "is_authoritative": false,
+          "reason": "Evidence method 'unknown' cannot satisfy required verification method 'physical_test'."
+        },
+        {
+          "requirement_id": "FMVSS-305-S5.3",
+          "page": 11,
+          "expected_authority": "EMPIRICAL_TEST",
+          "actual_authority": "CALCULATION",
+          "authority_correct": false,
+          "qualification_status": "NOT_QUALIFIED",
+          "is_authoritative": false,
+          "reason": "Evidence method 'calculation' cannot satisfy required verification method 'physical_test'."
+        },
+        {
+          "requirement_id": "FMVSS-305-S5.3",
+          "page": 13,
+          "expected_authority": "EMPIRICAL_TEST",
+          "actual_authority": "CALCULATION",
+          "authority_correct": false,
+          "qualification_status": "NOT_QUALIFIED",
+          "is_authoritative": false,
+          "reason": "Retrieved chunk does not contain a local passage addressing this requirement."
+        },
+        {
+          "requirement_id": "FMVSS-305-S6.3",
+          "page": 6,
+          "expected_authority": "EMPIRICAL_TEST",
+          "actual_authority": "UNKNOWN",
+          "authority_correct": false,
+          "qualification_status": "NOT_QUALIFIED",
+          "is_authoritative": false,
+          "reason": "Evidence method 'unknown' cannot satisfy required verification method 'physical_test'."
+        },
+        {
+          "requirement_id": "FMVSS-305-S6.4",
+          "page": 12,
+          "expected_authority": "EMPIRICAL_TEST",
+          "actual_authority": "UNKNOWN",
+          "authority_correct": false,
+          "qualification_status": "NOT_QUALIFIED",
+          "is_authoritative": false,
+          "reason": "Evidence method 'unknown' cannot satisfy required verification method 'physical_test'."
+        },
+        {
+          "requirement_id": "FMVSS-305-S6.4",
+          "page": 14,
+          "expected_authority": "EMPIRICAL_TEST",
+          "actual_authority": "UNKNOWN",
+          "authority_correct": false,
+          "qualification_status": "NOT_QUALIFIED",
+          "is_authoritative": false,
+          "reason": "Evidence method 'unknown' cannot satisfy required verification method 'physical_test'."
+        },
+        {
+          "requirement_id": "FMVSS-305-S6.4",
+          "page": 6,
+          "expected_authority": "EMPIRICAL_TEST",
+          "actual_authority": "UNKNOWN",
+          "authority_correct": false,
+          "qualification_status": "NOT_QUALIFIED",
+          "is_authoritative": false,
+          "reason": "Evidence method 'unknown' cannot satisfy required verification method 'physical_test'."
+        },
+        {
+          "requirement_id": "FMVSS-305-S6.4",
+          "page": 13,
+          "expected_authority": "EMPIRICAL_TEST",
+          "actual_authority": "UNKNOWN",
+          "authority_correct": false,
+          "qualification_status": "NOT_QUALIFIED",
+          "is_authoritative": false,
+          "reason": "Evidence method 'unknown' cannot satisfy required verification method 'physical_test'."
+        },
+        {
+          "requirement_id": "FMVSS-305-S7.1C",
+          "page": 9,
+          "expected_authority": "EMPIRICAL_TEST",
+          "actual_authority": "UNKNOWN",
+          "authority_correct": false,
+          "qualification_status": "NOT_QUALIFIED",
+          "is_authoritative": false,
+          "reason": "Evidence method 'unknown' cannot satisfy required verification method 'physical_test'."
+        },
+        {
+          "requirement_id": "FMVSS-305-S7.2",
+          "page": 10,
+          "expected_authority": "EMPIRICAL_TEST",
+          "actual_authority": "UNKNOWN",
+          "authority_correct": false,
+          "qualification_status": "NOT_QUALIFIED",
+          "is_authoritative": false,
+          "reason": "Evidence method 'unknown' cannot satisfy required verification method 'physical_test'."
+        },
+        {
+          "requirement_id": "FMVSS-305-S7.6.2",
+          "page": 11,
+          "expected_authority": "EMPIRICAL_TEST",
+          "actual_authority": "UNKNOWN",
+          "authority_correct": false,
+          "qualification_status": "NOT_QUALIFIED",
+          "is_authoritative": false,
+          "reason": "Evidence method 'unknown' cannot satisfy required verification method 'physical_test'."
+        },
+        {
+          "requirement_id": "FMVSS-305-S7.6.2",
+          "page": 12,
+          "expected_authority": "EMPIRICAL_TEST",
+          "actual_authority": "UNKNOWN",
+          "authority_correct": false,
+          "qualification_status": "NOT_QUALIFIED",
+          "is_authoritative": false,
+          "reason": "Evidence method 'unknown' cannot satisfy required verification method 'physical_test'."
+        },
+        {
+          "requirement_id": "FMVSS-305-S7.6.6",
+          "page": 11,
+          "expected_authority": "EMPIRICAL_TEST",
+          "actual_authority": "UNKNOWN",
+          "authority_correct": false,
+          "qualification_status": "NOT_QUALIFIED",
+          "is_authoritative": false,
+          "reason": "Evidence method 'unknown' cannot satisfy required verification method 'physical_test'."
+        },
+        {
+          "requirement_id": "FMVSS-305-S5.4.1.1",
+          "page": 17,
+          "expected_authority": "EMPIRICAL_TEST",
+          "actual_authority": "UNKNOWN",
+          "authority_correct": false,
+          "qualification_status": "NOT_QUALIFIED",
+          "is_authoritative": false,
+          "reason": "Retrieved chunk does not contain a local passage addressing this requirement."
+        },
+        {
+          "requirement_id": "FMVSS-305-S5.4.1.1",
+          "page": 18,
+          "expected_authority": "EMPIRICAL_TEST",
+          "actual_authority": "UNKNOWN",
+          "authority_correct": false,
+          "qualification_status": "NOT_QUALIFIED",
+          "is_authoritative": false,
+          "reason": "Retrieved chunk does not contain a local passage addressing this requirement."
+        }
+      ]
+    },
+    "raw_llm_atomic": {
+      "accuracy": 10.0,
+      "correct": 3,
+      "total": 30,
+      "missing_or_unaligned_predictions": 29,
+      "mismatches": [
+        {
+          "requirement_id": "FMVSS-305-S5.1",
+          "condition_id": "S5.1-C1",
+          "expected": "PROVEN",
+          "predicted": "UNTESTED",
+          "prediction_missing": true
+        },
+        {
+          "requirement_id": "FMVSS-305-S5.1",
+          "condition_id": "S5.1-C2",
+          "expected": "PROVEN",
+          "predicted": "UNTESTED",
+          "prediction_missing": true
+        },
+        {
+          "requirement_id": "FMVSS-305-S5.1",
+          "condition_id": "S5.1-C3",
+          "expected": "PROVEN",
+          "predicted": "UNTESTED",
+          "prediction_missing": true
+        },
+        {
+          "requirement_id": "FMVSS-305-S5.2",
+          "condition_id": "S5.2-C1",
+          "expected": "PROVEN",
+          "predicted": "UNTESTED",
+          "prediction_missing": true
+        },
+        {
+          "requirement_id": "FMVSS-305-S5.2",
+          "condition_id": "S5.2-C2",
+          "expected": "PROVEN",
+          "predicted": "UNTESTED",
+          "prediction_missing": true
+        },
+        {
+          "requirement_id": "FMVSS-305-S5.3",
+          "condition_id": "S5.3-PATH-A",
+          "expected": "PROVEN",
+          "predicted": "UNTESTED",
+          "prediction_missing": true
+        },
+        {
+          "requirement_id": "FMVSS-305-S5.3",
+          "condition_id": "S5.3-PATH-B",
+          "expected": "NOT_APPLICABLE",
+          "predicted": "UNTESTED",
+          "prediction_missing": true
+        },
+        {
+          "requirement_id": "FMVSS-305-S5.3",
+          "condition_id": "S5.3-PATH-C",
+          "expected": "NOT_APPLICABLE",
+          "predicted": "UNTESTED",
+          "prediction_missing": true
+        },
+        {
+          "requirement_id": "FMVSS-305-S6.3",
+          "condition_id": "S6.3-C1",
+          "expected": "PROVEN",
+          "predicted": "UNTESTED",
+          "prediction_missing": true
+        },
+        {
+          "requirement_id": "FMVSS-305-S6.3",
+          "condition_id": "S6.3-C2",
+          "expected": "PROVEN",
+          "predicted": "UNTESTED",
+          "prediction_missing": true
+        },
+        {
+          "requirement_id": "FMVSS-305-S6.3",
+          "condition_id": "S6.3-C5",
+          "expected": "PROVEN",
+          "predicted": "UNTESTED",
+          "prediction_missing": true
+        },
+        {
+          "requirement_id": "FMVSS-305-S6.4",
+          "condition_id": "S6.4-C1",
+          "expected": "PROVEN",
+          "predicted": "UNTESTED",
+          "prediction_missing": true
+        },
+        {
+          "requirement_id": "FMVSS-305-S6.4",
+          "condition_id": "S6.4-C2",
+          "expected": "PROVEN",
+          "predicted": "UNTESTED",
+          "prediction_missing": true
+        },
+        {
+          "requirement_id": "FMVSS-305-S6.4",
+          "condition_id": "S6.4-C3",
+          "expected": "PROVEN",
+          "predicted": "UNTESTED",
+          "prediction_missing": true
+        },
+        {
+          "requirement_id": "FMVSS-305-S6.4",
+          "condition_id": "S6.4-C4",
+          "expected": "PROVEN",
+          "predicted": "UNTESTED",
+          "prediction_missing": true
+        },
+        {
+          "requirement_id": "FMVSS-305-S7.1C",
+          "condition_id": "S7.1C-C1",
+          "expected": "PROVEN",
+          "predicted": "UNTESTED",
+          "prediction_missing": true
+        },
+        {
+          "requirement_id": "FMVSS-305-S7.1C",
+          "condition_id": "S7.1C-C2",
+          "expected": "PROVEN",
+          "predicted": "UNTESTED",
+          "prediction_missing": true
+        },
+        {
+          "requirement_id": "FMVSS-305-S7.2",
+          "condition_id": "S7.2-C1",
+          "expected": "PROVEN",
+          "predicted": "UNTESTED",
+          "prediction_missing": true
+        },
+        {
+          "requirement_id": "FMVSS-305-S7.6.2",
+          "condition_id": "S7.6.2-C1",
+          "expected": "PROVEN",
+          "predicted": "UNTESTED",
+          "prediction_missing": true
+        },
+        {
+          "requirement_id": "FMVSS-305-S7.6.6",
+          "condition_id": "S7.6.6-C1",
+          "expected": "PROVEN",
+          "predicted": "UNTESTED",
+          "prediction_missing": true
+        },
+        {
+          "requirement_id": "FMVSS-305-S7.6.6",
+          "condition_id": "S7.6.6-C2",
+          "expected": "PROVEN",
+          "predicted": "UNTESTED",
+          "prediction_missing": true
+        },
+        {
+          "requirement_id": "FMVSS-305-S7.6.6",
+          "condition_id": "S7.6.6-C3",
+          "expected": "PROVEN",
+          "predicted": "UNTESTED",
+          "prediction_missing": true
+        },
+        {
+          "requirement_id": "FMVSS-305-S7.6.6",
+          "condition_id": "S7.6.6-C4",
+          "expected": "PROVEN",
+          "predicted": "UNTESTED",
+          "prediction_missing": true
+        },
+        {
+          "requirement_id": "FMVSS-305-S5.4.1.1",
+          "condition_id": "S5.4.1.1-C1",
+          "expected": "INCONCLUSIVE",
+          "predicted": "UNTESTED",
+          "prediction_missing": true
+        },
+        {
+          "requirement_id": "FMVSS-305-S5.4.1.1",
+          "condition_id": "S5.4.1.1-C2",
+          "expected": "INCONCLUSIVE",
+          "predicted": "UNTESTED",
+          "prediction_missing": true
+        },
+        {
+          "requirement_id": "FMVSS-305-S5.4.1.1",
+          "condition_id": "S5.4.1.1-C3",
+          "expected": "INCONCLUSIVE",
+          "predicted": "UNTESTED",
+          "prediction_missing": true
+        },
+        {
+          "requirement_id": "FMVSS-305-S5.4.6.3",
+          "condition_id": "S5.4.6.3-C2",
+          "expected": "UNTESTED",
+          "predicted": "INCONCLUSIVE",
+          "prediction_missing": false
+        }
+      ]
+    },
+    "final_atomic": {
+      "accuracy": 10.0,
+      "correct": 3,
+      "total": 30,
+      "missing_or_unaligned_predictions": 29,
+      "mismatches": [
+        {
+          "requirement_id": "FMVSS-305-S5.1",
+          "condition_id": "S5.1-C1",
+          "expected": "PROVEN",
+          "predicted": "UNTESTED",
+          "prediction_missing": true
+        },
+        {
+          "requirement_id": "FMVSS-305-S5.1",
+          "condition_id": "S5.1-C2",
+          "expected": "PROVEN",
+          "predicted": "UNTESTED",
+          "prediction_missing": true
+        },
+        {
+          "requirement_id": "FMVSS-305-S5.1",
+          "condition_id": "S5.1-C3",
+          "expected": "PROVEN",
+          "predicted": "UNTESTED",
+          "prediction_missing": true
+        },
+        {
+          "requirement_id": "FMVSS-305-S5.2",
+          "condition_id": "S5.2-C1",
+          "expected": "PROVEN",
+          "predicted": "UNTESTED",
+          "prediction_missing": true
+        },
+        {
+          "requirement_id": "FMVSS-305-S5.2",
+          "condition_id": "S5.2-C2",
+          "expected": "PROVEN",
+          "predicted": "UNTESTED",
+          "prediction_missing": true
+        },
+        {
+          "requirement_id": "FMVSS-305-S5.3",
+          "condition_id": "S5.3-PATH-A",
+          "expected": "PROVEN",
+          "predicted": "UNTESTED",
+          "prediction_missing": true
+        },
+        {
+          "requirement_id": "FMVSS-305-S5.3",
+          "condition_id": "S5.3-PATH-B",
+          "expected": "NOT_APPLICABLE",
+          "predicted": "UNTESTED",
+          "prediction_missing": true
+        },
+        {
+          "requirement_id": "FMVSS-305-S5.3",
+          "condition_id": "S5.3-PATH-C",
+          "expected": "NOT_APPLICABLE",
+          "predicted": "UNTESTED",
+          "prediction_missing": true
+        },
+        {
+          "requirement_id": "FMVSS-305-S6.3",
+          "condition_id": "S6.3-C1",
+          "expected": "PROVEN",
+          "predicted": "UNTESTED",
+          "prediction_missing": true
+        },
+        {
+          "requirement_id": "FMVSS-305-S6.3",
+          "condition_id": "S6.3-C2",
+          "expected": "PROVEN",
+          "predicted": "UNTESTED",
+          "prediction_missing": true
+        },
+        {
+          "requirement_id": "FMVSS-305-S6.3",
+          "condition_id": "S6.3-C5",
+          "expected": "PROVEN",
+          "predicted": "UNTESTED",
+          "prediction_missing": true
+        },
+        {
+          "requirement_id": "FMVSS-305-S6.4",
+          "condition_id": "S6.4-C1",
+          "expected": "PROVEN",
+          "predicted": "UNTESTED",
+          "prediction_missing": true
+        },
+        {
+          "requirement_id": "FMVSS-305-S6.4",
+          "condition_id": "S6.4-C2",
+          "expected": "PROVEN",
+          "predicted": "UNTESTED",
+          "prediction_missing": true
+        },
+        {
+          "requirement_id": "FMVSS-305-S6.4",
+          "condition_id": "S6.4-C3",
+          "expected": "PROVEN",
+          "predicted": "UNTESTED",
+          "prediction_missing": true
+        },
+        {
+          "requirement_id": "FMVSS-305-S6.4",
+          "condition_id": "S6.4-C4",
+          "expected": "PROVEN",
+          "predicted": "UNTESTED",
+          "prediction_missing": true
+        },
+        {
+          "requirement_id": "FMVSS-305-S7.1C",
+          "condition_id": "S7.1C-C1",
+          "expected": "PROVEN",
+          "predicted": "UNTESTED",
+          "prediction_missing": true
+        },
+        {
+          "requirement_id": "FMVSS-305-S7.1C",
+          "condition_id": "S7.1C-C2",
+          "expected": "PROVEN",
+          "predicted": "UNTESTED",
+          "prediction_missing": true
+        },
+        {
+          "requirement_id": "FMVSS-305-S7.2",
+          "condition_id": "S7.2-C1",
+          "expected": "PROVEN",
+          "predicted": "UNTESTED",
+          "prediction_missing": true
+        },
+        {
+          "requirement_id": "FMVSS-305-S7.6.2",
+          "condition_id": "S7.6.2-C1",
+          "expected": "PROVEN",
+          "predicted": "UNTESTED",
+          "prediction_missing": true
+        },
+        {
+          "requirement_id": "FMVSS-305-S7.6.6",
+          "condition_id": "S7.6.6-C1",
+          "expected": "PROVEN",
+          "predicted": "UNTESTED",
+          "prediction_missing": true
+        },
+        {
+          "requirement_id": "FMVSS-305-S7.6.6",
+          "condition_id": "S7.6.6-C2",
+          "expected": "PROVEN",
+          "predicted": "UNTESTED",
+          "prediction_missing": true
+        },
+        {
+          "requirement_id": "FMVSS-305-S7.6.6",
+          "condition_id": "S7.6.6-C3",
+          "expected": "PROVEN",
+          "predicted": "UNTESTED",
+          "prediction_missing": true
+        },
+        {
+          "requirement_id": "FMVSS-305-S7.6.6",
+          "condition_id": "S7.6.6-C4",
+          "expected": "PROVEN",
+          "predicted": "UNTESTED",
+          "prediction_missing": true
+        },
+        {
+          "requirement_id": "FMVSS-305-S5.4.1.1",
+          "condition_id": "S5.4.1.1-C1",
+          "expected": "INCONCLUSIVE",
+          "predicted": "UNTESTED",
+          "prediction_missing": true
+        },
+        {
+          "requirement_id": "FMVSS-305-S5.4.1.1",
+          "condition_id": "S5.4.1.1-C2",
+          "expected": "INCONCLUSIVE",
+          "predicted": "UNTESTED",
+          "prediction_missing": true
+        },
+        {
+          "requirement_id": "FMVSS-305-S5.4.1.1",
+          "condition_id": "S5.4.1.1-C3",
+          "expected": "INCONCLUSIVE",
+          "predicted": "UNTESTED",
+          "prediction_missing": true
+        },
+        {
+          "requirement_id": "FMVSS-305-S5.4.6.3",
+          "condition_id": "S5.4.6.3-C2",
+          "expected": "UNTESTED",
+          "predicted": "INCONCLUSIVE",
+          "prediction_missing": false
+        }
+      ]
+    },
+    "regulatory_logic": {
+      "accuracy": 0.0,
+      "correct": 0,
+      "total": 4
+    },
+    "final_verdict": {
+      "accuracy": 9.09,
+      "macro_f1": 5.56,
+      "correct": 1,
+      "total": 11,
+      "confusion_matrix": {
+        "SUPPORTED": {
+          "SUPPORTED": 1,
+          "PARTIAL": 0,
+          "CONFLICT": 0,
+          "MISSING": 3,
+          "UNKNOWN": 4
+        },
+        "PARTIAL": {
+          "SUPPORTED": 0,
+          "PARTIAL": 0,
+          "CONFLICT": 0,
+          "MISSING": 0,
+          "UNKNOWN": 1
+        },
+        "CONFLICT": {
+          "SUPPORTED": 0,
+          "PARTIAL": 0,
+          "CONFLICT": 0,
+          "MISSING": 0,
+          "UNKNOWN": 0
+        },
+        "MISSING": {
+          "SUPPORTED": 0,
+          "PARTIAL": 0,
+          "CONFLICT": 0,
+          "MISSING": 0,
+          "UNKNOWN": 1
+        },
+        "UNKNOWN": {
+          "SUPPORTED": 0,
+          "PARTIAL": 0,
+          "CONFLICT": 0,
+          "MISSING": 1,
+          "UNKNOWN": 0
+        }
+      },
+      "expected_distribution": {
+        "SUPPORTED": 8,
+        "PARTIAL": 1,
+        "UNKNOWN": 1,
+        "MISSING": 1
+      },
+      "predicted_distribution": {
+        "UNKNOWN": 6,
+        "MISSING": 4,
+        "SUPPORTED": 1
+      }
+    },
+    "review_gate": {
+      "review_state_accuracy": 18.18,
+      "false_supported": 0,
+      "unsafe_false_auto_closes": 0
+    }
+  },
+  "requirements": [
+    {
+      "requirement_id": "FMVSS-305-S5.1",
+      "clause": "S5.1",
+      "logic_operator": "ALL_OF",
+      "expected_status": "SUPPORTED",
+      "predicted_status": "UNKNOWN",
+      "correct": false,
+      "expected_review_state": "Reviewed",
+      "predicted_review_state": "Needs review",
+      "review_correct": false,
+      "confidence": 80.0,
+      "ai_analysis": "No qualified empirical evidence satisfies the required verification method 'physical_test'.",
+      "retrieved_pages": [
+        12,
+        11,
+        9,
+        16,
+        6
+      ],
+      "raw_llm_condition_results": [
+        {
+          "condition_id": "S5.1_C1",
+          "status": "INCONCLUSIVE",
+          "validation_state": "UNRESOLVED",
+          "validation_notes": [],
+          "evidence_value_role": "UNCLEAR",
+          "relationship": "UNCLEAR",
+          "evidence_ids": [
+            "E1"
+          ],
+          "quote": "FMVSS NO. 305 STATIC ROLLOVER RESULTS FOR ELECTRIC POWERED VEHICLES",
+          "reason": "Evidence method 'unknown' cannot satisfy required verification method 'physical_test'."
+        },
+        {
+          "condition_id": "S5.1_C2",
+          "status": "INCONCLUSIVE",
+          "validation_state": "UNRESOLVED",
+          "validation_notes": [],
+          "evidence_value_role": "UNCLEAR",
+          "relationship": "UNCLEAR",
+          "evidence_ids": [
+            "E2"
+          ],
+          "quote": "Is propulsion battery electrolyte spillage visible in the passenger compartment?",
+          "reason": "Evidence method 'unknown' cannot satisfy required verification method 'physical_test'."
+        },
+        {
+          "condition_id": "S5.1_C3",
+          "status": "INCONCLUSIVE",
+          "validation_state": "UNRESOLVED",
+          "validation_notes": [],
+          "evidence_value_role": "UNCLEAR",
+          "relationship": "UNCLEAR",
+          "evidence_ids": [
+            "E1"
+          ],
+          "quote": "Spillage is measured from the time the vehicle ceases motion after a barrier impact test until 30 minutes thereafter, and throughout any static rollover after a barrier impact test.",
+          "reason": "Evidence method 'unknown' cannot satisfy required verification method 'physical_test'."
+        }
+      ],
+      "final_condition_results": [
+        {
+          "condition_id": "S5.1_C1",
+          "description": null,
+          "status": "INCONCLUSIVE",
+          "validation_state": "UNRESOLVED",
+          "validation_notes": [],
+          "observed_parameter": null,
+          "observed_value": null,
+          "observed_min_value": null,
+          "observed_max_value": null,
+          "observed_unit": null,
+          "evidence_value_role": "UNCLEAR",
+          "relationship": "UNCLEAR",
+          "evidence_ids": [
+            "E1"
+          ],
+          "quote": "FMVSS NO. 305 STATIC ROLLOVER RESULTS FOR ELECTRIC POWERED VEHICLES",
+          "reason": "Evidence method 'unknown' cannot satisfy required verification method 'physical_test'."
+        },
+        {
+          "condition_id": "S5.1_C2",
+          "description": null,
+          "status": "INCONCLUSIVE",
+          "validation_state": "UNRESOLVED",
+          "validation_notes": [],
+          "observed_parameter": null,
+          "observed_value": null,
+          "observed_min_value": null,
+          "observed_max_value": null,
+          "observed_unit": null,
+          "evidence_value_role": "UNCLEAR",
+          "relationship": "UNCLEAR",
+          "evidence_ids": [
+            "E2"
+          ],
+          "quote": "Is propulsion battery electrolyte spillage visible in the passenger compartment?",
+          "reason": "Evidence method 'unknown' cannot satisfy required verification method 'physical_test'."
+        },
+        {
+          "condition_id": "S5.1_C3",
+          "description": null,
+          "status": "INCONCLUSIVE",
+          "validation_state": "UNRESOLVED",
+          "validation_notes": [],
+          "observed_parameter": null,
+          "observed_value": null,
+          "observed_min_value": null,
+          "observed_max_value": null,
+          "observed_unit": null,
+          "evidence_value_role": "UNCLEAR",
+          "relationship": "UNCLEAR",
+          "evidence_ids": [
+            "E1"
+          ],
+          "quote": "Spillage is measured from the time the vehicle ceases motion after a barrier impact test until 30 minutes thereafter, and throughout any static rollover after a barrier impact test.",
+          "reason": "Evidence method 'unknown' cannot satisfy required verification method 'physical_test'."
+        }
+      ],
+      "pipeline_diagnostics": {
+        "decision_source": "llm",
+        "llm_provisional_status": "UNKNOWN",
+        "llm_provisional_confidence": 0,
+        "llm_condition_results": [
+          {
+            "condition_id": "S5.1_C1",
+            "status": "INCONCLUSIVE",
+            "validation_state": "UNRESOLVED",
+            "validation_notes": [],
+            "evidence_value_role": "UNCLEAR",
+            "relationship": "UNCLEAR",
+            "evidence_ids": [
+              "E1"
+            ],
+            "quote": "FMVSS NO. 305 STATIC ROLLOVER RESULTS FOR ELECTRIC POWERED VEHICLES",
+            "reason": "Evidence method 'unknown' cannot satisfy required verification method 'physical_test'."
+          },
+          {
+            "condition_id": "S5.1_C2",
+            "status": "INCONCLUSIVE",
+            "validation_state": "UNRESOLVED",
+            "validation_notes": [],
+            "evidence_value_role": "UNCLEAR",
+            "relationship": "UNCLEAR",
+            "evidence_ids": [
+              "E2"
+            ],
+            "quote": "Is propulsion battery electrolyte spillage visible in the passenger compartment?",
+            "reason": "Evidence method 'unknown' cannot satisfy required verification method 'physical_test'."
+          },
+          {
+            "condition_id": "S5.1_C3",
+            "status": "INCONCLUSIVE",
+            "validation_state": "UNRESOLVED",
+            "validation_notes": [],
+            "evidence_value_role": "UNCLEAR",
+            "relationship": "UNCLEAR",
+            "evidence_ids": [
+              "E1"
+            ],
+            "quote": "Spillage is measured from the time the vehicle ceases motion after a barrier impact test until 30 minutes thereafter, and throughout any static rollover after a barrier impact test.",
+            "reason": "Evidence method 'unknown' cannot satisfy required verification method 'physical_test'."
+          }
+        ],
+        "post_reconciliation_condition_results": [
+          {
+            "condition_id": "S5.1_C1",
+            "status": "INCONCLUSIVE",
+            "validation_state": "UNRESOLVED",
+            "validation_notes": [],
+            "evidence_value_role": "UNCLEAR",
+            "relationship": "UNCLEAR",
+            "evidence_ids": [
+              "E1"
+            ],
+            "quote": "FMVSS NO. 305 STATIC ROLLOVER RESULTS FOR ELECTRIC POWERED VEHICLES",
+            "reason": "Evidence method 'unknown' cannot satisfy required verification method 'physical_test'."
+          },
+          {
+            "condition_id": "S5.1_C2",
+            "status": "INCONCLUSIVE",
+            "validation_state": "UNRESOLVED",
+            "validation_notes": [],
+            "evidence_value_role": "UNCLEAR",
+            "relationship": "UNCLEAR",
+            "evidence_ids": [
+              "E2"
+            ],
+            "quote": "Is propulsion battery electrolyte spillage visible in the passenger compartment?",
+            "reason": "Evidence method 'unknown' cannot satisfy required verification method 'physical_test'."
+          },
+          {
+            "condition_id": "S5.1_C3",
+            "status": "INCONCLUSIVE",
+            "validation_state": "UNRESOLVED",
+            "validation_notes": [],
+            "evidence_value_role": "UNCLEAR",
+            "relationship": "UNCLEAR",
+            "evidence_ids": [
+              "E1"
+            ],
+            "quote": "Spillage is measured from the time the vehicle ceases motion after a barrier impact test until 30 minutes thereafter, and throughout any static rollover after a barrier impact test.",
+            "reason": "Evidence method 'unknown' cannot satisfy required verification method 'physical_test'."
+          }
+        ],
+        "condition_transitions": [],
+        "pre_qualification_status": "UNKNOWN",
+        "pre_qualification_condition_results": [
+          {
+            "condition_id": "S5.1_C1",
+            "status": "INCONCLUSIVE",
+            "validation_state": "UNRESOLVED",
+            "validation_notes": [],
+            "evidence_value_role": "UNCLEAR",
+            "relationship": "UNCLEAR",
+            "evidence_ids": [
+              "E1"
+            ],
+            "quote": "FMVSS NO. 305 STATIC ROLLOVER RESULTS FOR ELECTRIC POWERED VEHICLES",
+            "reason": "Evidence method 'unknown' cannot satisfy required verification method 'physical_test'."
+          },
+          {
+            "condition_id": "S5.1_C2",
+            "status": "INCONCLUSIVE",
+            "validation_state": "UNRESOLVED",
+            "validation_notes": [],
+            "evidence_value_role": "UNCLEAR",
+            "relationship": "UNCLEAR",
+            "evidence_ids": [
+              "E2"
+            ],
+            "quote": "Is propulsion battery electrolyte spillage visible in the passenger compartment?",
+            "reason": "Evidence method 'unknown' cannot satisfy required verification method 'physical_test'."
+          },
+          {
+            "condition_id": "S5.1_C3",
+            "status": "INCONCLUSIVE",
+            "validation_state": "UNRESOLVED",
+            "validation_notes": [],
+            "evidence_value_role": "UNCLEAR",
+            "relationship": "UNCLEAR",
+            "evidence_ids": [
+              "E1"
+            ],
+            "quote": "Spillage is measured from the time the vehicle ceases motion after a barrier impact test until 30 minutes thereafter, and throughout any static rollover after a barrier impact test.",
+            "reason": "Evidence method 'unknown' cannot satisfy required verification method 'physical_test'."
+          }
+        ],
+        "evidence_audit_condition_results": [
+          {
+            "condition_id": "S5.1_C1",
+            "status": "INCONCLUSIVE",
+            "validation_state": "UNRESOLVED",
+            "validation_notes": [],
+            "evidence_value_role": "UNCLEAR",
+            "relationship": "UNCLEAR",
+            "evidence_ids": [
+              "E1"
+            ],
+            "quote": "FMVSS NO. 305 STATIC ROLLOVER RESULTS FOR ELECTRIC POWERED VEHICLES",
+            "reason": "Evidence method 'unknown' cannot satisfy required verification method 'physical_test'."
+          },
+          {
+            "condition_id": "S5.1_C2",
+            "status": "INCONCLUSIVE",
+            "validation_state": "UNRESOLVED",
+            "validation_notes": [],
+            "evidence_value_role": "UNCLEAR",
+            "relationship": "UNCLEAR",
+            "evidence_ids": [
+              "E2"
+            ],
+            "quote": "Is propulsion battery electrolyte spillage visible in the passenger compartment?",
+            "reason": "Evidence method 'unknown' cannot satisfy required verification method 'physical_test'."
+          },
+          {
+            "condition_id": "S5.1_C3",
+            "status": "INCONCLUSIVE",
+            "validation_state": "UNRESOLVED",
+            "validation_notes": [],
+            "evidence_value_role": "UNCLEAR",
+            "relationship": "UNCLEAR",
+            "evidence_ids": [
+              "E1"
+            ],
+            "quote": "Spillage is measured from the time the vehicle ceases motion after a barrier impact test until 30 minutes thereafter, and throughout any static rollover after a barrier impact test.",
+            "reason": "Evidence method 'unknown' cannot satisfy required verification method 'physical_test'."
+          }
+        ],
+        "post_qualification_condition_results": [
+          {
+            "condition_id": "S5.1_C1",
+            "status": "INCONCLUSIVE",
+            "validation_state": "UNRESOLVED",
+            "validation_notes": [],
+            "evidence_value_role": "UNCLEAR",
+            "relationship": "UNCLEAR",
+            "evidence_ids": [
+              "E1"
+            ],
+            "quote": "FMVSS NO. 305 STATIC ROLLOVER RESULTS FOR ELECTRIC POWERED VEHICLES",
+            "reason": "Evidence method 'unknown' cannot satisfy required verification method 'physical_test'."
+          },
+          {
+            "condition_id": "S5.1_C2",
+            "status": "INCONCLUSIVE",
+            "validation_state": "UNRESOLVED",
+            "validation_notes": [],
+            "evidence_value_role": "UNCLEAR",
+            "relationship": "UNCLEAR",
+            "evidence_ids": [
+              "E2"
+            ],
+            "quote": "Is propulsion battery electrolyte spillage visible in the passenger compartment?",
+            "reason": "Evidence method 'unknown' cannot satisfy required verification method 'physical_test'."
+          },
+          {
+            "condition_id": "S5.1_C3",
+            "status": "INCONCLUSIVE",
+            "validation_state": "UNRESOLVED",
+            "validation_notes": [],
+            "evidence_value_role": "UNCLEAR",
+            "relationship": "UNCLEAR",
+            "evidence_ids": [
+              "E1"
+            ],
+            "quote": "Spillage is measured from the time the vehicle ceases motion after a barrier impact test until 30 minutes thereafter, and throughout any static rollover after a barrier impact test.",
+            "reason": "Evidence method 'unknown' cannot satisfy required verification method 'physical_test'."
+          }
+        ],
+        "final_status": "UNKNOWN",
+        "aggregator_overrode_status": false,
+        "qualification": [
+          {
+            "evidence_id": "E1",
+            "source_chunk_id": "305-2400152-TEST-p12",
+            "document_name": "305-2400152-TEST.pdf",
+            "source_authority": "UNKNOWN",
+            "entity_scope": "System",
+            "parameters_found": [],
+            "verification_method": "unknown",
+            "required_verification_method": "physical_test",
+            "method_compatible": false,
+            "scope_compatible": true,
+            "is_authoritative": false,
+            "qualification_status": "NOT_QUALIFIED",
+            "reason": "Evidence method 'unknown' cannot satisfy required verification method 'physical_test'."
+          },
+          {
+            "evidence_id": "E2",
+            "source_chunk_id": "305-2400152-TEST-p11",
+            "document_name": "305-2400152-TEST.pdf",
+            "source_authority": "UNKNOWN",
+            "entity_scope": "System",
+            "parameters_found": [],
+            "verification_method": "unknown",
+            "required_verification_method": "physical_test",
+            "method_compatible": false,
+            "scope_compatible": true,
+            "is_authoritative": false,
+            "qualification_status": "NOT_QUALIFIED",
+            "reason": "Evidence method 'unknown' cannot satisfy required verification method 'physical_test'."
+          },
+          {
+            "evidence_id": "E3",
+            "source_chunk_id": "305-2400152-TEST-p9",
+            "document_name": "305-2400152-TEST.pdf",
+            "source_authority": "UNKNOWN",
+            "entity_scope": "System",
+            "parameters_found": [],
+            "verification_method": "unknown",
+            "required_verification_method": "physical_test",
+            "method_compatible": false,
+            "scope_compatible": true,
+            "is_authoritative": false,
+            "qualification_status": "NOT_QUALIFIED",
+            "reason": "Evidence method 'unknown' cannot satisfy required verification method 'physical_test'."
+          },
+          {
+            "evidence_id": "E4",
+            "source_chunk_id": "305-2400152-TEST-p16",
+            "document_name": "305-2400152-TEST.pdf",
+            "source_authority": "UNKNOWN",
+            "entity_scope": "System",
+            "parameters_found": [],
+            "verification_method": "unknown",
+            "required_verification_method": "physical_test",
+            "method_compatible": false,
+            "scope_compatible": true,
+            "is_authoritative": false,
+            "qualification_status": "NOT_QUALIFIED",
+            "reason": "Evidence method 'unknown' cannot satisfy required verification method 'physical_test'."
+          },
+          {
+            "evidence_id": "E5",
+            "source_chunk_id": "305-2400152-TEST-p6",
+            "document_name": "305-2400152-TEST.pdf",
+            "source_authority": "UNKNOWN",
+            "entity_scope": "System",
+            "parameter": "current",
+            "parameters_found": [
+              "current"
+            ],
+            "verification_method": "unknown",
+            "required_verification_method": "physical_test",
+            "method_compatible": false,
+            "scope_compatible": true,
+            "is_authoritative": false,
+            "qualification_status": "NOT_QUALIFIED",
+            "reason": "Evidence method 'unknown' cannot satisfy required verification method 'physical_test'."
+          }
+        ],
+        "review_gate": {
+          "policy": "supported_evidence_and_contract_audit_v2",
+          "required": false,
+          "auto_close_eligible": false,
+          "reasons": []
+        }
+      }
+    },
+    {
+      "requirement_id": "FMVSS-305-S5.2",
+      "clause": "S5.2",
+      "logic_operator": "ALL_OF",
+      "expected_status": "SUPPORTED",
+      "predicted_status": "UNKNOWN",
+      "correct": false,
+      "expected_review_state": "Reviewed",
+      "predicted_review_state": "Needs review",
+      "review_correct": false,
+      "confidence": 80.0,
+      "ai_analysis": "No qualified empirical evidence satisfies the required verification method 'physical_test'.",
+      "retrieved_pages": [
+        9,
+        16,
+        11,
+        10,
+        6
+      ],
+      "raw_llm_condition_results": [
+        {
+          "condition_id": "S5.2_C1",
+          "status": "INCONCLUSIVE",
+          "validation_state": "UNRESOLVED",
+          "validation_notes": [],
+          "evidence_value_role": "UNCLEAR",
+          "relationship": "UNCLEAR",
+          "evidence_ids": [
+            "E1"
+          ],
+          "quote": "Location of Battery Modules (Inside or Outside of Passenger Compartment?)",
+          "reason": "Evidence method 'unknown' cannot satisfy required verification method 'physical_test'."
+        },
+        {
+          "condition_id": "S5.2_C2",
+          "status": "INCONCLUSIVE",
+          "validation_state": "UNRESOLVED",
+          "validation_notes": [],
+          "evidence_value_role": "UNCLEAR",
+          "relationship": "UNCLEAR",
+          "evidence_ids": [
+            "E2"
+          ],
+          "quote": "Retrieved chunk does not contain a local passage addressing this requirement.",
+          "reason": "No relevant evidence addresses the condition."
+        }
+      ],
+      "final_condition_results": [
+        {
+          "condition_id": "S5.2_C1",
+          "description": null,
+          "status": "INCONCLUSIVE",
+          "validation_state": "UNRESOLVED",
+          "validation_notes": [],
+          "observed_parameter": null,
+          "observed_value": null,
+          "observed_min_value": null,
+          "observed_max_value": null,
+          "observed_unit": null,
+          "evidence_value_role": "UNCLEAR",
+          "relationship": "UNCLEAR",
+          "evidence_ids": [
+            "E1"
+          ],
+          "quote": "Location of Battery Modules (Inside or Outside of Passenger Compartment?)",
+          "reason": "Evidence method 'unknown' cannot satisfy required verification method 'physical_test'."
+        },
+        {
+          "condition_id": "S5.2_C2",
+          "description": null,
+          "status": "INCONCLUSIVE",
+          "validation_state": "UNRESOLVED",
+          "validation_notes": [],
+          "observed_parameter": null,
+          "observed_value": null,
+          "observed_min_value": null,
+          "observed_max_value": null,
+          "observed_unit": null,
+          "evidence_value_role": "UNCLEAR",
+          "relationship": "UNCLEAR",
+          "evidence_ids": [
+            "E2"
+          ],
+          "quote": "Retrieved chunk does not contain a local passage addressing this requirement.",
+          "reason": "No relevant evidence addresses the condition."
+        }
+      ],
+      "pipeline_diagnostics": {
+        "decision_source": "llm",
+        "llm_provisional_status": "UNKNOWN",
+        "llm_provisional_confidence": 0,
+        "llm_condition_results": [
+          {
+            "condition_id": "S5.2_C1",
+            "status": "INCONCLUSIVE",
+            "validation_state": "UNRESOLVED",
+            "validation_notes": [],
+            "evidence_value_role": "UNCLEAR",
+            "relationship": "UNCLEAR",
+            "evidence_ids": [
+              "E1"
+            ],
+            "quote": "Location of Battery Modules (Inside or Outside of Passenger Compartment?)",
+            "reason": "Evidence method 'unknown' cannot satisfy required verification method 'physical_test'."
+          },
+          {
+            "condition_id": "S5.2_C2",
+            "status": "INCONCLUSIVE",
+            "validation_state": "UNRESOLVED",
+            "validation_notes": [],
+            "evidence_value_role": "UNCLEAR",
+            "relationship": "UNCLEAR",
+            "evidence_ids": [
+              "E2"
+            ],
+            "quote": "Retrieved chunk does not contain a local passage addressing this requirement.",
+            "reason": "No relevant evidence addresses the condition."
+          }
+        ],
+        "post_reconciliation_condition_results": [
+          {
+            "condition_id": "S5.2_C1",
+            "status": "INCONCLUSIVE",
+            "validation_state": "UNRESOLVED",
+            "validation_notes": [],
+            "evidence_value_role": "UNCLEAR",
+            "relationship": "UNCLEAR",
+            "evidence_ids": [
+              "E1"
+            ],
+            "quote": "Location of Battery Modules (Inside or Outside of Passenger Compartment?)",
+            "reason": "Evidence method 'unknown' cannot satisfy required verification method 'physical_test'."
+          },
+          {
+            "condition_id": "S5.2_C2",
+            "status": "INCONCLUSIVE",
+            "validation_state": "UNRESOLVED",
+            "validation_notes": [],
+            "evidence_value_role": "UNCLEAR",
+            "relationship": "UNCLEAR",
+            "evidence_ids": [
+              "E2"
+            ],
+            "quote": "Retrieved chunk does not contain a local passage addressing this requirement.",
+            "reason": "No relevant evidence addresses the condition."
+          }
+        ],
+        "condition_transitions": [],
+        "pre_qualification_status": "UNKNOWN",
+        "pre_qualification_condition_results": [
+          {
+            "condition_id": "S5.2_C1",
+            "status": "INCONCLUSIVE",
+            "validation_state": "UNRESOLVED",
+            "validation_notes": [],
+            "evidence_value_role": "UNCLEAR",
+            "relationship": "UNCLEAR",
+            "evidence_ids": [
+              "E1"
+            ],
+            "quote": "Location of Battery Modules (Inside or Outside of Passenger Compartment?)",
+            "reason": "Evidence method 'unknown' cannot satisfy required verification method 'physical_test'."
+          },
+          {
+            "condition_id": "S5.2_C2",
+            "status": "INCONCLUSIVE",
+            "validation_state": "UNRESOLVED",
+            "validation_notes": [],
+            "evidence_value_role": "UNCLEAR",
+            "relationship": "UNCLEAR",
+            "evidence_ids": [
+              "E2"
+            ],
+            "quote": "Retrieved chunk does not contain a local passage addressing this requirement.",
+            "reason": "No relevant evidence addresses the condition."
+          }
+        ],
+        "evidence_audit_condition_results": [
+          {
+            "condition_id": "S5.2_C1",
+            "status": "INCONCLUSIVE",
+            "validation_state": "UNRESOLVED",
+            "validation_notes": [],
+            "evidence_value_role": "UNCLEAR",
+            "relationship": "UNCLEAR",
+            "evidence_ids": [
+              "E1"
+            ],
+            "quote": "Location of Battery Modules (Inside or Outside of Passenger Compartment?)",
+            "reason": "Evidence method 'unknown' cannot satisfy required verification method 'physical_test'."
+          },
+          {
+            "condition_id": "S5.2_C2",
+            "status": "INCONCLUSIVE",
+            "validation_state": "UNRESOLVED",
+            "validation_notes": [],
+            "evidence_value_role": "UNCLEAR",
+            "relationship": "UNCLEAR",
+            "evidence_ids": [
+              "E2"
+            ],
+            "quote": "Retrieved chunk does not contain a local passage addressing this requirement.",
+            "reason": "No relevant evidence addresses the condition."
+          }
+        ],
+        "post_qualification_condition_results": [
+          {
+            "condition_id": "S5.2_C1",
+            "status": "INCONCLUSIVE",
+            "validation_state": "UNRESOLVED",
+            "validation_notes": [],
+            "evidence_value_role": "UNCLEAR",
+            "relationship": "UNCLEAR",
+            "evidence_ids": [
+              "E1"
+            ],
+            "quote": "Location of Battery Modules (Inside or Outside of Passenger Compartment?)",
+            "reason": "Evidence method 'unknown' cannot satisfy required verification method 'physical_test'."
+          },
+          {
+            "condition_id": "S5.2_C2",
+            "status": "INCONCLUSIVE",
+            "validation_state": "UNRESOLVED",
+            "validation_notes": [],
+            "evidence_value_role": "UNCLEAR",
+            "relationship": "UNCLEAR",
+            "evidence_ids": [
+              "E2"
+            ],
+            "quote": "Retrieved chunk does not contain a local passage addressing this requirement.",
+            "reason": "No relevant evidence addresses the condition."
+          }
+        ],
+        "final_status": "UNKNOWN",
+        "aggregator_overrode_status": false,
+        "qualification": [
+          {
+            "evidence_id": "E1",
+            "source_chunk_id": "305-2400152-TEST-p9",
+            "document_name": "305-2400152-TEST.pdf",
+            "source_authority": "UNKNOWN",
+            "entity_scope": "System",
+            "parameters_found": [],
+            "verification_method": "unknown",
+            "required_verification_method": "physical_test",
+            "method_compatible": false,
+            "scope_compatible": true,
+            "is_authoritative": false,
+            "qualification_status": "NOT_QUALIFIED",
+            "reason": "Evidence method 'unknown' cannot satisfy required verification method 'physical_test'."
+          },
+          {
+            "evidence_id": "E2",
+            "source_chunk_id": "305-2400152-TEST-p16",
+            "document_name": "305-2400152-TEST.pdf",
+            "source_authority": "UNKNOWN",
+            "entity_scope": "Inverter",
+            "parameter": "voltage",
+            "parameters_found": [
+              "voltage",
+              "current",
+              "heat_load"
+            ],
+            "verification_method": "unknown",
+            "required_verification_method": "physical_test",
+            "method_compatible": false,
+            "is_authoritative": false,
+            "qualification_status": "NOT_QUALIFIED",
+            "reason": "Retrieved chunk does not contain a local passage addressing this requirement."
+          },
+          {
+            "evidence_id": "E3",
+            "source_chunk_id": "305-2400152-TEST-p11",
+            "document_name": "305-2400152-TEST.pdf",
+            "source_authority": "EMPIRICAL_TEST",
+            "entity_scope": "System",
+            "parameter": "isolation",
+            "parameters_found": [
+              "isolation",
+              "voltage",
+              "current",
+              "latency"
+            ],
+            "verification_method": "physical_test",
+            "required_verification_method": "physical_test",
+            "method_compatible": true,
+            "scope_compatible": true,
+            "is_authoritative": false,
+            "qualification_status": "NOT_QUALIFIED",
+            "reason": "Retrieved chunk does not contain a local passage addressing this requirement."
+          },
+          {
+            "evidence_id": "E4",
+            "source_chunk_id": "305-2400152-TEST-p10",
+            "document_name": "305-2400152-TEST.pdf",
+            "source_authority": "EMPIRICAL_TEST",
+            "entity_scope": "System",
+            "parameter": "isolation",
+            "parameters_found": [
+              "isolation",
+              "voltage",
+              "current",
+              "resistance"
+            ],
+            "verification_method": "physical_test",
+            "required_verification_method": "physical_test",
+            "method_compatible": true,
+            "scope_compatible": true,
+            "is_authoritative": false,
+            "qualification_status": "NOT_QUALIFIED",
+            "reason": "Retrieved chunk does not contain a local passage addressing this requirement."
+          },
+          {
+            "evidence_id": "E5",
+            "source_chunk_id": "305-2400152-TEST-p6",
+            "document_name": "305-2400152-TEST.pdf",
+            "source_authority": "UNKNOWN",
+            "entity_scope": "System",
+            "parameters_found": [],
+            "verification_method": "unknown",
+            "required_verification_method": "physical_test",
+            "method_compatible": false,
+            "scope_compatible": true,
+            "is_authoritative": false,
+            "qualification_status": "NOT_QUALIFIED",
+            "reason": "Evidence method 'unknown' cannot satisfy required verification method 'physical_test'."
+          }
+        ],
+        "review_gate": {
+          "policy": "supported_evidence_and_contract_audit_v2",
+          "required": false,
+          "auto_close_eligible": false,
+          "reasons": []
+        }
+      }
+    },
+    {
+      "requirement_id": "FMVSS-305-S5.3",
+      "clause": "S5.3",
+      "logic_operator": "ANY_OF",
+      "expected_status": "SUPPORTED",
+      "predicted_status": "UNKNOWN",
+      "correct": false,
+      "expected_review_state": "Reviewed",
+      "predicted_review_state": "Needs review",
+      "review_correct": false,
+      "confidence": 80.0,
+      "ai_analysis": "No qualified empirical evidence satisfies the required verification method 'physical_test'.",
+      "retrieved_pages": [
+        6,
+        10,
+        14,
+        5,
+        11
+      ],
+      "raw_llm_condition_results": [
+        {
+          "condition_id": "S5.3_C1",
+          "status": "INCONCLUSIVE",
+          "validation_state": "UNRESOLVED",
+          "validation_notes": [],
+          "evidence_value_role": "UNCLEAR",
+          "relationship": "UNCLEAR",
+          "evidence_ids": [
+            "E1"
+          ],
+          "quote": "static rollover was subsequently performed on the subject vehicle and electrical isolation",
+          "reason": "Evidence method 'unknown' cannot satisfy required verification method 'physical_test'."
+        },
+        {
+          "condition_id": "S5.3_C2",
+          "status": "INCONCLUSIVE",
+          "validation_state": "UNRESOLVED",
+          "validation_notes": [],
+          "evidence_value_role": "UNCLEAR",
+          "relationship": "UNCLEAR",
+          "evidence_ids": [
+            "E2"
+          ],
+          "quote": "Retrieved chunk does not contain a local passage addressing this requirement.",
+          "reason": "No relevant evidence addresses the condition."
+        },
+        {
+          "condition_id": "S5.3_C3",
+          "status": "INCONCLUSIVE",
+          "validation_state": "UNRESOLVED",
+          "validation_notes": [],
+          "evidence_value_role": "UNCLEAR",
+          "relationship": "UNCLEAR",
+          "evidence_ids": [
+            "E3"
+          ],
+          "quote": "Retrieved chunk does not contain a local passage addressing this requirement.",
+          "reason": "No relevant evidence addresses the condition."
+        }
+      ],
+      "final_condition_results": [
+        {
+          "condition_id": "S5.3_C1",
+          "description": null,
+          "status": "INCONCLUSIVE",
+          "validation_state": "UNRESOLVED",
+          "validation_notes": [],
+          "observed_parameter": null,
+          "observed_value": null,
+          "observed_min_value": null,
+          "observed_max_value": null,
+          "observed_unit": null,
+          "evidence_value_role": "UNCLEAR",
+          "relationship": "UNCLEAR",
+          "evidence_ids": [
+            "E1"
+          ],
+          "quote": "static rollover was subsequently performed on the subject vehicle and electrical isolation",
+          "reason": "Evidence method 'unknown' cannot satisfy required verification method 'physical_test'."
+        },
+        {
+          "condition_id": "S5.3_C2",
+          "description": null,
+          "status": "INCONCLUSIVE",
+          "validation_state": "UNRESOLVED",
+          "validation_notes": [],
+          "observed_parameter": null,
+          "observed_value": null,
+          "observed_min_value": null,
+          "observed_max_value": null,
+          "observed_unit": null,
+          "evidence_value_role": "UNCLEAR",
+          "relationship": "UNCLEAR",
+          "evidence_ids": [
+            "E2"
+          ],
+          "quote": "Retrieved chunk does not contain a local passage addressing this requirement.",
+          "reason": "No relevant evidence addresses the condition."
+        },
+        {
+          "condition_id": "S5.3_C3",
+          "description": null,
+          "status": "INCONCLUSIVE",
+          "validation_state": "UNRESOLVED",
+          "validation_notes": [],
+          "observed_parameter": null,
+          "observed_value": null,
+          "observed_min_value": null,
+          "observed_max_value": null,
+          "observed_unit": null,
+          "evidence_value_role": "UNCLEAR",
+          "relationship": "UNCLEAR",
+          "evidence_ids": [
+            "E3"
+          ],
+          "quote": "Retrieved chunk does not contain a local passage addressing this requirement.",
+          "reason": "No relevant evidence addresses the condition."
+        }
+      ],
+      "pipeline_diagnostics": {
+        "decision_source": "llm",
+        "llm_provisional_status": "UNKNOWN",
+        "llm_provisional_confidence": 0,
+        "llm_condition_results": [
+          {
+            "condition_id": "S5.3_C1",
+            "status": "INCONCLUSIVE",
+            "validation_state": "UNRESOLVED",
+            "validation_notes": [],
+            "evidence_value_role": "UNCLEAR",
+            "relationship": "UNCLEAR",
+            "evidence_ids": [
+              "E1"
+            ],
+            "quote": "static rollover was subsequently performed on the subject vehicle and electrical isolation",
+            "reason": "Evidence method 'unknown' cannot satisfy required verification method 'physical_test'."
+          },
+          {
+            "condition_id": "S5.3_C2",
+            "status": "INCONCLUSIVE",
+            "validation_state": "UNRESOLVED",
+            "validation_notes": [],
+            "evidence_value_role": "UNCLEAR",
+            "relationship": "UNCLEAR",
+            "evidence_ids": [
+              "E2"
+            ],
+            "quote": "Retrieved chunk does not contain a local passage addressing this requirement.",
+            "reason": "No relevant evidence addresses the condition."
+          },
+          {
+            "condition_id": "S5.3_C3",
+            "status": "INCONCLUSIVE",
+            "validation_state": "UNRESOLVED",
+            "validation_notes": [],
+            "evidence_value_role": "UNCLEAR",
+            "relationship": "UNCLEAR",
+            "evidence_ids": [
+              "E3"
+            ],
+            "quote": "Retrieved chunk does not contain a local passage addressing this requirement.",
+            "reason": "No relevant evidence addresses the condition."
+          }
+        ],
+        "post_reconciliation_condition_results": [
+          {
+            "condition_id": "S5.3_C1",
+            "status": "INCONCLUSIVE",
+            "validation_state": "UNRESOLVED",
+            "validation_notes": [],
+            "evidence_value_role": "UNCLEAR",
+            "relationship": "UNCLEAR",
+            "evidence_ids": [
+              "E1"
+            ],
+            "quote": "static rollover was subsequently performed on the subject vehicle and electrical isolation",
+            "reason": "Evidence method 'unknown' cannot satisfy required verification method 'physical_test'."
+          },
+          {
+            "condition_id": "S5.3_C2",
+            "status": "INCONCLUSIVE",
+            "validation_state": "UNRESOLVED",
+            "validation_notes": [],
+            "evidence_value_role": "UNCLEAR",
+            "relationship": "UNCLEAR",
+            "evidence_ids": [
+              "E2"
+            ],
+            "quote": "Retrieved chunk does not contain a local passage addressing this requirement.",
+            "reason": "No relevant evidence addresses the condition."
+          },
+          {
+            "condition_id": "S5.3_C3",
+            "status": "INCONCLUSIVE",
+            "validation_state": "UNRESOLVED",
+            "validation_notes": [],
+            "evidence_value_role": "UNCLEAR",
+            "relationship": "UNCLEAR",
+            "evidence_ids": [
+              "E3"
+            ],
+            "quote": "Retrieved chunk does not contain a local passage addressing this requirement.",
+            "reason": "No relevant evidence addresses the condition."
+          }
+        ],
+        "condition_transitions": [],
+        "pre_qualification_status": "UNKNOWN",
+        "pre_qualification_condition_results": [
+          {
+            "condition_id": "S5.3_C1",
+            "status": "INCONCLUSIVE",
+            "validation_state": "UNRESOLVED",
+            "validation_notes": [],
+            "evidence_value_role": "UNCLEAR",
+            "relationship": "UNCLEAR",
+            "evidence_ids": [
+              "E1"
+            ],
+            "quote": "static rollover was subsequently performed on the subject vehicle and electrical isolation",
+            "reason": "Evidence method 'unknown' cannot satisfy required verification method 'physical_test'."
+          },
+          {
+            "condition_id": "S5.3_C2",
+            "status": "INCONCLUSIVE",
+            "validation_state": "UNRESOLVED",
+            "validation_notes": [],
+            "evidence_value_role": "UNCLEAR",
+            "relationship": "UNCLEAR",
+            "evidence_ids": [
+              "E2"
+            ],
+            "quote": "Retrieved chunk does not contain a local passage addressing this requirement.",
+            "reason": "No relevant evidence addresses the condition."
+          },
+          {
+            "condition_id": "S5.3_C3",
+            "status": "INCONCLUSIVE",
+            "validation_state": "UNRESOLVED",
+            "validation_notes": [],
+            "evidence_value_role": "UNCLEAR",
+            "relationship": "UNCLEAR",
+            "evidence_ids": [
+              "E3"
+            ],
+            "quote": "Retrieved chunk does not contain a local passage addressing this requirement.",
+            "reason": "No relevant evidence addresses the condition."
+          }
+        ],
+        "evidence_audit_condition_results": [
+          {
+            "condition_id": "S5.3_C1",
+            "status": "INCONCLUSIVE",
+            "validation_state": "UNRESOLVED",
+            "validation_notes": [],
+            "evidence_value_role": "UNCLEAR",
+            "relationship": "UNCLEAR",
+            "evidence_ids": [
+              "E1"
+            ],
+            "quote": "static rollover was subsequently performed on the subject vehicle and electrical isolation",
+            "reason": "Evidence method 'unknown' cannot satisfy required verification method 'physical_test'."
+          },
+          {
+            "condition_id": "S5.3_C2",
+            "status": "INCONCLUSIVE",
+            "validation_state": "UNRESOLVED",
+            "validation_notes": [],
+            "evidence_value_role": "UNCLEAR",
+            "relationship": "UNCLEAR",
+            "evidence_ids": [
+              "E2"
+            ],
+            "quote": "Retrieved chunk does not contain a local passage addressing this requirement.",
+            "reason": "No relevant evidence addresses the condition."
+          },
+          {
+            "condition_id": "S5.3_C3",
+            "status": "INCONCLUSIVE",
+            "validation_state": "UNRESOLVED",
+            "validation_notes": [],
+            "evidence_value_role": "UNCLEAR",
+            "relationship": "UNCLEAR",
+            "evidence_ids": [
+              "E3"
+            ],
+            "quote": "Retrieved chunk does not contain a local passage addressing this requirement.",
+            "reason": "No relevant evidence addresses the condition."
+          }
+        ],
+        "post_qualification_condition_results": [
+          {
+            "condition_id": "S5.3_C1",
+            "status": "INCONCLUSIVE",
+            "validation_state": "UNRESOLVED",
+            "validation_notes": [],
+            "evidence_value_role": "UNCLEAR",
+            "relationship": "UNCLEAR",
+            "evidence_ids": [
+              "E1"
+            ],
+            "quote": "static rollover was subsequently performed on the subject vehicle and electrical isolation",
+            "reason": "Evidence method 'unknown' cannot satisfy required verification method 'physical_test'."
+          },
+          {
+            "condition_id": "S5.3_C2",
+            "status": "INCONCLUSIVE",
+            "validation_state": "UNRESOLVED",
+            "validation_notes": [],
+            "evidence_value_role": "UNCLEAR",
+            "relationship": "UNCLEAR",
+            "evidence_ids": [
+              "E2"
+            ],
+            "quote": "Retrieved chunk does not contain a local passage addressing this requirement.",
+            "reason": "No relevant evidence addresses the condition."
+          },
+          {
+            "condition_id": "S5.3_C3",
+            "status": "INCONCLUSIVE",
+            "validation_state": "UNRESOLVED",
+            "validation_notes": [],
+            "evidence_value_role": "UNCLEAR",
+            "relationship": "UNCLEAR",
+            "evidence_ids": [
+              "E3"
+            ],
+            "quote": "Retrieved chunk does not contain a local passage addressing this requirement.",
+            "reason": "No relevant evidence addresses the condition."
+          }
+        ],
+        "final_status": "UNKNOWN",
+        "aggregator_overrode_status": false,
+        "qualification": [
+          {
+            "evidence_id": "E1",
+            "source_chunk_id": "305-2400152-TEST-p6",
+            "document_name": "305-2400152-TEST.pdf",
+            "source_authority": "UNKNOWN",
+            "entity_scope": "System",
+            "parameters_found": [],
+            "verification_method": "unknown",
+            "required_verification_method": "physical_test",
+            "method_compatible": false,
+            "scope_compatible": true,
+            "is_authoritative": false,
+            "qualification_status": "NOT_QUALIFIED",
+            "reason": "Evidence method 'unknown' cannot satisfy required verification method 'physical_test'."
+          },
+          {
+            "evidence_id": "E2",
+            "source_chunk_id": "305-2400152-TEST-p10",
+            "document_name": "305-2400152-TEST.pdf",
+            "source_authority": "EMPIRICAL_TEST",
+            "entity_scope": "System",
+            "parameter": "isolation",
+            "parameters_found": [
+              "isolation",
+              "voltage",
+              "current",
+              "resistance"
+            ],
+            "verification_method": "physical_test",
+            "required_verification_method": "physical_test",
+            "method_compatible": true,
+            "scope_compatible": true,
+            "is_authoritative": false,
+            "qualification_status": "NOT_QUALIFIED",
+            "reason": "Retrieved chunk does not contain a local passage addressing this requirement."
+          },
+          {
+            "evidence_id": "E3",
+            "source_chunk_id": "305-2400152-TEST-p14",
+            "document_name": "305-2400152-TEST.pdf",
+            "source_authority": "UNKNOWN",
+            "entity_scope": "System",
+            "parameter": "isolation",
+            "parameters_found": [
+              "isolation",
+              "voltage",
+              "current"
+            ],
+            "verification_method": "unknown",
+            "required_verification_method": "physical_test",
+            "method_compatible": false,
+            "scope_compatible": true,
+            "is_authoritative": false,
+            "qualification_status": "NOT_QUALIFIED",
+            "reason": "Retrieved chunk does not contain a local passage addressing this requirement."
+          },
+          {
+            "evidence_id": "E4",
+            "source_chunk_id": "305-2400152-TEST-p5",
+            "document_name": "305-2400152-TEST.pdf",
+            "source_authority": "UNKNOWN",
+            "entity_scope": "System",
+            "parameters_found": [],
+            "verification_method": "unknown",
+            "required_verification_method": "physical_test",
+            "method_compatible": false,
+            "scope_compatible": true,
+            "is_authoritative": false,
+            "qualification_status": "NOT_QUALIFIED",
+            "reason": "Evidence method 'unknown' cannot satisfy required verification method 'physical_test'."
+          },
+          {
+            "evidence_id": "E5",
+            "source_chunk_id": "305-2400152-TEST-p11",
+            "document_name": "305-2400152-TEST.pdf",
+            "source_authority": "EMPIRICAL_TEST",
+            "entity_scope": "System",
+            "parameter": "isolation",
+            "parameters_found": [
+              "isolation",
+              "voltage",
+              "current",
+              "latency"
+            ],
+            "verification_method": "physical_test",
+            "required_verification_method": "physical_test",
+            "method_compatible": true,
+            "scope_compatible": true,
+            "is_authoritative": false,
+            "qualification_status": "NOT_QUALIFIED",
+            "reason": "Retrieved chunk does not contain a local passage addressing this requirement."
+          }
+        ],
+        "review_gate": {
+          "policy": "supported_evidence_and_contract_audit_v2",
+          "required": false,
+          "auto_close_eligible": false,
+          "reasons": []
+        }
+      }
+    },
+    {
+      "requirement_id": "FMVSS-305-S6.3",
+      "clause": "S6.3",
+      "logic_operator": "ALL_OF",
+      "expected_status": "PARTIAL",
+      "predicted_status": "UNKNOWN",
+      "correct": false,
+      "expected_review_state": "Needs review",
+      "predicted_review_state": "Needs review",
+      "review_correct": true,
+      "confidence": 80.0,
+      "ai_analysis": "No qualified empirical evidence satisfies the required verification method 'physical_test'.",
+      "retrieved_pages": [
+        6,
+        10,
+        11,
+        12,
+        14
+      ],
+      "raw_llm_condition_results": [
+        {
+          "condition_id": "COND-010",
+          "status": "INCONCLUSIVE",
+          "validation_state": "UNRESOLVED",
+          "validation_notes": [],
+          "evidence_value_role": "UNCLEAR",
+          "relationship": "UNCLEAR",
+          "evidence_ids": [
+            "E1"
+          ],
+          "quote": "A moving deformable barrier side impact test was conducted on a 2025 Hyundai Elantra Hybrid 4 Door Sedan.",
+          "reason": "Evidence method 'unknown' cannot satisfy required verification method 'physical_test'."
+        }
+      ],
+      "final_condition_results": [
+        {
+          "condition_id": "COND-010",
+          "description": null,
+          "status": "INCONCLUSIVE",
+          "validation_state": "UNRESOLVED",
+          "validation_notes": [],
+          "observed_parameter": null,
+          "observed_value": null,
+          "observed_min_value": null,
+          "observed_max_value": null,
+          "observed_unit": null,
+          "evidence_value_role": "UNCLEAR",
+          "relationship": "UNCLEAR",
+          "evidence_ids": [
+            "E1"
+          ],
+          "quote": "A moving deformable barrier side impact test was conducted on a 2025 Hyundai Elantra Hybrid 4 Door Sedan.",
+          "reason": "Evidence method 'unknown' cannot satisfy required verification method 'physical_test'."
+        }
+      ],
+      "pipeline_diagnostics": {
+        "decision_source": "llm",
+        "llm_provisional_status": "UNKNOWN",
+        "llm_provisional_confidence": 0,
+        "llm_condition_results": [
+          {
+            "condition_id": "COND-010",
+            "status": "INCONCLUSIVE",
+            "validation_state": "UNRESOLVED",
+            "validation_notes": [],
+            "evidence_value_role": "UNCLEAR",
+            "relationship": "UNCLEAR",
+            "evidence_ids": [
+              "E1"
+            ],
+            "quote": "A moving deformable barrier side impact test was conducted on a 2025 Hyundai Elantra Hybrid 4 Door Sedan.",
+            "reason": "Evidence method 'unknown' cannot satisfy required verification method 'physical_test'."
+          }
+        ],
+        "post_reconciliation_condition_results": [
+          {
+            "condition_id": "COND-010",
+            "status": "INCONCLUSIVE",
+            "validation_state": "UNRESOLVED",
+            "validation_notes": [],
+            "evidence_value_role": "UNCLEAR",
+            "relationship": "UNCLEAR",
+            "evidence_ids": [
+              "E1"
+            ],
+            "quote": "A moving deformable barrier side impact test was conducted on a 2025 Hyundai Elantra Hybrid 4 Door Sedan.",
+            "reason": "Evidence method 'unknown' cannot satisfy required verification method 'physical_test'."
+          }
+        ],
+        "condition_transitions": [],
+        "pre_qualification_status": "UNKNOWN",
+        "pre_qualification_condition_results": [
+          {
+            "condition_id": "COND-010",
+            "status": "INCONCLUSIVE",
+            "validation_state": "UNRESOLVED",
+            "validation_notes": [],
+            "evidence_value_role": "UNCLEAR",
+            "relationship": "UNCLEAR",
+            "evidence_ids": [
+              "E1"
+            ],
+            "quote": "A moving deformable barrier side impact test was conducted on a 2025 Hyundai Elantra Hybrid 4 Door Sedan.",
+            "reason": "Evidence method 'unknown' cannot satisfy required verification method 'physical_test'."
+          }
+        ],
+        "evidence_audit_condition_results": [
+          {
+            "condition_id": "COND-010",
+            "status": "INCONCLUSIVE",
+            "validation_state": "UNRESOLVED",
+            "validation_notes": [],
+            "evidence_value_role": "UNCLEAR",
+            "relationship": "UNCLEAR",
+            "evidence_ids": [
+              "E1"
+            ],
+            "quote": "A moving deformable barrier side impact test was conducted on a 2025 Hyundai Elantra Hybrid 4 Door Sedan.",
+            "reason": "Evidence method 'unknown' cannot satisfy required verification method 'physical_test'."
+          }
+        ],
+        "post_qualification_condition_results": [
+          {
+            "condition_id": "COND-010",
+            "status": "INCONCLUSIVE",
+            "validation_state": "UNRESOLVED",
+            "validation_notes": [],
+            "evidence_value_role": "UNCLEAR",
+            "relationship": "UNCLEAR",
+            "evidence_ids": [
+              "E1"
+            ],
+            "quote": "A moving deformable barrier side impact test was conducted on a 2025 Hyundai Elantra Hybrid 4 Door Sedan.",
+            "reason": "Evidence method 'unknown' cannot satisfy required verification method 'physical_test'."
+          }
+        ],
+        "final_status": "UNKNOWN",
+        "aggregator_overrode_status": false,
+        "qualification": [
+          {
+            "evidence_id": "E1",
+            "source_chunk_id": "305-2400152-TEST-p6",
+            "document_name": "305-2400152-TEST.pdf",
+            "source_authority": "UNKNOWN",
+            "entity_scope": "System",
+            "parameter": "current",
+            "parameters_found": [
+              "current"
+            ],
+            "verification_method": "unknown",
+            "required_verification_method": "physical_test",
+            "method_compatible": false,
+            "scope_compatible": true,
+            "is_authoritative": false,
+            "qualification_status": "NOT_QUALIFIED",
+            "reason": "Evidence method 'unknown' cannot satisfy required verification method 'physical_test'."
+          },
+          {
+            "evidence_id": "E2",
+            "source_chunk_id": "305-2400152-TEST-p10",
+            "document_name": "305-2400152-TEST.pdf",
+            "source_authority": "EMPIRICAL_TEST",
+            "entity_scope": "System",
+            "parameter": "isolation",
+            "parameters_found": [
+              "isolation",
+              "voltage",
+              "current",
+              "resistance"
+            ],
+            "verification_method": "physical_test",
+            "required_verification_method": "physical_test",
+            "method_compatible": true,
+            "scope_compatible": true,
+            "is_authoritative": false,
+            "qualification_status": "NOT_QUALIFIED",
+            "reason": "Retrieved chunk does not contain a local passage addressing this requirement."
+          },
+          {
+            "evidence_id": "E3",
+            "source_chunk_id": "305-2400152-TEST-p11",
+            "document_name": "305-2400152-TEST.pdf",
+            "source_authority": "EMPIRICAL_TEST",
+            "entity_scope": "System",
+            "parameter": "isolation",
+            "parameters_found": [
+              "isolation",
+              "voltage",
+              "current",
+              "latency"
+            ],
+            "verification_method": "physical_test",
+            "required_verification_method": "physical_test",
+            "method_compatible": true,
+            "scope_compatible": true,
+            "is_authoritative": false,
+            "qualification_status": "NOT_QUALIFIED",
+            "reason": "Retrieved chunk does not contain a local passage addressing this requirement."
+          },
+          {
+            "evidence_id": "E4",
+            "source_chunk_id": "305-2400152-TEST-p12",
+            "document_name": "305-2400152-TEST.pdf",
+            "source_authority": "EMPIRICAL_TEST",
+            "entity_scope": "System",
+            "parameter": "voltage",
+            "parameters_found": [
+              "voltage"
+            ],
+            "verification_method": "physical_test",
+            "required_verification_method": "physical_test",
+            "method_compatible": true,
+            "scope_compatible": true,
+            "is_authoritative": false,
+            "qualification_status": "NOT_QUALIFIED",
+            "reason": "Retrieved chunk does not contain a local passage addressing this requirement."
+          },
+          {
+            "evidence_id": "E5",
+            "source_chunk_id": "305-2400152-TEST-p14",
+            "document_name": "305-2400152-TEST.pdf",
+            "source_authority": "UNKNOWN",
+            "entity_scope": "System",
+            "parameter": "isolation",
+            "parameters_found": [
+              "isolation",
+              "voltage",
+              "current"
+            ],
+            "verification_method": "unknown",
+            "required_verification_method": "physical_test",
+            "method_compatible": false,
+            "scope_compatible": true,
+            "is_authoritative": false,
+            "qualification_status": "NOT_QUALIFIED",
+            "reason": "Retrieved chunk does not contain a local passage addressing this requirement."
+          }
+        ],
+        "review_gate": {
+          "policy": "supported_evidence_and_contract_audit_v2",
+          "required": false,
+          "auto_close_eligible": false,
+          "reasons": []
+        }
+      }
+    },
+    {
+      "requirement_id": "FMVSS-305-S6.4",
+      "clause": "S6.4",
+      "logic_operator": "ALL_OF",
+      "expected_status": "SUPPORTED",
+      "predicted_status": "UNKNOWN",
+      "correct": false,
+      "expected_review_state": "Reviewed",
+      "predicted_review_state": "Needs review",
+      "review_correct": false,
+      "confidence": 80.0,
+      "ai_analysis": "No qualified empirical evidence satisfies the required verification method 'physical_test'.",
+      "retrieved_pages": [
+        12,
+        14,
+        11,
+        10,
+        6
+      ],
+      "raw_llm_condition_results": [
+        {
+          "condition_id": "COND-011",
+          "status": "INCONCLUSIVE",
+          "validation_state": "UNRESOLVED",
+          "validation_notes": [],
+          "evidence_value_role": "UNCLEAR",
+          "relationship": "UNCLEAR",
+          "evidence_ids": [
+            "E1"
+          ],
+          "quote": "FMVSS NO. 305 STATIC ROLLOVER RESULTS FOR ELECTRIC POWERED VEHICLES",
+          "reason": "Evidence method 'unknown' cannot satisfy required verification method 'physical_test'."
+        }
+      ],
+      "final_condition_results": [
+        {
+          "condition_id": "COND-011",
+          "description": null,
+          "status": "INCONCLUSIVE",
+          "validation_state": "UNRESOLVED",
+          "validation_notes": [],
+          "observed_parameter": null,
+          "observed_value": null,
+          "observed_min_value": null,
+          "observed_max_value": null,
+          "observed_unit": null,
+          "evidence_value_role": "UNCLEAR",
+          "relationship": "UNCLEAR",
+          "evidence_ids": [
+            "E1"
+          ],
+          "quote": "FMVSS NO. 305 STATIC ROLLOVER RESULTS FOR ELECTRIC POWERED VEHICLES",
+          "reason": "Evidence method 'unknown' cannot satisfy required verification method 'physical_test'."
+        }
+      ],
+      "pipeline_diagnostics": {
+        "decision_source": "llm",
+        "llm_provisional_status": "UNKNOWN",
+        "llm_provisional_confidence": 0,
+        "llm_condition_results": [
+          {
+            "condition_id": "COND-011",
+            "status": "INCONCLUSIVE",
+            "validation_state": "UNRESOLVED",
+            "validation_notes": [],
+            "evidence_value_role": "UNCLEAR",
+            "relationship": "UNCLEAR",
+            "evidence_ids": [
+              "E1"
+            ],
+            "quote": "FMVSS NO. 305 STATIC ROLLOVER RESULTS FOR ELECTRIC POWERED VEHICLES",
+            "reason": "Evidence method 'unknown' cannot satisfy required verification method 'physical_test'."
+          }
+        ],
+        "post_reconciliation_condition_results": [
+          {
+            "condition_id": "COND-011",
+            "status": "INCONCLUSIVE",
+            "validation_state": "UNRESOLVED",
+            "validation_notes": [],
+            "evidence_value_role": "UNCLEAR",
+            "relationship": "UNCLEAR",
+            "evidence_ids": [
+              "E1"
+            ],
+            "quote": "FMVSS NO. 305 STATIC ROLLOVER RESULTS FOR ELECTRIC POWERED VEHICLES",
+            "reason": "Evidence method 'unknown' cannot satisfy required verification method 'physical_test'."
+          }
+        ],
+        "condition_transitions": [],
+        "pre_qualification_status": "UNKNOWN",
+        "pre_qualification_condition_results": [
+          {
+            "condition_id": "COND-011",
+            "status": "INCONCLUSIVE",
+            "validation_state": "UNRESOLVED",
+            "validation_notes": [],
+            "evidence_value_role": "UNCLEAR",
+            "relationship": "UNCLEAR",
+            "evidence_ids": [
+              "E1"
+            ],
+            "quote": "FMVSS NO. 305 STATIC ROLLOVER RESULTS FOR ELECTRIC POWERED VEHICLES",
+            "reason": "Evidence method 'unknown' cannot satisfy required verification method 'physical_test'."
+          }
+        ],
+        "evidence_audit_condition_results": [
+          {
+            "condition_id": "COND-011",
+            "status": "INCONCLUSIVE",
+            "validation_state": "UNRESOLVED",
+            "validation_notes": [],
+            "evidence_value_role": "UNCLEAR",
+            "relationship": "UNCLEAR",
+            "evidence_ids": [
+              "E1"
+            ],
+            "quote": "FMVSS NO. 305 STATIC ROLLOVER RESULTS FOR ELECTRIC POWERED VEHICLES",
+            "reason": "Evidence method 'unknown' cannot satisfy required verification method 'physical_test'."
+          }
+        ],
+        "post_qualification_condition_results": [
+          {
+            "condition_id": "COND-011",
+            "status": "INCONCLUSIVE",
+            "validation_state": "UNRESOLVED",
+            "validation_notes": [],
+            "evidence_value_role": "UNCLEAR",
+            "relationship": "UNCLEAR",
+            "evidence_ids": [
+              "E1"
+            ],
+            "quote": "FMVSS NO. 305 STATIC ROLLOVER RESULTS FOR ELECTRIC POWERED VEHICLES",
+            "reason": "Evidence method 'unknown' cannot satisfy required verification method 'physical_test'."
+          }
+        ],
+        "final_status": "UNKNOWN",
+        "aggregator_overrode_status": false,
+        "qualification": [
+          {
+            "evidence_id": "E1",
+            "source_chunk_id": "305-2400152-TEST-p12",
+            "document_name": "305-2400152-TEST.pdf",
+            "source_authority": "UNKNOWN",
+            "entity_scope": "System",
+            "parameters_found": [],
+            "verification_method": "unknown",
+            "required_verification_method": "physical_test",
+            "method_compatible": false,
+            "scope_compatible": true,
+            "is_authoritative": false,
+            "qualification_status": "NOT_QUALIFIED",
+            "reason": "Evidence method 'unknown' cannot satisfy required verification method 'physical_test'."
+          },
+          {
+            "evidence_id": "E2",
+            "source_chunk_id": "305-2400152-TEST-p14",
+            "document_name": "305-2400152-TEST.pdf",
+            "source_authority": "UNKNOWN",
+            "entity_scope": "System",
+            "parameters_found": [],
+            "verification_method": "unknown",
+            "required_verification_method": "physical_test",
+            "method_compatible": false,
+            "scope_compatible": true,
+            "is_authoritative": false,
+            "qualification_status": "NOT_QUALIFIED",
+            "reason": "Evidence method 'unknown' cannot satisfy required verification method 'physical_test'."
+          },
+          {
+            "evidence_id": "E3",
+            "source_chunk_id": "305-2400152-TEST-p11",
+            "document_name": "305-2400152-TEST.pdf",
+            "source_authority": "EMPIRICAL_TEST",
+            "entity_scope": "System",
+            "parameter": "isolation",
+            "parameters_found": [
+              "isolation",
+              "voltage",
+              "current",
+              "latency"
+            ],
+            "verification_method": "physical_test",
+            "required_verification_method": "physical_test",
+            "method_compatible": true,
+            "scope_compatible": true,
+            "is_authoritative": false,
+            "qualification_status": "NOT_QUALIFIED",
+            "reason": "Retrieved chunk does not contain a local passage addressing this requirement."
+          },
+          {
+            "evidence_id": "E4",
+            "source_chunk_id": "305-2400152-TEST-p10",
+            "document_name": "305-2400152-TEST.pdf",
+            "source_authority": "EMPIRICAL_TEST",
+            "entity_scope": "System",
+            "parameter": "isolation",
+            "parameters_found": [
+              "isolation",
+              "voltage",
+              "current",
+              "resistance"
+            ],
+            "verification_method": "physical_test",
+            "required_verification_method": "physical_test",
+            "method_compatible": true,
+            "scope_compatible": true,
+            "is_authoritative": false,
+            "qualification_status": "NOT_QUALIFIED",
+            "reason": "Retrieved chunk does not contain a local passage addressing this requirement."
+          },
+          {
+            "evidence_id": "E5",
+            "source_chunk_id": "305-2400152-TEST-p6",
+            "document_name": "305-2400152-TEST.pdf",
+            "source_authority": "UNKNOWN",
+            "entity_scope": "System",
+            "parameter": "isolation",
+            "parameters_found": [
+              "isolation"
+            ],
+            "verification_method": "unknown",
+            "required_verification_method": "physical_test",
+            "method_compatible": false,
+            "scope_compatible": true,
+            "is_authoritative": false,
+            "qualification_status": "NOT_QUALIFIED",
+            "reason": "Evidence method 'unknown' cannot satisfy required verification method 'physical_test'."
+          }
+        ],
+        "review_gate": {
+          "policy": "supported_evidence_and_contract_audit_v2",
+          "required": false,
+          "auto_close_eligible": false,
+          "reasons": []
+        }
+      }
+    },
+    {
+      "requirement_id": "FMVSS-305-S7.1C",
+      "clause": "S7.1(c)",
+      "logic_operator": "IF_THEN",
+      "expected_status": "SUPPORTED",
+      "predicted_status": "MISSING",
+      "correct": false,
+      "expected_review_state": "Reviewed",
+      "predicted_review_state": "Open",
+      "review_correct": false,
+      "confidence": 95.0,
+      "ai_analysis": "Mechanical aggregation: all applicable mandatory conditions are UNTESTED. [Python aggregator overrode provisional status 'UNKNOWN' based on condition-level results.] Provisional model rationale: No relevant evidence found",
+      "retrieved_pages": [
+        9,
+        10,
+        5,
+        6,
+        14
+      ],
+      "raw_llm_condition_results": [
+        {
+          "condition_id": "S5.4.6.2-1",
+          "status": "UNTESTED",
+          "validation_state": "UNRESOLVED",
+          "validation_notes": [],
+          "evidence_value_role": "UNCLEAR",
+          "relationship": "UNCLEAR",
+          "evidence_ids": [],
+          "reason": "No relevant evidence found"
+        },
+        {
+          "condition_id": "S5.4.6.2-2",
+          "status": "UNTESTED",
+          "validation_state": "UNRESOLVED",
+          "validation_notes": [],
+          "evidence_value_role": "UNCLEAR",
+          "relationship": "UNCLEAR",
+          "evidence_ids": [],
+          "reason": "No relevant evidence found"
+        },
+        {
+          "condition_id": "S5.4.6.2-3",
+          "status": "UNTESTED",
+          "validation_state": "UNRESOLVED",
+          "validation_notes": [],
+          "evidence_value_role": "UNCLEAR",
+          "relationship": "UNCLEAR",
+          "evidence_ids": [],
+          "reason": "No relevant evidence found"
+        }
+      ],
+      "final_condition_results": [
+        {
+          "condition_id": "S5.4.6.2-1",
+          "description": null,
+          "status": "UNTESTED",
+          "validation_state": "UNRESOLVED",
+          "validation_notes": [
+            "Potentially relevant evidence was not qualified; the LLM UNTESTED status was preserved."
+          ],
+          "observed_parameter": null,
+          "observed_value": null,
+          "observed_min_value": null,
+          "observed_max_value": null,
+          "observed_unit": null,
+          "evidence_value_role": "UNCLEAR",
+          "relationship": "UNCLEAR",
+          "evidence_ids": [],
+          "quote": null,
+          "reason": "No relevant evidence found"
+        },
+        {
+          "condition_id": "S5.4.6.2-2",
+          "description": null,
+          "status": "UNTESTED",
+          "validation_state": "UNRESOLVED",
+          "validation_notes": [
+            "Potentially relevant evidence was not qualified; the LLM UNTESTED status was preserved."
+          ],
+          "observed_parameter": null,
+          "observed_value": null,
+          "observed_min_value": null,
+          "observed_max_value": null,
+          "observed_unit": null,
+          "evidence_value_role": "UNCLEAR",
+          "relationship": "UNCLEAR",
+          "evidence_ids": [],
+          "quote": null,
+          "reason": "No relevant evidence found"
+        },
+        {
+          "condition_id": "S5.4.6.2-3",
+          "description": null,
+          "status": "UNTESTED",
+          "validation_state": "UNRESOLVED",
+          "validation_notes": [
+            "Potentially relevant evidence was not qualified; the LLM UNTESTED status was preserved."
+          ],
+          "observed_parameter": null,
+          "observed_value": null,
+          "observed_min_value": null,
+          "observed_max_value": null,
+          "observed_unit": null,
+          "evidence_value_role": "UNCLEAR",
+          "relationship": "UNCLEAR",
+          "evidence_ids": [],
+          "quote": null,
+          "reason": "No relevant evidence found"
+        }
+      ],
+      "pipeline_diagnostics": {
+        "decision_source": "llm",
+        "llm_provisional_status": "UNKNOWN",
+        "llm_provisional_confidence": 0,
+        "llm_condition_results": [
+          {
+            "condition_id": "S5.4.6.2-1",
+            "status": "UNTESTED",
+            "validation_state": "UNRESOLVED",
+            "validation_notes": [],
+            "evidence_value_role": "UNCLEAR",
+            "relationship": "UNCLEAR",
+            "evidence_ids": [],
+            "reason": "No relevant evidence found"
+          },
+          {
+            "condition_id": "S5.4.6.2-2",
+            "status": "UNTESTED",
+            "validation_state": "UNRESOLVED",
+            "validation_notes": [],
+            "evidence_value_role": "UNCLEAR",
+            "relationship": "UNCLEAR",
+            "evidence_ids": [],
+            "reason": "No relevant evidence found"
+          },
+          {
+            "condition_id": "S5.4.6.2-3",
+            "status": "UNTESTED",
+            "validation_state": "UNRESOLVED",
+            "validation_notes": [],
+            "evidence_value_role": "UNCLEAR",
+            "relationship": "UNCLEAR",
+            "evidence_ids": [],
+            "reason": "No relevant evidence found"
+          }
+        ],
+        "post_reconciliation_condition_results": [
+          {
+            "condition_id": "S5.4.6.2-1",
+            "status": "UNTESTED",
+            "validation_state": "UNRESOLVED",
+            "validation_notes": [],
+            "evidence_value_role": "UNCLEAR",
+            "relationship": "UNCLEAR",
+            "evidence_ids": [],
+            "reason": "No relevant evidence found"
+          },
+          {
+            "condition_id": "S5.4.6.2-2",
+            "status": "UNTESTED",
+            "validation_state": "UNRESOLVED",
+            "validation_notes": [],
+            "evidence_value_role": "UNCLEAR",
+            "relationship": "UNCLEAR",
+            "evidence_ids": [],
+            "reason": "No relevant evidence found"
+          },
+          {
+            "condition_id": "S5.4.6.2-3",
+            "status": "UNTESTED",
+            "validation_state": "UNRESOLVED",
+            "validation_notes": [],
+            "evidence_value_role": "UNCLEAR",
+            "relationship": "UNCLEAR",
+            "evidence_ids": [],
+            "reason": "No relevant evidence found"
+          }
+        ],
+        "condition_transitions": [],
+        "pre_qualification_status": "UNKNOWN",
+        "pre_qualification_condition_results": [
+          {
+            "condition_id": "S5.4.6.2-1",
+            "status": "UNTESTED",
+            "validation_state": "UNRESOLVED",
+            "validation_notes": [],
+            "evidence_value_role": "UNCLEAR",
+            "relationship": "UNCLEAR",
+            "evidence_ids": [],
+            "reason": "No relevant evidence found"
+          },
+          {
+            "condition_id": "S5.4.6.2-2",
+            "status": "UNTESTED",
+            "validation_state": "UNRESOLVED",
+            "validation_notes": [],
+            "evidence_value_role": "UNCLEAR",
+            "relationship": "UNCLEAR",
+            "evidence_ids": [],
+            "reason": "No relevant evidence found"
+          },
+          {
+            "condition_id": "S5.4.6.2-3",
+            "status": "UNTESTED",
+            "validation_state": "UNRESOLVED",
+            "validation_notes": [],
+            "evidence_value_role": "UNCLEAR",
+            "relationship": "UNCLEAR",
+            "evidence_ids": [],
+            "reason": "No relevant evidence found"
+          }
+        ],
+        "evidence_audit_condition_results": [
+          {
+            "condition_id": "S5.4.6.2-1",
+            "status": "UNTESTED",
+            "validation_state": "UNRESOLVED",
+            "validation_notes": [
+              "Potentially relevant evidence was not qualified; the LLM UNTESTED status was preserved."
+            ],
+            "evidence_value_role": "UNCLEAR",
+            "relationship": "UNCLEAR",
+            "evidence_ids": [],
+            "reason": "No relevant evidence found"
+          },
+          {
+            "condition_id": "S5.4.6.2-2",
+            "status": "UNTESTED",
+            "validation_state": "UNRESOLVED",
+            "validation_notes": [
+              "Potentially relevant evidence was not qualified; the LLM UNTESTED status was preserved."
+            ],
+            "evidence_value_role": "UNCLEAR",
+            "relationship": "UNCLEAR",
+            "evidence_ids": [],
+            "reason": "No relevant evidence found"
+          },
+          {
+            "condition_id": "S5.4.6.2-3",
+            "status": "UNTESTED",
+            "validation_state": "UNRESOLVED",
+            "validation_notes": [
+              "Potentially relevant evidence was not qualified; the LLM UNTESTED status was preserved."
+            ],
+            "evidence_value_role": "UNCLEAR",
+            "relationship": "UNCLEAR",
+            "evidence_ids": [],
+            "reason": "No relevant evidence found"
+          }
+        ],
+        "post_qualification_condition_results": [
+          {
+            "condition_id": "S5.4.6.2-1",
+            "status": "UNTESTED",
+            "validation_state": "UNRESOLVED",
+            "validation_notes": [
+              "Potentially relevant evidence was not qualified; the LLM UNTESTED status was preserved."
+            ],
+            "evidence_value_role": "UNCLEAR",
+            "relationship": "UNCLEAR",
+            "evidence_ids": [],
+            "reason": "No relevant evidence found"
+          },
+          {
+            "condition_id": "S5.4.6.2-2",
+            "status": "UNTESTED",
+            "validation_state": "UNRESOLVED",
+            "validation_notes": [
+              "Potentially relevant evidence was not qualified; the LLM UNTESTED status was preserved."
+            ],
+            "evidence_value_role": "UNCLEAR",
+            "relationship": "UNCLEAR",
+            "evidence_ids": [],
+            "reason": "No relevant evidence found"
+          },
+          {
+            "condition_id": "S5.4.6.2-3",
+            "status": "UNTESTED",
+            "validation_state": "UNRESOLVED",
+            "validation_notes": [
+              "Potentially relevant evidence was not qualified; the LLM UNTESTED status was preserved."
+            ],
+            "evidence_value_role": "UNCLEAR",
+            "relationship": "UNCLEAR",
+            "evidence_ids": [],
+            "reason": "No relevant evidence found"
+          }
+        ],
+        "final_status": "MISSING",
+        "aggregator_overrode_status": true,
+        "qualification": [
+          {
+            "evidence_id": "E1",
+            "source_chunk_id": "305-2400152-TEST-p9",
+            "document_name": "305-2400152-TEST.pdf",
+            "source_authority": "UNKNOWN",
+            "entity_scope": "System",
+            "parameter": "energy",
+            "parameters_found": [
+              "energy"
+            ],
+            "verification_method": "unknown",
+            "required_verification_method": "physical_test",
+            "method_compatible": false,
+            "scope_compatible": true,
+            "is_authoritative": false,
+            "qualification_status": "NOT_QUALIFIED",
+            "reason": "Evidence method 'unknown' cannot satisfy required verification method 'physical_test'."
+          },
+          {
+            "evidence_id": "E2",
+            "source_chunk_id": "305-2400152-TEST-p10",
+            "document_name": "305-2400152-TEST.pdf",
+            "source_authority": "EMPIRICAL_TEST",
+            "entity_scope": "System",
+            "parameter": "isolation",
+            "parameters_found": [
+              "isolation",
+              "voltage",
+              "current",
+              "resistance"
+            ],
+            "verification_method": "physical_test",
+            "required_verification_method": "physical_test",
+            "method_compatible": true,
+            "scope_compatible": true,
+            "is_authoritative": false,
+            "qualification_status": "NOT_QUALIFIED",
+            "reason": "Retrieved chunk does not contain a local passage addressing this requirement."
+          },
+          {
+            "evidence_id": "E3",
+            "source_chunk_id": "305-2400152-TEST-p5",
+            "document_name": "305-2400152-TEST.pdf",
+            "source_authority": "UNKNOWN",
+            "entity_scope": "System",
+            "parameter": "current",
+            "parameters_found": [
+              "current"
+            ],
+            "verification_method": "unknown",
+            "required_verification_method": "physical_test",
+            "method_compatible": false,
+            "scope_compatible": true,
+            "is_authoritative": false,
+            "qualification_status": "NOT_QUALIFIED",
+            "reason": "Retrieved chunk does not contain a local passage addressing this requirement."
+          },
+          {
+            "evidence_id": "E4",
+            "source_chunk_id": "305-2400152-TEST-p6",
+            "document_name": "305-2400152-TEST.pdf",
+            "source_authority": "UNKNOWN",
+            "entity_scope": "System",
+            "parameter": "isolation",
+            "parameters_found": [
+              "isolation",
+              "current"
+            ],
+            "verification_method": "unknown",
+            "required_verification_method": "physical_test",
+            "method_compatible": false,
+            "scope_compatible": true,
+            "is_authoritative": false,
+            "qualification_status": "NOT_QUALIFIED",
+            "reason": "Retrieved chunk does not contain a local passage addressing this requirement."
+          },
+          {
+            "evidence_id": "E5",
+            "source_chunk_id": "305-2400152-TEST-p14",
+            "document_name": "305-2400152-TEST.pdf",
+            "source_authority": "UNKNOWN",
+            "entity_scope": "System",
+            "parameter": "isolation",
+            "parameters_found": [
+              "isolation",
+              "voltage",
+              "current"
+            ],
+            "verification_method": "unknown",
+            "required_verification_method": "physical_test",
+            "method_compatible": false,
+            "scope_compatible": true,
+            "is_authoritative": false,
+            "qualification_status": "NOT_QUALIFIED",
+            "reason": "Retrieved chunk does not contain a local passage addressing this requirement."
+          }
+        ],
+        "review_gate": {
+          "policy": "supported_evidence_and_contract_audit_v2",
+          "required": false,
+          "auto_close_eligible": false,
+          "reasons": []
+        }
+      }
+    },
+    {
+      "requirement_id": "FMVSS-305-S7.2",
+      "clause": "S7.2",
+      "logic_operator": "ALL_OF",
+      "expected_status": "SUPPORTED",
+      "predicted_status": "MISSING",
+      "correct": false,
+      "expected_review_state": "Reviewed",
+      "predicted_review_state": "Open",
+      "review_correct": false,
+      "confidence": 95.0,
+      "ai_analysis": "Mechanical aggregation: all applicable mandatory conditions are UNTESTED. [Python aggregator overrode provisional status 'UNKNOWN' based on condition-level results.] Provisional model rationale: No relevant evidence found",
+      "retrieved_pages": [
+        10,
+        6,
+        11,
+        2,
+        14
+      ],
+      "raw_llm_condition_results": [
+        {
+          "condition_id": "S7.2-1",
+          "status": "UNTESTED",
+          "validation_state": "UNRESOLVED",
+          "validation_notes": [],
+          "evidence_value_role": "UNCLEAR",
+          "relationship": "UNCLEAR",
+          "evidence_ids": [],
+          "reason": "No relevant evidence found"
+        },
+        {
+          "condition_id": "S7.2-2",
+          "status": "UNTESTED",
+          "validation_state": "UNRESOLVED",
+          "validation_notes": [],
+          "evidence_value_role": "UNCLEAR",
+          "relationship": "UNCLEAR",
+          "evidence_ids": [],
+          "reason": "No relevant evidence found"
+        },
+        {
+          "condition_id": "S7.2-3",
+          "status": "UNTESTED",
+          "validation_state": "UNRESOLVED",
+          "validation_notes": [],
+          "evidence_value_role": "UNCLEAR",
+          "relationship": "UNCLEAR",
+          "evidence_ids": [],
+          "reason": "No relevant evidence found"
+        }
+      ],
+      "final_condition_results": [
+        {
+          "condition_id": "S7.2-1",
+          "description": null,
+          "status": "UNTESTED",
+          "validation_state": "UNRESOLVED",
+          "validation_notes": [
+            "Potentially relevant evidence was not qualified; the LLM UNTESTED status was preserved."
+          ],
+          "observed_parameter": null,
+          "observed_value": null,
+          "observed_min_value": null,
+          "observed_max_value": null,
+          "observed_unit": null,
+          "evidence_value_role": "UNCLEAR",
+          "relationship": "UNCLEAR",
+          "evidence_ids": [],
+          "quote": null,
+          "reason": "No relevant evidence found"
+        },
+        {
+          "condition_id": "S7.2-2",
+          "description": null,
+          "status": "UNTESTED",
+          "validation_state": "UNRESOLVED",
+          "validation_notes": [
+            "Potentially relevant evidence was not qualified; the LLM UNTESTED status was preserved."
+          ],
+          "observed_parameter": null,
+          "observed_value": null,
+          "observed_min_value": null,
+          "observed_max_value": null,
+          "observed_unit": null,
+          "evidence_value_role": "UNCLEAR",
+          "relationship": "UNCLEAR",
+          "evidence_ids": [],
+          "quote": null,
+          "reason": "No relevant evidence found"
+        },
+        {
+          "condition_id": "S7.2-3",
+          "description": null,
+          "status": "UNTESTED",
+          "validation_state": "UNRESOLVED",
+          "validation_notes": [
+            "Potentially relevant evidence was not qualified; the LLM UNTESTED status was preserved."
+          ],
+          "observed_parameter": null,
+          "observed_value": null,
+          "observed_min_value": null,
+          "observed_max_value": null,
+          "observed_unit": null,
+          "evidence_value_role": "UNCLEAR",
+          "relationship": "UNCLEAR",
+          "evidence_ids": [],
+          "quote": null,
+          "reason": "No relevant evidence found"
+        }
+      ],
+      "pipeline_diagnostics": {
+        "decision_source": "llm",
+        "llm_provisional_status": "UNKNOWN",
+        "llm_provisional_confidence": 0,
+        "llm_condition_results": [
+          {
+            "condition_id": "S7.2-1",
+            "status": "UNTESTED",
+            "validation_state": "UNRESOLVED",
+            "validation_notes": [],
+            "evidence_value_role": "UNCLEAR",
+            "relationship": "UNCLEAR",
+            "evidence_ids": [],
+            "reason": "No relevant evidence found"
+          },
+          {
+            "condition_id": "S7.2-2",
+            "status": "UNTESTED",
+            "validation_state": "UNRESOLVED",
+            "validation_notes": [],
+            "evidence_value_role": "UNCLEAR",
+            "relationship": "UNCLEAR",
+            "evidence_ids": [],
+            "reason": "No relevant evidence found"
+          },
+          {
+            "condition_id": "S7.2-3",
+            "status": "UNTESTED",
+            "validation_state": "UNRESOLVED",
+            "validation_notes": [],
+            "evidence_value_role": "UNCLEAR",
+            "relationship": "UNCLEAR",
+            "evidence_ids": [],
+            "reason": "No relevant evidence found"
+          }
+        ],
+        "post_reconciliation_condition_results": [
+          {
+            "condition_id": "S7.2-1",
+            "status": "UNTESTED",
+            "validation_state": "UNRESOLVED",
+            "validation_notes": [],
+            "evidence_value_role": "UNCLEAR",
+            "relationship": "UNCLEAR",
+            "evidence_ids": [],
+            "reason": "No relevant evidence found"
+          },
+          {
+            "condition_id": "S7.2-2",
+            "status": "UNTESTED",
+            "validation_state": "UNRESOLVED",
+            "validation_notes": [],
+            "evidence_value_role": "UNCLEAR",
+            "relationship": "UNCLEAR",
+            "evidence_ids": [],
+            "reason": "No relevant evidence found"
+          },
+          {
+            "condition_id": "S7.2-3",
+            "status": "UNTESTED",
+            "validation_state": "UNRESOLVED",
+            "validation_notes": [],
+            "evidence_value_role": "UNCLEAR",
+            "relationship": "UNCLEAR",
+            "evidence_ids": [],
+            "reason": "No relevant evidence found"
+          }
+        ],
+        "condition_transitions": [],
+        "pre_qualification_status": "UNKNOWN",
+        "pre_qualification_condition_results": [
+          {
+            "condition_id": "S7.2-1",
+            "status": "UNTESTED",
+            "validation_state": "UNRESOLVED",
+            "validation_notes": [],
+            "evidence_value_role": "UNCLEAR",
+            "relationship": "UNCLEAR",
+            "evidence_ids": [],
+            "reason": "No relevant evidence found"
+          },
+          {
+            "condition_id": "S7.2-2",
+            "status": "UNTESTED",
+            "validation_state": "UNRESOLVED",
+            "validation_notes": [],
+            "evidence_value_role": "UNCLEAR",
+            "relationship": "UNCLEAR",
+            "evidence_ids": [],
+            "reason": "No relevant evidence found"
+          },
+          {
+            "condition_id": "S7.2-3",
+            "status": "UNTESTED",
+            "validation_state": "UNRESOLVED",
+            "validation_notes": [],
+            "evidence_value_role": "UNCLEAR",
+            "relationship": "UNCLEAR",
+            "evidence_ids": [],
+            "reason": "No relevant evidence found"
+          }
+        ],
+        "evidence_audit_condition_results": [
+          {
+            "condition_id": "S7.2-1",
+            "status": "UNTESTED",
+            "validation_state": "UNRESOLVED",
+            "validation_notes": [
+              "Potentially relevant evidence was not qualified; the LLM UNTESTED status was preserved."
+            ],
+            "evidence_value_role": "UNCLEAR",
+            "relationship": "UNCLEAR",
+            "evidence_ids": [],
+            "reason": "No relevant evidence found"
+          },
+          {
+            "condition_id": "S7.2-2",
+            "status": "UNTESTED",
+            "validation_state": "UNRESOLVED",
+            "validation_notes": [
+              "Potentially relevant evidence was not qualified; the LLM UNTESTED status was preserved."
+            ],
+            "evidence_value_role": "UNCLEAR",
+            "relationship": "UNCLEAR",
+            "evidence_ids": [],
+            "reason": "No relevant evidence found"
+          },
+          {
+            "condition_id": "S7.2-3",
+            "status": "UNTESTED",
+            "validation_state": "UNRESOLVED",
+            "validation_notes": [
+              "Potentially relevant evidence was not qualified; the LLM UNTESTED status was preserved."
+            ],
+            "evidence_value_role": "UNCLEAR",
+            "relationship": "UNCLEAR",
+            "evidence_ids": [],
+            "reason": "No relevant evidence found"
+          }
+        ],
+        "post_qualification_condition_results": [
+          {
+            "condition_id": "S7.2-1",
+            "status": "UNTESTED",
+            "validation_state": "UNRESOLVED",
+            "validation_notes": [
+              "Potentially relevant evidence was not qualified; the LLM UNTESTED status was preserved."
+            ],
+            "evidence_value_role": "UNCLEAR",
+            "relationship": "UNCLEAR",
+            "evidence_ids": [],
+            "reason": "No relevant evidence found"
+          },
+          {
+            "condition_id": "S7.2-2",
+            "status": "UNTESTED",
+            "validation_state": "UNRESOLVED",
+            "validation_notes": [
+              "Potentially relevant evidence was not qualified; the LLM UNTESTED status was preserved."
+            ],
+            "evidence_value_role": "UNCLEAR",
+            "relationship": "UNCLEAR",
+            "evidence_ids": [],
+            "reason": "No relevant evidence found"
+          },
+          {
+            "condition_id": "S7.2-3",
+            "status": "UNTESTED",
+            "validation_state": "UNRESOLVED",
+            "validation_notes": [
+              "Potentially relevant evidence was not qualified; the LLM UNTESTED status was preserved."
+            ],
+            "evidence_value_role": "UNCLEAR",
+            "relationship": "UNCLEAR",
+            "evidence_ids": [],
+            "reason": "No relevant evidence found"
+          }
+        ],
+        "final_status": "MISSING",
+        "aggregator_overrode_status": true,
+        "qualification": [
+          {
+            "evidence_id": "E1",
+            "source_chunk_id": "305-2400152-TEST-p10",
+            "document_name": "305-2400152-TEST.pdf",
+            "source_authority": "EMPIRICAL_TEST",
+            "entity_scope": "System",
+            "parameter": "isolation",
+            "parameters_found": [
+              "isolation",
+              "voltage",
+              "current",
+              "resistance"
+            ],
+            "verification_method": "physical_test",
+            "required_verification_method": "physical_test",
+            "method_compatible": true,
+            "scope_compatible": true,
+            "is_authoritative": false,
+            "qualification_status": "NOT_QUALIFIED",
+            "reason": "Retrieved chunk does not contain a local passage addressing this requirement."
+          },
+          {
+            "evidence_id": "E2",
+            "source_chunk_id": "305-2400152-TEST-p6",
+            "document_name": "305-2400152-TEST.pdf",
+            "source_authority": "UNKNOWN",
+            "entity_scope": "System",
+            "parameter": "isolation",
+            "parameters_found": [
+              "isolation",
+              "current"
+            ],
+            "verification_method": "unknown",
+            "required_verification_method": "physical_test",
+            "method_compatible": false,
+            "scope_compatible": true,
+            "is_authoritative": false,
+            "qualification_status": "NOT_QUALIFIED",
+            "reason": "Retrieved chunk does not contain a local passage addressing this requirement."
+          },
+          {
+            "evidence_id": "E3",
+            "source_chunk_id": "305-2400152-TEST-p11",
+            "document_name": "305-2400152-TEST.pdf",
+            "source_authority": "EMPIRICAL_TEST",
+            "entity_scope": "System",
+            "parameter": "isolation",
+            "parameters_found": [
+              "isolation",
+              "voltage",
+              "current",
+              "latency"
+            ],
+            "verification_method": "physical_test",
+            "required_verification_method": "physical_test",
+            "method_compatible": true,
+            "scope_compatible": true,
+            "is_authoritative": false,
+            "qualification_status": "NOT_QUALIFIED",
+            "reason": "Retrieved chunk does not contain a local passage addressing this requirement."
+          },
+          {
+            "evidence_id": "E4",
+            "source_chunk_id": "305-2400152-TEST-p2",
+            "document_name": "305-2400152-TEST.pdf",
+            "source_authority": "UNKNOWN",
+            "entity_scope": "System",
+            "parameters_found": [],
+            "verification_method": "unknown",
+            "required_verification_method": "physical_test",
+            "method_compatible": false,
+            "scope_compatible": true,
+            "is_authoritative": false,
+            "qualification_status": "NOT_QUALIFIED",
+            "reason": "Retrieved chunk does not contain a local passage addressing this requirement."
+          },
+          {
+            "evidence_id": "E5",
+            "source_chunk_id": "305-2400152-TEST-p14",
+            "document_name": "305-2400152-TEST.pdf",
+            "source_authority": "UNKNOWN",
+            "entity_scope": "System",
+            "parameter": "isolation",
+            "parameters_found": [
+              "isolation",
+              "voltage",
+              "current"
+            ],
+            "verification_method": "unknown",
+            "required_verification_method": "physical_test",
+            "method_compatible": false,
+            "scope_compatible": true,
+            "is_authoritative": false,
+            "qualification_status": "NOT_QUALIFIED",
+            "reason": "Retrieved chunk does not contain a local passage addressing this requirement."
+          }
+        ],
+        "review_gate": {
+          "policy": "supported_evidence_and_contract_audit_v2",
+          "required": false,
+          "auto_close_eligible": false,
+          "reasons": []
+        }
+      }
+    },
+    {
+      "requirement_id": "FMVSS-305-S7.6.2",
+      "clause": "S7.6.2",
+      "logic_operator": "ALL_OF",
+      "expected_status": "SUPPORTED",
+      "predicted_status": "SUPPORTED",
+      "correct": true,
+      "expected_review_state": "Reviewed",
+      "predicted_review_state": "Reviewed",
+      "review_correct": true,
+      "confidence": 95.0,
+      "ai_analysis": "Relevant evidence found",
+      "retrieved_pages": [
+        10,
+        11,
+        12,
+        13,
+        3
+      ],
+      "raw_llm_condition_results": [
+        {
+          "condition_id": "S7.6.2-1",
+          "status": "PROVEN",
+          "validation_state": "UNRESOLVED",
+          "validation_notes": [],
+          "observed_parameter": "internal resistance",
+          "observed_value": "at least 10 MΩ",
+          "observed_unit": "MΩ",
+          "evidence_value_role": "OBSERVED",
+          "relationship": "SATISFIES",
+          "evidence_ids": [
+            "E1",
+            "E2",
+            "E3"
+          ],
+          "quote": "The voltmeter used in this test shall measure DC values and have an internal impedance of at least 10 MΩ",
+          "reason": "Relevant evidence found"
+        }
+      ],
+      "final_condition_results": [
+        {
+          "condition_id": "S7.6.2-1",
+          "description": null,
+          "status": "PROVEN",
+          "validation_state": "VALID",
+          "validation_notes": [
+            "Structured numeric fields were insufficient for an independent consistency check; semantic status was preserved.",
+            "Evidence attribution and admissibility checks passed."
+          ],
+          "observed_parameter": "internal resistance",
+          "observed_value": "at least 10 MΩ",
+          "observed_min_value": null,
+          "observed_max_value": null,
+          "observed_unit": "MΩ",
+          "evidence_value_role": "OBSERVED",
+          "relationship": "SATISFIES",
+          "evidence_ids": [
+            "E1",
+            "E2",
+            "E3"
+          ],
+          "quote": "The voltmeter used in this test shall measure DC values and have an internal impedance of at least 10 MΩ",
+          "reason": "Relevant evidence found"
+        }
+      ],
+      "pipeline_diagnostics": {
+        "decision_source": "llm",
+        "llm_provisional_status": "SUPPORTED",
+        "llm_provisional_confidence": 100,
+        "llm_condition_results": [
+          {
+            "condition_id": "S7.6.2-1",
+            "status": "PROVEN",
+            "validation_state": "UNRESOLVED",
+            "validation_notes": [],
+            "observed_parameter": "internal resistance",
+            "observed_value": "at least 10 MΩ",
+            "observed_unit": "MΩ",
+            "evidence_value_role": "OBSERVED",
+            "relationship": "SATISFIES",
+            "evidence_ids": [
+              "E1",
+              "E2",
+              "E3"
+            ],
+            "quote": "The voltmeter used in this test shall measure DC values and have an internal impedance of at least 10 MΩ",
+            "reason": "Relevant evidence found"
+          }
+        ],
+        "post_reconciliation_condition_results": [
+          {
+            "condition_id": "S7.6.2-1",
+            "status": "PROVEN",
+            "validation_state": "UNRESOLVED",
+            "validation_notes": [
+              "Structured numeric fields were insufficient for an independent consistency check; semantic status was preserved."
+            ],
+            "observed_parameter": "internal resistance",
+            "observed_value": "at least 10 MΩ",
+            "observed_unit": "MΩ",
+            "evidence_value_role": "OBSERVED",
+            "relationship": "SATISFIES",
+            "evidence_ids": [
+              "E1",
+              "E2",
+              "E3"
+            ],
+            "quote": "The voltmeter used in this test shall measure DC values and have an internal impedance of at least 10 MΩ",
+            "reason": "Relevant evidence found"
+          }
+        ],
+        "condition_transitions": [],
+        "pre_qualification_status": "SUPPORTED",
+        "pre_qualification_condition_results": [
+          {
+            "condition_id": "S7.6.2-1",
+            "status": "PROVEN",
+            "validation_state": "UNRESOLVED",
+            "validation_notes": [
+              "Structured numeric fields were insufficient for an independent consistency check; semantic status was preserved."
+            ],
+            "observed_parameter": "internal resistance",
+            "observed_value": "at least 10 MΩ",
+            "observed_unit": "MΩ",
+            "evidence_value_role": "OBSERVED",
+            "relationship": "SATISFIES",
+            "evidence_ids": [
+              "E1",
+              "E2",
+              "E3"
+            ],
+            "quote": "The voltmeter used in this test shall measure DC values and have an internal impedance of at least 10 MΩ",
+            "reason": "Relevant evidence found"
+          }
+        ],
+        "evidence_audit_condition_results": [
+          {
+            "condition_id": "S7.6.2-1",
+            "status": "PROVEN",
+            "validation_state": "VALID",
+            "validation_notes": [
+              "Structured numeric fields were insufficient for an independent consistency check; semantic status was preserved.",
+              "Evidence attribution and admissibility checks passed."
+            ],
+            "observed_parameter": "internal resistance",
+            "observed_value": "at least 10 MΩ",
+            "observed_unit": "MΩ",
+            "evidence_value_role": "OBSERVED",
+            "relationship": "SATISFIES",
+            "evidence_ids": [
+              "E1",
+              "E2",
+              "E3"
+            ],
+            "quote": "The voltmeter used in this test shall measure DC values and have an internal impedance of at least 10 MΩ",
+            "reason": "Relevant evidence found"
+          }
+        ],
+        "post_qualification_condition_results": [
+          {
+            "condition_id": "S7.6.2-1",
+            "status": "PROVEN",
+            "validation_state": "VALID",
+            "validation_notes": [
+              "Structured numeric fields were insufficient for an independent consistency check; semantic status was preserved.",
+              "Evidence attribution and admissibility checks passed."
+            ],
+            "observed_parameter": "internal resistance",
+            "observed_value": "at least 10 MΩ",
+            "observed_unit": "MΩ",
+            "evidence_value_role": "OBSERVED",
+            "relationship": "SATISFIES",
+            "evidence_ids": [
+              "E1",
+              "E2",
+              "E3"
+            ],
+            "quote": "The voltmeter used in this test shall measure DC values and have an internal impedance of at least 10 MΩ",
+            "reason": "Relevant evidence found"
+          }
+        ],
+        "final_status": "SUPPORTED",
+        "aggregator_overrode_status": false,
+        "qualification": [
+          {
+            "evidence_id": "E1",
+            "source_chunk_id": "305-2400152-TEST-p10",
+            "document_name": "305-2400152-TEST.pdf",
+            "source_authority": "EMPIRICAL_TEST",
+            "entity_scope": "System",
+            "parameters_found": [],
+            "verification_method": "physical_test",
+            "required_verification_method": "physical_test",
+            "method_compatible": true,
+            "scope_compatible": true,
+            "is_authoritative": true,
+            "qualification_status": "QUALIFIED",
+            "reason": "Authoritative 'empirical_test' record at matching scope with compatible verification method."
+          },
+          {
+            "evidence_id": "E2",
+            "source_chunk_id": "305-2400152-TEST-p11",
+            "document_name": "305-2400152-TEST.pdf",
+            "source_authority": "EMPIRICAL_TEST",
+            "entity_scope": "System",
+            "parameters_found": [],
+            "verification_method": "physical_test",
+            "required_verification_method": "physical_test",
+            "method_compatible": true,
+            "scope_compatible": true,
+            "is_authoritative": true,
+            "qualification_status": "QUALIFIED",
+            "reason": "Authoritative 'empirical_test' record at matching scope with compatible verification method."
+          },
+          {
+            "evidence_id": "E3",
+            "source_chunk_id": "305-2400152-TEST-p12",
+            "document_name": "305-2400152-TEST.pdf",
+            "source_authority": "EMPIRICAL_TEST",
+            "entity_scope": "System",
+            "parameters_found": [],
+            "verification_method": "physical_test",
+            "required_verification_method": "physical_test",
+            "method_compatible": true,
+            "scope_compatible": true,
+            "is_authoritative": true,
+            "qualification_status": "QUALIFIED",
+            "reason": "Authoritative 'empirical_test' record at matching scope with compatible verification method."
+          },
+          {
+            "evidence_id": "E4",
+            "source_chunk_id": "305-2400152-TEST-p13",
+            "document_name": "305-2400152-TEST.pdf",
+            "source_authority": "CALCULATION",
+            "entity_scope": "System",
+            "parameter": "isolation",
+            "parameters_found": [
+              "isolation",
+              "voltage"
+            ],
+            "verification_method": "calculation",
+            "required_verification_method": "physical_test",
+            "method_compatible": false,
+            "scope_compatible": true,
+            "is_authoritative": false,
+            "qualification_status": "NOT_QUALIFIED",
+            "reason": "Retrieved chunk does not contain a local passage addressing this requirement."
+          },
+          {
+            "evidence_id": "E5",
+            "source_chunk_id": "305-2400152-TEST-p3",
+            "document_name": "305-2400152-TEST.pdf",
+            "source_authority": "UNKNOWN",
+            "entity_scope": "ECU",
+            "parameter": "current",
+            "parameters_found": [
+              "current"
+            ],
+            "verification_method": "unknown",
+            "required_verification_method": "physical_test",
+            "method_compatible": false,
+            "is_authoritative": false,
+            "qualification_status": "NOT_QUALIFIED",
+            "reason": "Retrieved chunk does not contain a local passage addressing this requirement."
+          }
+        ],
+        "review_gate": {
+          "policy": "supported_evidence_and_contract_audit_v2",
+          "required": false,
+          "auto_close_eligible": true,
+          "reasons": []
+        }
+      }
+    },
+    {
+      "requirement_id": "FMVSS-305-S7.6.6",
+      "clause": "S7.6.6",
+      "logic_operator": "IF_THEN",
+      "expected_status": "SUPPORTED",
+      "predicted_status": "MISSING",
+      "correct": false,
+      "expected_review_state": "Reviewed",
+      "predicted_review_state": "Open",
+      "review_correct": false,
+      "confidence": 95.0,
+      "ai_analysis": "Mechanical aggregation: all applicable mandatory conditions are UNTESTED. [Python aggregator overrode provisional status 'UNKNOWN' based on condition-level results.] Provisional model rationale: No relevant evidence found",
+      "retrieved_pages": [
+        10,
+        11,
+        14,
+        9,
+        6
+      ],
+      "raw_llm_condition_results": [
+        {
+          "condition_id": "S7.6.6_C1",
+          "status": "UNTESTED",
+          "validation_state": "UNRESOLVED",
+          "validation_notes": [],
+          "evidence_value_role": "UNCLEAR",
+          "relationship": "UNCLEAR",
+          "evidence_ids": [],
+          "reason": "No relevant evidence found"
+        },
+        {
+          "condition_id": "S7.6.6_C2",
+          "status": "UNTESTED",
+          "validation_state": "UNRESOLVED",
+          "validation_notes": [],
+          "evidence_value_role": "UNCLEAR",
+          "relationship": "UNCLEAR",
+          "evidence_ids": [],
+          "reason": "No relevant evidence found"
+        },
+        {
+          "condition_id": "S7.6.6_C3",
+          "status": "UNTESTED",
+          "validation_state": "UNRESOLVED",
+          "validation_notes": [],
+          "evidence_value_role": "UNCLEAR",
+          "relationship": "UNCLEAR",
+          "evidence_ids": [],
+          "reason": "No relevant evidence found"
+        },
+        {
+          "condition_id": "S7.6.6_C4",
+          "status": "UNTESTED",
+          "validation_state": "UNRESOLVED",
+          "validation_notes": [],
+          "evidence_value_role": "UNCLEAR",
+          "relationship": "UNCLEAR",
+          "evidence_ids": [],
+          "reason": "No relevant evidence found"
+        }
+      ],
+      "final_condition_results": [
+        {
+          "condition_id": "S7.6.6_C1",
+          "description": null,
+          "status": "UNTESTED",
+          "validation_state": "UNRESOLVED",
+          "validation_notes": [
+            "Potentially relevant evidence was not qualified; the LLM UNTESTED status was preserved."
+          ],
+          "observed_parameter": null,
+          "observed_value": null,
+          "observed_min_value": null,
+          "observed_max_value": null,
+          "observed_unit": null,
+          "evidence_value_role": "UNCLEAR",
+          "relationship": "UNCLEAR",
+          "evidence_ids": [],
+          "quote": null,
+          "reason": "No relevant evidence found"
+        },
+        {
+          "condition_id": "S7.6.6_C2",
+          "description": null,
+          "status": "UNTESTED",
+          "validation_state": "UNRESOLVED",
+          "validation_notes": [
+            "Potentially relevant evidence was not qualified; the LLM UNTESTED status was preserved."
+          ],
+          "observed_parameter": null,
+          "observed_value": null,
+          "observed_min_value": null,
+          "observed_max_value": null,
+          "observed_unit": null,
+          "evidence_value_role": "UNCLEAR",
+          "relationship": "UNCLEAR",
+          "evidence_ids": [],
+          "quote": null,
+          "reason": "No relevant evidence found"
+        },
+        {
+          "condition_id": "S7.6.6_C3",
+          "description": null,
+          "status": "UNTESTED",
+          "validation_state": "UNRESOLVED",
+          "validation_notes": [
+            "Potentially relevant evidence was not qualified; the LLM UNTESTED status was preserved."
+          ],
+          "observed_parameter": null,
+          "observed_value": null,
+          "observed_min_value": null,
+          "observed_max_value": null,
+          "observed_unit": null,
+          "evidence_value_role": "UNCLEAR",
+          "relationship": "UNCLEAR",
+          "evidence_ids": [],
+          "quote": null,
+          "reason": "No relevant evidence found"
+        },
+        {
+          "condition_id": "S7.6.6_C4",
+          "description": null,
+          "status": "UNTESTED",
+          "validation_state": "UNRESOLVED",
+          "validation_notes": [
+            "Potentially relevant evidence was not qualified; the LLM UNTESTED status was preserved."
+          ],
+          "observed_parameter": null,
+          "observed_value": null,
+          "observed_min_value": null,
+          "observed_max_value": null,
+          "observed_unit": null,
+          "evidence_value_role": "UNCLEAR",
+          "relationship": "UNCLEAR",
+          "evidence_ids": [],
+          "quote": null,
+          "reason": "No relevant evidence found"
+        }
+      ],
+      "pipeline_diagnostics": {
+        "decision_source": "llm",
+        "llm_provisional_status": "UNKNOWN",
+        "llm_provisional_confidence": 0,
+        "llm_condition_results": [
+          {
+            "condition_id": "S7.6.6_C1",
+            "status": "UNTESTED",
+            "validation_state": "UNRESOLVED",
+            "validation_notes": [],
+            "evidence_value_role": "UNCLEAR",
+            "relationship": "UNCLEAR",
+            "evidence_ids": [],
+            "reason": "No relevant evidence found"
+          },
+          {
+            "condition_id": "S7.6.6_C2",
+            "status": "UNTESTED",
+            "validation_state": "UNRESOLVED",
+            "validation_notes": [],
+            "evidence_value_role": "UNCLEAR",
+            "relationship": "UNCLEAR",
+            "evidence_ids": [],
+            "reason": "No relevant evidence found"
+          },
+          {
+            "condition_id": "S7.6.6_C3",
+            "status": "UNTESTED",
+            "validation_state": "UNRESOLVED",
+            "validation_notes": [],
+            "evidence_value_role": "UNCLEAR",
+            "relationship": "UNCLEAR",
+            "evidence_ids": [],
+            "reason": "No relevant evidence found"
+          },
+          {
+            "condition_id": "S7.6.6_C4",
+            "status": "UNTESTED",
+            "validation_state": "UNRESOLVED",
+            "validation_notes": [],
+            "evidence_value_role": "UNCLEAR",
+            "relationship": "UNCLEAR",
+            "evidence_ids": [],
+            "reason": "No relevant evidence found"
+          }
+        ],
+        "post_reconciliation_condition_results": [
+          {
+            "condition_id": "S7.6.6_C1",
+            "status": "UNTESTED",
+            "validation_state": "UNRESOLVED",
+            "validation_notes": [],
+            "evidence_value_role": "UNCLEAR",
+            "relationship": "UNCLEAR",
+            "evidence_ids": [],
+            "reason": "No relevant evidence found"
+          },
+          {
+            "condition_id": "S7.6.6_C2",
+            "status": "UNTESTED",
+            "validation_state": "UNRESOLVED",
+            "validation_notes": [],
+            "evidence_value_role": "UNCLEAR",
+            "relationship": "UNCLEAR",
+            "evidence_ids": [],
+            "reason": "No relevant evidence found"
+          },
+          {
+            "condition_id": "S7.6.6_C3",
+            "status": "UNTESTED",
+            "validation_state": "UNRESOLVED",
+            "validation_notes": [],
+            "evidence_value_role": "UNCLEAR",
+            "relationship": "UNCLEAR",
+            "evidence_ids": [],
+            "reason": "No relevant evidence found"
+          },
+          {
+            "condition_id": "S7.6.6_C4",
+            "status": "UNTESTED",
+            "validation_state": "UNRESOLVED",
+            "validation_notes": [],
+            "evidence_value_role": "UNCLEAR",
+            "relationship": "UNCLEAR",
+            "evidence_ids": [],
+            "reason": "No relevant evidence found"
+          }
+        ],
+        "condition_transitions": [],
+        "pre_qualification_status": "UNKNOWN",
+        "pre_qualification_condition_results": [
+          {
+            "condition_id": "S7.6.6_C1",
+            "status": "UNTESTED",
+            "validation_state": "UNRESOLVED",
+            "validation_notes": [],
+            "evidence_value_role": "UNCLEAR",
+            "relationship": "UNCLEAR",
+            "evidence_ids": [],
+            "reason": "No relevant evidence found"
+          },
+          {
+            "condition_id": "S7.6.6_C2",
+            "status": "UNTESTED",
+            "validation_state": "UNRESOLVED",
+            "validation_notes": [],
+            "evidence_value_role": "UNCLEAR",
+            "relationship": "UNCLEAR",
+            "evidence_ids": [],
+            "reason": "No relevant evidence found"
+          },
+          {
+            "condition_id": "S7.6.6_C3",
+            "status": "UNTESTED",
+            "validation_state": "UNRESOLVED",
+            "validation_notes": [],
+            "evidence_value_role": "UNCLEAR",
+            "relationship": "UNCLEAR",
+            "evidence_ids": [],
+            "reason": "No relevant evidence found"
+          },
+          {
+            "condition_id": "S7.6.6_C4",
+            "status": "UNTESTED",
+            "validation_state": "UNRESOLVED",
+            "validation_notes": [],
+            "evidence_value_role": "UNCLEAR",
+            "relationship": "UNCLEAR",
+            "evidence_ids": [],
+            "reason": "No relevant evidence found"
+          }
+        ],
+        "evidence_audit_condition_results": [
+          {
+            "condition_id": "S7.6.6_C1",
+            "status": "UNTESTED",
+            "validation_state": "UNRESOLVED",
+            "validation_notes": [
+              "Potentially relevant evidence was not qualified; the LLM UNTESTED status was preserved."
+            ],
+            "evidence_value_role": "UNCLEAR",
+            "relationship": "UNCLEAR",
+            "evidence_ids": [],
+            "reason": "No relevant evidence found"
+          },
+          {
+            "condition_id": "S7.6.6_C2",
+            "status": "UNTESTED",
+            "validation_state": "UNRESOLVED",
+            "validation_notes": [
+              "Potentially relevant evidence was not qualified; the LLM UNTESTED status was preserved."
+            ],
+            "evidence_value_role": "UNCLEAR",
+            "relationship": "UNCLEAR",
+            "evidence_ids": [],
+            "reason": "No relevant evidence found"
+          },
+          {
+            "condition_id": "S7.6.6_C3",
+            "status": "UNTESTED",
+            "validation_state": "UNRESOLVED",
+            "validation_notes": [
+              "Potentially relevant evidence was not qualified; the LLM UNTESTED status was preserved."
+            ],
+            "evidence_value_role": "UNCLEAR",
+            "relationship": "UNCLEAR",
+            "evidence_ids": [],
+            "reason": "No relevant evidence found"
+          },
+          {
+            "condition_id": "S7.6.6_C4",
+            "status": "UNTESTED",
+            "validation_state": "UNRESOLVED",
+            "validation_notes": [
+              "Potentially relevant evidence was not qualified; the LLM UNTESTED status was preserved."
+            ],
+            "evidence_value_role": "UNCLEAR",
+            "relationship": "UNCLEAR",
+            "evidence_ids": [],
+            "reason": "No relevant evidence found"
+          }
+        ],
+        "post_qualification_condition_results": [
+          {
+            "condition_id": "S7.6.6_C1",
+            "status": "UNTESTED",
+            "validation_state": "UNRESOLVED",
+            "validation_notes": [
+              "Potentially relevant evidence was not qualified; the LLM UNTESTED status was preserved."
+            ],
+            "evidence_value_role": "UNCLEAR",
+            "relationship": "UNCLEAR",
+            "evidence_ids": [],
+            "reason": "No relevant evidence found"
+          },
+          {
+            "condition_id": "S7.6.6_C2",
+            "status": "UNTESTED",
+            "validation_state": "UNRESOLVED",
+            "validation_notes": [
+              "Potentially relevant evidence was not qualified; the LLM UNTESTED status was preserved."
+            ],
+            "evidence_value_role": "UNCLEAR",
+            "relationship": "UNCLEAR",
+            "evidence_ids": [],
+            "reason": "No relevant evidence found"
+          },
+          {
+            "condition_id": "S7.6.6_C3",
+            "status": "UNTESTED",
+            "validation_state": "UNRESOLVED",
+            "validation_notes": [
+              "Potentially relevant evidence was not qualified; the LLM UNTESTED status was preserved."
+            ],
+            "evidence_value_role": "UNCLEAR",
+            "relationship": "UNCLEAR",
+            "evidence_ids": [],
+            "reason": "No relevant evidence found"
+          },
+          {
+            "condition_id": "S7.6.6_C4",
+            "status": "UNTESTED",
+            "validation_state": "UNRESOLVED",
+            "validation_notes": [
+              "Potentially relevant evidence was not qualified; the LLM UNTESTED status was preserved."
+            ],
+            "evidence_value_role": "UNCLEAR",
+            "relationship": "UNCLEAR",
+            "evidence_ids": [],
+            "reason": "No relevant evidence found"
+          }
+        ],
+        "final_status": "MISSING",
+        "aggregator_overrode_status": true,
+        "qualification": [
+          {
+            "evidence_id": "E1",
+            "source_chunk_id": "305-2400152-TEST-p10",
+            "document_name": "305-2400152-TEST.pdf",
+            "source_authority": "UNKNOWN",
+            "entity_scope": "System",
+            "parameter": "isolation",
+            "parameters_found": [
+              "isolation",
+              "voltage",
+              "current"
+            ],
+            "verification_method": "unknown",
+            "required_verification_method": "physical_test",
+            "method_compatible": false,
+            "scope_compatible": true,
+            "is_authoritative": false,
+            "qualification_status": "NOT_QUALIFIED",
+            "reason": "Evidence method 'unknown' cannot satisfy required verification method 'physical_test'."
+          },
+          {
+            "evidence_id": "E2",
+            "source_chunk_id": "305-2400152-TEST-p11",
+            "document_name": "305-2400152-TEST.pdf",
+            "source_authority": "UNKNOWN",
+            "entity_scope": "System",
+            "parameter": "isolation",
+            "parameters_found": [
+              "isolation",
+              "voltage",
+              "current"
+            ],
+            "verification_method": "unknown",
+            "required_verification_method": "physical_test",
+            "method_compatible": false,
+            "scope_compatible": true,
+            "is_authoritative": false,
+            "qualification_status": "NOT_QUALIFIED",
+            "reason": "Evidence method 'unknown' cannot satisfy required verification method 'physical_test'."
+          },
+          {
+            "evidence_id": "E3",
+            "source_chunk_id": "305-2400152-TEST-p14",
+            "document_name": "305-2400152-TEST.pdf",
+            "source_authority": "UNKNOWN",
+            "entity_scope": "System",
+            "parameter": "isolation",
+            "parameters_found": [
+              "isolation",
+              "voltage",
+              "current"
+            ],
+            "verification_method": "unknown",
+            "required_verification_method": "physical_test",
+            "method_compatible": false,
+            "scope_compatible": true,
+            "is_authoritative": false,
+            "qualification_status": "NOT_QUALIFIED",
+            "reason": "Evidence method 'unknown' cannot satisfy required verification method 'physical_test'."
+          },
+          {
+            "evidence_id": "E4",
+            "source_chunk_id": "305-2400152-TEST-p9",
+            "document_name": "305-2400152-TEST.pdf",
+            "source_authority": "UNKNOWN",
+            "entity_scope": "System",
+            "parameter": "voltage",
+            "parameters_found": [
+              "voltage",
+              "energy"
+            ],
+            "verification_method": "unknown",
+            "required_verification_method": "physical_test",
+            "method_compatible": false,
+            "scope_compatible": true,
+            "is_authoritative": false,
+            "qualification_status": "NOT_QUALIFIED",
+            "reason": "Retrieved chunk does not contain a local passage addressing this requirement."
+          },
+          {
+            "evidence_id": "E5",
+            "source_chunk_id": "305-2400152-TEST-p6",
+            "document_name": "305-2400152-TEST.pdf",
+            "source_authority": "UNKNOWN",
+            "entity_scope": "System",
+            "parameter": "isolation",
+            "parameters_found": [
+              "isolation"
+            ],
+            "verification_method": "unknown",
+            "required_verification_method": "physical_test",
+            "method_compatible": false,
+            "scope_compatible": true,
+            "is_authoritative": false,
+            "qualification_status": "NOT_QUALIFIED",
+            "reason": "Evidence method 'unknown' cannot satisfy required verification method 'physical_test'."
+          }
+        ],
+        "review_gate": {
+          "policy": "supported_evidence_and_contract_audit_v2",
+          "required": false,
+          "auto_close_eligible": false,
+          "reasons": []
+        }
+      }
+    },
+    {
+      "requirement_id": "FMVSS-305-S5.4.1.1",
+      "clause": "S5.4.1.1",
+      "logic_operator": "ALL_OF",
+      "expected_status": "UNKNOWN",
+      "predicted_status": "MISSING",
+      "correct": false,
+      "expected_review_state": "Needs review",
+      "predicted_review_state": "Open",
+      "review_correct": false,
+      "confidence": 95.0,
+      "ai_analysis": "Mechanical aggregation: all applicable mandatory conditions are UNTESTED. [Python aggregator overrode provisional status 'UNKNOWN' based on condition-level results.] Provisional model rationale: No relevant evidence found",
+      "retrieved_pages": [
+        10,
+        11,
+        12,
+        16,
+        9
+      ],
+      "raw_llm_condition_results": [
+        {
+          "condition_id": "S5.4.1.1_1",
+          "status": "UNTESTED",
+          "validation_state": "UNRESOLVED",
+          "validation_notes": [],
+          "evidence_value_role": "UNCLEAR",
+          "relationship": "UNCLEAR",
+          "evidence_ids": [],
+          "reason": "No relevant evidence found"
+        },
+        {
+          "condition_id": "S5.4.1.1_2",
+          "status": "UNTESTED",
+          "validation_state": "UNRESOLVED",
+          "validation_notes": [],
+          "evidence_value_role": "UNCLEAR",
+          "relationship": "UNCLEAR",
+          "evidence_ids": [],
+          "reason": "No relevant evidence found"
+        }
+      ],
+      "final_condition_results": [
+        {
+          "condition_id": "S5.4.1.1_1",
+          "description": null,
+          "status": "UNTESTED",
+          "validation_state": "UNRESOLVED",
+          "validation_notes": [
+            "Potentially relevant evidence was not qualified; the LLM UNTESTED status was preserved."
+          ],
+          "observed_parameter": null,
+          "observed_value": null,
+          "observed_min_value": null,
+          "observed_max_value": null,
+          "observed_unit": null,
+          "evidence_value_role": "UNCLEAR",
+          "relationship": "UNCLEAR",
+          "evidence_ids": [],
+          "quote": null,
+          "reason": "No relevant evidence found"
+        },
+        {
+          "condition_id": "S5.4.1.1_2",
+          "description": null,
+          "status": "UNTESTED",
+          "validation_state": "UNRESOLVED",
+          "validation_notes": [
+            "Potentially relevant evidence was not qualified; the LLM UNTESTED status was preserved."
+          ],
+          "observed_parameter": null,
+          "observed_value": null,
+          "observed_min_value": null,
+          "observed_max_value": null,
+          "observed_unit": null,
+          "evidence_value_role": "UNCLEAR",
+          "relationship": "UNCLEAR",
+          "evidence_ids": [],
+          "quote": null,
+          "reason": "No relevant evidence found"
+        }
+      ],
+      "pipeline_diagnostics": {
+        "decision_source": "llm",
+        "llm_provisional_status": "UNKNOWN",
+        "llm_provisional_confidence": 0,
+        "llm_condition_results": [
+          {
+            "condition_id": "S5.4.1.1_1",
+            "status": "UNTESTED",
+            "validation_state": "UNRESOLVED",
+            "validation_notes": [],
+            "evidence_value_role": "UNCLEAR",
+            "relationship": "UNCLEAR",
+            "evidence_ids": [],
+            "reason": "No relevant evidence found"
+          },
+          {
+            "condition_id": "S5.4.1.1_2",
+            "status": "UNTESTED",
+            "validation_state": "UNRESOLVED",
+            "validation_notes": [],
+            "evidence_value_role": "UNCLEAR",
+            "relationship": "UNCLEAR",
+            "evidence_ids": [],
+            "reason": "No relevant evidence found"
+          }
+        ],
+        "post_reconciliation_condition_results": [
+          {
+            "condition_id": "S5.4.1.1_1",
+            "status": "UNTESTED",
+            "validation_state": "UNRESOLVED",
+            "validation_notes": [],
+            "evidence_value_role": "UNCLEAR",
+            "relationship": "UNCLEAR",
+            "evidence_ids": [],
+            "reason": "No relevant evidence found"
+          },
+          {
+            "condition_id": "S5.4.1.1_2",
+            "status": "UNTESTED",
+            "validation_state": "UNRESOLVED",
+            "validation_notes": [],
+            "evidence_value_role": "UNCLEAR",
+            "relationship": "UNCLEAR",
+            "evidence_ids": [],
+            "reason": "No relevant evidence found"
+          }
+        ],
+        "condition_transitions": [],
+        "pre_qualification_status": "UNKNOWN",
+        "pre_qualification_condition_results": [
+          {
+            "condition_id": "S5.4.1.1_1",
+            "status": "UNTESTED",
+            "validation_state": "UNRESOLVED",
+            "validation_notes": [],
+            "evidence_value_role": "UNCLEAR",
+            "relationship": "UNCLEAR",
+            "evidence_ids": [],
+            "reason": "No relevant evidence found"
+          },
+          {
+            "condition_id": "S5.4.1.1_2",
+            "status": "UNTESTED",
+            "validation_state": "UNRESOLVED",
+            "validation_notes": [],
+            "evidence_value_role": "UNCLEAR",
+            "relationship": "UNCLEAR",
+            "evidence_ids": [],
+            "reason": "No relevant evidence found"
+          }
+        ],
+        "evidence_audit_condition_results": [
+          {
+            "condition_id": "S5.4.1.1_1",
+            "status": "UNTESTED",
+            "validation_state": "UNRESOLVED",
+            "validation_notes": [
+              "Potentially relevant evidence was not qualified; the LLM UNTESTED status was preserved."
+            ],
+            "evidence_value_role": "UNCLEAR",
+            "relationship": "UNCLEAR",
+            "evidence_ids": [],
+            "reason": "No relevant evidence found"
+          },
+          {
+            "condition_id": "S5.4.1.1_2",
+            "status": "UNTESTED",
+            "validation_state": "UNRESOLVED",
+            "validation_notes": [
+              "Potentially relevant evidence was not qualified; the LLM UNTESTED status was preserved."
+            ],
+            "evidence_value_role": "UNCLEAR",
+            "relationship": "UNCLEAR",
+            "evidence_ids": [],
+            "reason": "No relevant evidence found"
+          }
+        ],
+        "post_qualification_condition_results": [
+          {
+            "condition_id": "S5.4.1.1_1",
+            "status": "UNTESTED",
+            "validation_state": "UNRESOLVED",
+            "validation_notes": [
+              "Potentially relevant evidence was not qualified; the LLM UNTESTED status was preserved."
+            ],
+            "evidence_value_role": "UNCLEAR",
+            "relationship": "UNCLEAR",
+            "evidence_ids": [],
+            "reason": "No relevant evidence found"
+          },
+          {
+            "condition_id": "S5.4.1.1_2",
+            "status": "UNTESTED",
+            "validation_state": "UNRESOLVED",
+            "validation_notes": [
+              "Potentially relevant evidence was not qualified; the LLM UNTESTED status was preserved."
+            ],
+            "evidence_value_role": "UNCLEAR",
+            "relationship": "UNCLEAR",
+            "evidence_ids": [],
+            "reason": "No relevant evidence found"
+          }
+        ],
+        "final_status": "MISSING",
+        "aggregator_overrode_status": true,
+        "qualification": [
+          {
+            "evidence_id": "E1",
+            "source_chunk_id": "305-2400152-TEST-p10",
+            "document_name": "305-2400152-TEST.pdf",
+            "source_authority": "EMPIRICAL_TEST",
+            "entity_scope": "System",
+            "parameter": "isolation",
+            "parameters_found": [
+              "isolation",
+              "voltage",
+              "current",
+              "resistance"
+            ],
+            "verification_method": "physical_test",
+            "required_verification_method": "physical_test",
+            "method_compatible": true,
+            "scope_compatible": true,
+            "is_authoritative": false,
+            "qualification_status": "NOT_QUALIFIED",
+            "reason": "Retrieved chunk does not contain a local passage addressing this requirement."
+          },
+          {
+            "evidence_id": "E2",
+            "source_chunk_id": "305-2400152-TEST-p11",
+            "document_name": "305-2400152-TEST.pdf",
+            "source_authority": "EMPIRICAL_TEST",
+            "entity_scope": "System",
+            "parameter": "isolation",
+            "parameters_found": [
+              "isolation",
+              "voltage",
+              "current",
+              "latency"
+            ],
+            "verification_method": "physical_test",
+            "required_verification_method": "physical_test",
+            "method_compatible": true,
+            "scope_compatible": true,
+            "is_authoritative": false,
+            "qualification_status": "NOT_QUALIFIED",
+            "reason": "Retrieved chunk does not contain a local passage addressing this requirement."
+          },
+          {
+            "evidence_id": "E3",
+            "source_chunk_id": "305-2400152-TEST-p12",
+            "document_name": "305-2400152-TEST.pdf",
+            "source_authority": "EMPIRICAL_TEST",
+            "entity_scope": "System",
+            "parameter": "voltage",
+            "parameters_found": [
+              "voltage"
+            ],
+            "verification_method": "physical_test",
+            "required_verification_method": "physical_test",
+            "method_compatible": true,
+            "scope_compatible": true,
+            "is_authoritative": false,
+            "qualification_status": "NOT_QUALIFIED",
+            "reason": "Retrieved chunk does not contain a local passage addressing this requirement."
+          },
+          {
+            "evidence_id": "E4",
+            "source_chunk_id": "305-2400152-TEST-p16",
+            "document_name": "305-2400152-TEST.pdf",
+            "source_authority": "UNKNOWN",
+            "entity_scope": "Inverter",
+            "parameter": "voltage",
+            "parameters_found": [
+              "voltage",
+              "current",
+              "heat_load"
+            ],
+            "verification_method": "unknown",
+            "required_verification_method": "physical_test",
+            "method_compatible": false,
+            "is_authoritative": false,
+            "qualification_status": "NOT_QUALIFIED",
+            "reason": "Retrieved chunk does not contain a local passage addressing this requirement."
+          },
+          {
+            "evidence_id": "E5",
+            "source_chunk_id": "305-2400152-TEST-p9",
+            "document_name": "305-2400152-TEST.pdf",
+            "source_authority": "UNKNOWN",
+            "entity_scope": "System",
+            "parameter": "voltage",
+            "parameters_found": [
+              "voltage",
+              "energy"
+            ],
+            "verification_method": "unknown",
+            "required_verification_method": "physical_test",
+            "method_compatible": false,
+            "scope_compatible": true,
+            "is_authoritative": false,
+            "qualification_status": "NOT_QUALIFIED",
+            "reason": "Retrieved chunk does not contain a local passage addressing this requirement."
+          }
+        ],
+        "review_gate": {
+          "policy": "supported_evidence_and_contract_audit_v2",
+          "required": false,
+          "auto_close_eligible": false,
+          "reasons": []
+        }
+      }
+    },
+    {
+      "requirement_id": "FMVSS-305-S5.4.6.3",
+      "clause": "S5.4.6.3",
+      "logic_operator": "IF_THEN",
+      "expected_status": "MISSING",
+      "predicted_status": "UNKNOWN",
+      "correct": false,
+      "expected_review_state": "Open",
+      "predicted_review_state": "Needs review",
+      "review_correct": false,
+      "confidence": 80.0,
+      "ai_analysis": "The retrieved technical evidence excerpts do not provide direct verification evidence for the target requirement and its specified entity/subsystem, and the required verification method 'physical_test' is not satisfied by the provided evidence.",
+      "retrieved_pages": [
+        9,
+        10,
+        13,
+        11,
+        12
+      ],
+      "raw_llm_condition_results": [
+        {
+          "condition_id": "COND-005",
+          "description": "Vehicle movement not possible while charge connector is physically connected (<= 150.0 mm)",
+          "status": "INCONCLUSIVE",
+          "validation_state": "UNRESOLVED",
+          "validation_notes": [],
+          "evidence_value_role": "UNCLEAR",
+          "relationship": "UNCLEAR",
+          "evidence_ids": [
+            "E1",
+            "E2",
+            "E3",
+            "E4",
+            "E5"
+          ],
+          "reason": "No qualified empirical evidence satisfies the required verification method 'physical_test' for the specified condition."
+        }
+      ],
+      "final_condition_results": [
+        {
+          "condition_id": "COND-005",
+          "description": "Vehicle movement not possible while charge connector is physically connected (<= 150.0 mm)",
+          "status": "INCONCLUSIVE",
+          "validation_state": "UNRESOLVED",
+          "validation_notes": [],
+          "observed_parameter": null,
+          "observed_value": null,
+          "observed_min_value": null,
+          "observed_max_value": null,
+          "observed_unit": null,
+          "evidence_value_role": "UNCLEAR",
+          "relationship": "UNCLEAR",
+          "evidence_ids": [
+            "E1",
+            "E2",
+            "E3",
+            "E4",
+            "E5"
+          ],
+          "quote": null,
+          "reason": "No qualified empirical evidence satisfies the required verification method 'physical_test' for the specified condition."
+        }
+      ],
+      "pipeline_diagnostics": {
+        "decision_source": "llm",
+        "llm_provisional_status": "UNKNOWN",
+        "llm_provisional_confidence": 0,
+        "llm_condition_results": [
+          {
+            "condition_id": "COND-005",
+            "description": "Vehicle movement not possible while charge connector is physically connected (<= 150.0 mm)",
+            "status": "INCONCLUSIVE",
+            "validation_state": "UNRESOLVED",
+            "validation_notes": [],
+            "evidence_value_role": "UNCLEAR",
+            "relationship": "UNCLEAR",
+            "evidence_ids": [
+              "E1",
+              "E2",
+              "E3",
+              "E4",
+              "E5"
+            ],
+            "reason": "No qualified empirical evidence satisfies the required verification method 'physical_test' for the specified condition."
+          }
+        ],
+        "post_reconciliation_condition_results": [
+          {
+            "condition_id": "COND-005",
+            "description": "Vehicle movement not possible while charge connector is physically connected (<= 150.0 mm)",
+            "status": "INCONCLUSIVE",
+            "validation_state": "UNRESOLVED",
+            "validation_notes": [],
+            "evidence_value_role": "UNCLEAR",
+            "relationship": "UNCLEAR",
+            "evidence_ids": [
+              "E1",
+              "E2",
+              "E3",
+              "E4",
+              "E5"
+            ],
+            "reason": "No qualified empirical evidence satisfies the required verification method 'physical_test' for the specified condition."
+          }
+        ],
+        "condition_transitions": [],
+        "pre_qualification_status": "UNKNOWN",
+        "pre_qualification_condition_results": [
+          {
+            "condition_id": "COND-005",
+            "description": "Vehicle movement not possible while charge connector is physically connected (<= 150.0 mm)",
+            "status": "INCONCLUSIVE",
+            "validation_state": "UNRESOLVED",
+            "validation_notes": [],
+            "evidence_value_role": "UNCLEAR",
+            "relationship": "UNCLEAR",
+            "evidence_ids": [
+              "E1",
+              "E2",
+              "E3",
+              "E4",
+              "E5"
+            ],
+            "reason": "No qualified empirical evidence satisfies the required verification method 'physical_test' for the specified condition."
+          }
+        ],
+        "evidence_audit_condition_results": [
+          {
+            "condition_id": "COND-005",
+            "description": "Vehicle movement not possible while charge connector is physically connected (<= 150.0 mm)",
+            "status": "INCONCLUSIVE",
+            "validation_state": "UNRESOLVED",
+            "validation_notes": [],
+            "evidence_value_role": "UNCLEAR",
+            "relationship": "UNCLEAR",
+            "evidence_ids": [
+              "E1",
+              "E2",
+              "E3",
+              "E4",
+              "E5"
+            ],
+            "reason": "No qualified empirical evidence satisfies the required verification method 'physical_test' for the specified condition."
+          }
+        ],
+        "post_qualification_condition_results": [
+          {
+            "condition_id": "COND-005",
+            "description": "Vehicle movement not possible while charge connector is physically connected (<= 150.0 mm)",
+            "status": "INCONCLUSIVE",
+            "validation_state": "UNRESOLVED",
+            "validation_notes": [],
+            "evidence_value_role": "UNCLEAR",
+            "relationship": "UNCLEAR",
+            "evidence_ids": [
+              "E1",
+              "E2",
+              "E3",
+              "E4",
+              "E5"
+            ],
+            "reason": "No qualified empirical evidence satisfies the required verification method 'physical_test' for the specified condition."
+          }
+        ],
+        "final_status": "UNKNOWN",
+        "aggregator_overrode_status": false,
+        "qualification": [
+          {
+            "evidence_id": "E1",
+            "source_chunk_id": "305-2400152-TEST-p9",
+            "document_name": "305-2400152-TEST.pdf",
+            "source_authority": "UNKNOWN",
+            "entity_scope": "System",
+            "parameter": "energy",
+            "parameters_found": [
+              "energy"
+            ],
+            "verification_method": "unknown",
+            "required_verification_method": "physical_test",
+            "method_compatible": false,
+            "scope_compatible": true,
+            "is_authoritative": false,
+            "qualification_status": "NOT_QUALIFIED",
+            "reason": "Evidence method 'unknown' cannot satisfy required verification method 'physical_test'."
+          },
+          {
+            "evidence_id": "E2",
+            "source_chunk_id": "305-2400152-TEST-p10",
+            "document_name": "305-2400152-TEST.pdf",
+            "source_authority": "UNKNOWN",
+            "entity_scope": "System",
+            "parameters_found": [],
+            "verification_method": "unknown",
+            "required_verification_method": "physical_test",
+            "method_compatible": false,
+            "scope_compatible": true,
+            "is_authoritative": false,
+            "qualification_status": "NOT_QUALIFIED",
+            "reason": "Evidence method 'unknown' cannot satisfy required verification method 'physical_test'."
+          },
+          {
+            "evidence_id": "E3",
+            "source_chunk_id": "305-2400152-TEST-p13",
+            "document_name": "305-2400152-TEST.pdf",
+            "source_authority": "CALCULATION",
+            "entity_scope": "System",
+            "parameter": "isolation",
+            "parameters_found": [
+              "isolation",
+              "voltage"
+            ],
+            "verification_method": "calculation",
+            "required_verification_method": "physical_test",
+            "method_compatible": false,
+            "scope_compatible": true,
+            "is_authoritative": false,
+            "qualification_status": "NOT_QUALIFIED",
+            "reason": "Retrieved chunk does not contain a local passage addressing this requirement."
+          },
+          {
+            "evidence_id": "E4",
+            "source_chunk_id": "305-2400152-TEST-p11",
+            "document_name": "305-2400152-TEST.pdf",
+            "source_authority": "EMPIRICAL_TEST",
+            "entity_scope": "System",
+            "parameter": "isolation",
+            "parameters_found": [
+              "isolation",
+              "voltage",
+              "current",
+              "latency"
+            ],
+            "verification_method": "physical_test",
+            "required_verification_method": "physical_test",
+            "method_compatible": true,
+            "scope_compatible": true,
+            "is_authoritative": false,
+            "qualification_status": "NOT_QUALIFIED",
+            "reason": "Retrieved chunk does not contain a local passage addressing this requirement."
+          },
+          {
+            "evidence_id": "E5",
+            "source_chunk_id": "305-2400152-TEST-p12",
+            "document_name": "305-2400152-TEST.pdf",
+            "source_authority": "EMPIRICAL_TEST",
+            "entity_scope": "System",
+            "parameter": "voltage",
+            "parameters_found": [
+              "voltage"
+            ],
+            "verification_method": "physical_test",
+            "required_verification_method": "physical_test",
+            "method_compatible": true,
+            "scope_compatible": true,
+            "is_authoritative": false,
+            "qualification_status": "NOT_QUALIFIED",
+            "reason": "Retrieved chunk does not contain a local passage addressing this requirement."
+          }
+        ],
+        "review_gate": {
+          "policy": "supported_evidence_and_contract_audit_v2",
+          "required": false,
+          "auto_close_eligible": false,
+          "reasons": []
+        }
+      }
+    }
+  ]
+}

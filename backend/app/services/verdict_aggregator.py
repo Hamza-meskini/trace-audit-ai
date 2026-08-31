@@ -218,8 +218,6 @@ def _add_validation_note(
     note: str,
 ) -> None:
     """Record validator output without silently replacing semantic meaning."""
-    if result.semantic_status is None:
-        result.semantic_status = result.status
     # A confirmed citation failure is stronger than an unresolved heuristic;
     # otherwise the latest qualification result may refine an earlier VALID.
     if result.validation_state != "CONTRADICTED" or state == "CONTRADICTED":
@@ -228,42 +226,35 @@ def _add_validation_note(
         result.validation_notes.append(note)
 
 
-def merge_qualification_into_conditions(
+def audit_condition_evidence(
     contract: RequirementContract,
     condition_results: list[ConditionVerificationResult],
     qualifications: list[EvidenceQualification],
     qualified_contents: Optional[dict[str, str]] = None,
 ) -> list[ConditionVerificationResult]:
-    """Attach qualification validation while preserving semantic judgments.
+    """Attach evidence-audit metadata without changing condition statuses.
 
-    Python may reject fabricated/untraceable attribution and evidence whose
-    verification method is objectively inadmissible. Scope and parameter
-    normalization are intentionally advisory: those lightweight heuristics
-    must not overwrite the LLM's cited semantic interpretation.
+    The LLM status is immutable; traceability, authority, method, scope, and
+    parameter concerns are reported through validation_state/validation_notes.
     """
     qual_by_id = {q.evidence_id: q for q in qualifications}
     qualified_contents = qualified_contents or {}
     conditions_by_id = {c.condition_id: c for c in contract.atomic_conditions}
 
     for cr in condition_results:
-        if cr.semantic_status is None:
-            cr.semantic_status = cr.status
+        cond = conditions_by_id.get(cr.condition_id)
         if cr.status == "UNTESTED":
-            cond = conditions_by_id.get(cr.condition_id)
             relevant_unqualified = any(
                 q.qualification_status != "QUALIFIED"
                 and q.scope_compatible is not False
-                and (
-                    cond is None
-                    or condition_evidence_compatible(cond, q) is not False
-                )
+                and (cond is None or condition_evidence_compatible(cond, q) is not False)
                 for q in qualifications
             )
             if relevant_unqualified:
                 _add_validation_note(
                     cr,
                     "UNRESOLVED",
-                    "Relevant evidence exists, but qualification could not establish that it addresses this condition.",
+                    "Potentially relevant evidence was not qualified; the LLM UNTESTED status was preserved.",
                 )
             else:
                 _add_validation_note(cr, "VALID", "No attributed proof claim requires qualification.")
@@ -271,31 +262,31 @@ def merge_qualification_into_conditions(
         if cr.status not in ("PROVEN", "FAILED", "PENDING"):
             continue
 
-        cond = conditions_by_id.get(cr.condition_id)
         refs = _resolve_evidence_ids(cr.evidence_ids)
         backing = [qual_by_id[r] for r in refs if r in qual_by_id]
+        cited_contents = {
+            ref: qualified_contents[ref]
+            for ref in refs
+            if ref in qualified_contents
+        }
 
-        # Evidence IDs are not sufficient on their own: when a quote is
-        # supplied, ensure its factual clause exists in one of those cited
-        # evidence items. This lets semantic mapping lead without allowing
-        # fabricated or cross-requirement quotes through.
-        cited_contents = [qualified_contents[r] for r in refs if r in qualified_contents]
-        if cr.quote and cited_contents and not _quote_is_traceable(cr.quote, cited_contents):
-            old = cr.status
-            cr.status = "INCONCLUSIVE"
-            _add_validation_note(
-                cr,
-                "CONTRADICTED",
-                "The cited quote could not be traced to the referenced evidence.",
-            )
-            cr.reason = (
-                (cr.reason or "")
-                + f" [Downgraded from {old}: cited quote could not be traced to the referenced evidence.]"
-            ).strip()
-            continue
+        if cr.quote and cited_contents:
+            matching_refs = {
+                ref
+                for ref, content in cited_contents.items()
+                if _quote_is_traceable(cr.quote, [content])
+            }
+            if not matching_refs:
+                _add_validation_note(
+                    cr,
+                    "CONTRADICTED",
+                    "The cited quote could not be traced to the referenced evidence; the LLM status was preserved.",
+                )
+                continue
+            backing = [qual_by_id[ref] for ref in matching_refs if ref in qual_by_id]
 
-        # Citation fallback: an exact quote inside a qualified chunk counts
-        # as a traceable reference even when evidence_ids were omitted.
+        # Diagnostics may locate a quote under another retrieved ID, but do not
+        # silently rewrite the model's evidence_ids or semantic status.
         if not backing and cr.quote:
             matching_ids = {
                 evidence_id
@@ -305,37 +296,18 @@ def merge_qualification_into_conditions(
             backing = [qual_by_id[evidence_id] for evidence_id in matching_ids if evidence_id in qual_by_id]
 
         if not backing:
-            old = cr.status
-            cr.status = "INCONCLUSIVE"
             _add_validation_note(
                 cr,
                 "CONTRADICTED",
-                "No existing evidence item can be tied to this attributed condition result.",
+                "No existing evidence item can be tied to this attributed condition result; "
+                "the LLM status was preserved.",
             )
-            cr.reason = (
-                (cr.reason or "")
-                + f" [Downgraded from {old}: no traceable evidence attribution was supplied.]"
-            ).strip()
             continue
 
         if cr.status == "PROVEN":
             ok = any(b.qualification_status == "QUALIFIED" for b in backing)
         elif cr.status == "PENDING":
-            # PARTIAL means a qualified empirical method covered only part of
-            # the requested bounds. A workflow matrix, architecture document,
-            # or theoretical analysis alone is UNKNOWN, not PARTIAL.
-            cond_param = normalize_parameter(cond.parameter) if cond is not None else None
-            quote_params = set(extract_parameters_from_text(cr.quote or ""))
-            ok = any(
-                b.qualification_status == "QUALIFIED"
-                and (
-                    cond is None
-                    or condition_evidence_compatible(cond, b) is True
-                    or (cond_param is not None and cond_param in quote_params)
-                    or (cond_param is None and b.parameter_compatible is not False)
-                )
-                for b in backing
-            )
+            ok = any(b.qualification_status in ("QUALIFIED", "PARTIALLY_QUALIFIED") for b in backing)
         else:  # FAILED
             ok = any(
                 b.qualification_status == "QUALIFIED" or _is_contradiction_relevant(b)
@@ -343,32 +315,23 @@ def merge_qualification_into_conditions(
             )
 
         if not ok:
-            # A verification-method mismatch is objective (e.g. simulation
-            # cannot prove a required physical bench test), so it remains a
-            # hard guardrail. Parameter and scope qualification are lexical
-            # heuristics and therefore produce review metadata only.
             hard_method_mismatch = (
                 cr.status in ("PROVEN", "PENDING")
                 and backing
                 and all(b.method_compatible is False for b in backing)
             )
             if hard_method_mismatch:
-                old = cr.status
-                cr.status = "INCONCLUSIVE"
                 _add_validation_note(
                     cr,
                     "CONTRADICTED",
-                    "The cited evidence uses a verification method that cannot satisfy the required method.",
+                    "The cited evidence method cannot satisfy the required verification method; "
+                    "the LLM status was preserved.",
                 )
-                cr.reason = (
-                    (cr.reason or "")
-                    + f" [Downgraded from {old}: cited evidence method cannot satisfy the required verification method.]"
-                ).strip()
             else:
                 _add_validation_note(
                     cr,
                     "UNRESOLVED",
-                    "Qualification heuristics did not confirm scope/parameter alignment; semantic status was preserved.",
+                    "Evidence qualification did not establish admissible proof; the LLM status was preserved.",
                 )
             continue
 
@@ -401,16 +364,11 @@ def aggregate_condition_statuses(
     has_relevant_evidence: bool = True,
     evidence_absent: bool = False,
 ) -> tuple[str, float, str]:
-    """Deterministically aggregate condition results into the FINAL status.
+    """Mechanically aggregate immutable condition results into the final status.
 
-    Args:
-        contract: the requirement contract (source of mandatory conditions)
-        condition_results: per-condition outcomes (possibly LLM-produced,
-            must already be qualification-merged by the caller)
-        evidence_qualification: qualifications of the evidence considered
-        has_relevant_evidence: any independent (non-spec) evidence retrieved
-        evidence_absent: an authoritative record explicitly states evidence
-            does not exist (e.g. compliance matrix 'NOT STARTED')
+    Evidence presence and qualification metadata are deliberately ignored here.
+    They are audit outputs, not semantic inputs.  The optional legacy arguments
+    remain in the signature for backward compatibility with existing callers.
 
     Returns:
         (status, confidence, reason)
@@ -422,58 +380,60 @@ def aggregate_condition_statuses(
         st = (cr.status or "UNTESTED").upper()
         counts[st] = counts.get(st, 0) + 1
 
-    # 1. Any mandatory failure -> CONFLICT (highest precedence: safety)
+    active_n = n - counts["NOT_APPLICABLE"]
+    if active_n <= 0:
+        return (
+            "UNKNOWN", 75.0,
+            "Mechanical aggregation: no applicable mandatory condition was available.",
+        )
+
+    # 1. Any mandatory failure -> CONFLICT
     if counts["FAILED"] > 0:
         return (
             "CONFLICT", 95.0,
-            f"Deterministic aggregation: {counts['FAILED']}/{n} mandatory condition(s) FAILED "
-            f"(violated by qualified or contradiction-relevant evidence).",
+            f"Mechanical aggregation: {counts['FAILED']}/{active_n} applicable mandatory condition(s) FAILED.",
         )
 
     # 2. All mandatory conditions proven -> SUPPORTED
-    if n > 0 and counts["PROVEN"] == n:
+    if counts["PROVEN"] == active_n:
         return (
             "SUPPORTED", 95.0,
-            f"Deterministic aggregation: all {n} mandatory condition(s) PROVEN by qualified evidence.",
+            f"Mechanical aggregation: all {active_n} applicable mandatory condition(s) are PROVEN.",
         )
 
     # 3. Some proven, remainder pending/untested/inconclusive -> PARTIAL
-    if counts["PROVEN"] > 0 and counts["PROVEN"] < n:
+    if counts["PROVEN"] > 0 and counts["PROVEN"] < active_n:
         return (
             "PARTIAL", 90.0,
-            f"Deterministic aggregation: {counts['PROVEN']}/{n} mandatory condition(s) PROVEN; "
-            f"{n - counts['PROVEN']} remain pending or unverified.",
+            f"Mechanical aggregation: {counts['PROVEN']}/{active_n} applicable mandatory condition(s) PROVEN; "
+            f"{active_n - counts['PROVEN']} remain pending or unresolved.",
         )
 
     # 3b. Partial coverage or formally in-progress work -> PARTIAL
     if counts["PENDING"] > 0:
         return (
             "PARTIAL", 88.0,
-            f"Deterministic aggregation: evidence covers only part of the required bounds or "
-            f"verification is in progress ({counts['PENDING']} condition(s) PENDING, none fully proven).",
+            f"Mechanical aggregation: {counts['PENDING']} applicable mandatory condition(s) are PENDING.",
         )
 
-    # 4. Authoritative record says the evidence does not exist -> MISSING
-    if evidence_absent:
+    # 4. All remaining applicable conditions are explicitly UNTESTED -> MISSING
+    if counts["UNTESTED"] == active_n:
         return (
             "MISSING", 95.0,
-            "Deterministic aggregation: authoritative record confirms required evidence "
-            "has not been produced (not started / missing).",
+            "Mechanical aggregation: all applicable mandatory conditions are UNTESTED.",
         )
 
-    # 5. Relevant evidence exists but no condition could be established -> UNKNOWN
-    if has_relevant_evidence:
+    # 5. At least one condition is relevant but inconclusive -> UNKNOWN
+    if counts["INCONCLUSIVE"] > 0:
         return (
             "UNKNOWN", 80.0,
-            "Deterministic aggregation: relevant evidence retrieved, but no mandatory condition "
-            "could be established by qualified evidence (unqualified modality, scope, parameter, "
-            "or insufficient detail).",
+            f"Mechanical aggregation: {counts['INCONCLUSIVE']} applicable mandatory condition(s) are INCONCLUSIVE.",
         )
 
-    # 6. No meaningful evidence -> MISSING
+    # Defensive fallback for an incomplete or non-canonical condition payload.
     return (
-        "MISSING", 92.0,
-        "Deterministic aggregation: no independent evidence addresses this requirement.",
+        "UNKNOWN", 75.0,
+        "Mechanical aggregation: condition statuses did not form a complete canonical verdict.",
     )
 
 
@@ -487,17 +447,18 @@ def finalize_verdict(
     has_relevant_evidence: bool = True,
     evidence_absent: bool = False,
 ) -> VerificationAnalysisResult:
-    """Recompute the final status of an LLM (or rule-based) analysis in Python.
+    """Aggregate immutable LLM conditions and attach non-mutating audit metadata.
 
     The input analysis's top-level `status` is IGNORED. Only its
-    condition-level findings survive, after qualification enforcement.
+    condition-level findings determine the final status. Qualification checks
+    annotate those findings but never replace their semantic statuses.
     """
     diagnostics = dict(getattr(analysis, "_diagnostics", {}) or {})
     provisional_conditions = _condition_snapshot(list(analysis.condition_results or []))
-    # Qualification mutates condition objects; use a deep copy so callers can
-    # still inspect the reasoner's pre-qualification decision independently.
+    # Audit a deep copy so validation metadata is available without changing
+    # the reasoner's original objects or their semantic statuses.
     crs = [result.model_copy(deep=True) for result in (analysis.condition_results or [])]
-    crs = merge_qualification_into_conditions(contract, crs, qualifications, qualified_contents)
+    crs = audit_condition_evidence(contract, crs, qualifications, qualified_contents)
     if not crs:
         crs = [ConditionVerificationResult(condition_id=c.condition_id, status="UNTESTED")
                for c in mandatory_conditions(contract)]
@@ -545,6 +506,8 @@ def finalize_verdict(
     diagnostics.update({
         "pre_qualification_status": provisional,
         "pre_qualification_condition_results": provisional_conditions,
+        "evidence_audit_condition_results": qualified_conditions,
+        # Kept as a compatibility alias for existing exports.
         "post_qualification_condition_results": qualified_conditions,
         "final_status": status,
         "aggregator_overrode_status": bool(provisional and provisional != status),

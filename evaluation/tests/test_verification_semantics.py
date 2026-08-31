@@ -31,6 +31,7 @@ from app.services.verification_reasoner import (
 from app.services.validators.numeric_range import validate_numeric_range
 from app.services.validators.threshold import validate_threshold
 from app.services.contradiction import detect_contract_contradiction
+from app.services.retrieval import retrieve_candidate_evidence
 
 
 class TestVerificationSemantics(unittest.TestCase):
@@ -345,6 +346,46 @@ class TestVerificationSemantics(unittest.TestCase):
         ]
         res = rule_based_multi_condition_verification(contract, chunks)
         self.assertEqual(res.status, "PARTIAL")
+
+
+class TestConditionAwareRetrieval(unittest.TestCase):
+    def test_atomic_queries_reserve_passages_for_distinct_conditions(self):
+        chunks = [
+            {
+                "id": "matrix",
+                "document_name": "compliance_matrix.xlsx",
+                "content": "REQ-X-001 overall verification tracking record.",
+            },
+            {
+                "id": "current",
+                "document_name": "current_test.pdf",
+                "content": "REQ-X-001 measured continuous current reached 250 A during the bench test.",
+            },
+            {
+                "id": "temperature",
+                "document_name": "thermal_test.pdf",
+                "content": "REQ-X-001 ambient temperature operation was verified at 65 C in the chamber.",
+            },
+            {
+                "id": "noise",
+                "document_name": "unrelated.pdf",
+                "content": "REQ-X-001 generic system discussion without measured condition evidence.",
+            },
+        ]
+
+        results = retrieve_candidate_evidence(
+            "REQ-X-001 converter operating requirements",
+            chunks,
+            top_k=3,
+            condition_queries=[
+                "REQ-X-001 continuous current >= 250 A",
+                "REQ-X-001 ambient temperature == 65 C",
+            ],
+        )
+
+        selected = {item.chunk_id for item in results}
+        self.assertIn("current", selected)
+        self.assertIn("temperature", selected)
 
 
 if __name__ == "__main__":

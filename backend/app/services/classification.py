@@ -63,23 +63,143 @@ RECOMMENDATIONS = {
 }
 
 
+SUPPORTED_AUTO_CLOSE_MIN_CONFIDENCE = 90.0
+
+
+def _supported_review_gate(
+    outcome: ValidationOutcome,
+    pipeline_diagnostics: Optional[dict[str, Any]] = None,
+    contract: Optional[RequirementContract] = None,
+) -> list[str]:
+    """Return reasons why a SUPPORTED prediction must remain under review.
+
+    This is an operational safety gate, not a semantic verdict override.  The
+    LLM-owned condition statuses and their mechanically aggregated coverage
+    category remain unchanged.  The gate only decides whether the business
+    workflow may automatically close a supported requirement.
+    """
+    if outcome.status != "SUPPORTED":
+        return []
+
+    reasons: list[str] = []
+    condition_results = list(outcome.condition_results or [])
+    diagnostics = pipeline_diagnostics or {}
+
+    if contract is not None and contract.contract_complete is False:
+        if contract.unmapped_obligations:
+            preview = "; ".join(contract.unmapped_obligations[:3])
+            if len(contract.unmapped_obligations) > 3:
+                preview += f"; +{len(contract.unmapped_obligations) - 3} more"
+            reasons.append(
+                "Atomic-condition extraction is incomplete; unmapped obligation(s): "
+                + preview
+                + "."
+            )
+        elif not contract.clause_coverage:
+            reasons.append(
+                "Atomic-condition extraction completeness was not established: "
+                "no clause-to-condition coverage map was supplied."
+            )
+        else:
+            reasons.append(
+                "Atomic-condition extraction reported an incomplete or internally "
+                "inconsistent clause-to-condition coverage map."
+            )
+
+    provisional_status = str(diagnostics.get("llm_provisional_status") or "").strip().upper()
+    if provisional_status and provisional_status != "SUPPORTED":
+        reasons.append(
+            "The LLM's holistic provisional verdict "
+            f"({provisional_status}) disagrees with condition aggregation (SUPPORTED)."
+        )
+
+    if not condition_results:
+        reasons.append("No auditable atomic-condition results were supplied.")
+    else:
+        non_proven = [
+            result.condition_id
+            for result in condition_results
+            if result.status not in ("PROVEN", "NOT_APPLICABLE")
+        ]
+        if non_proven:
+            reasons.append(
+                "Not every applicable atomic condition is PROVEN: "
+                + ", ".join(non_proven)
+                + "."
+            )
+
+        contradicted = [
+            result.condition_id
+            for result in condition_results
+            if result.status == "PROVEN" and result.validation_state == "CONTRADICTED"
+        ]
+        if contradicted:
+            reasons.append(
+                "Evidence audit contradicted the attributed proof for: "
+                + ", ".join(contradicted)
+                + "."
+            )
+
+        unresolved = [
+            result.condition_id
+            for result in condition_results
+            if result.status == "PROVEN" and result.validation_state != "VALID"
+            and result.condition_id not in contradicted
+        ]
+        if unresolved:
+            reasons.append(
+                "Evidence admissibility remains unresolved for: "
+                + ", ".join(unresolved)
+                + "."
+            )
+
+    confidence_source = "aggregated"
+    review_confidence = outcome.confidence
+    raw_llm_confidence = diagnostics.get("llm_provisional_confidence")
+    if raw_llm_confidence is not None:
+        try:
+            review_confidence = float(raw_llm_confidence)
+            confidence_source = "LLM"
+        except (TypeError, ValueError):
+            pass
+
+    if review_confidence < SUPPORTED_AUTO_CLOSE_MIN_CONFIDENCE:
+        reasons.append(
+            f"{confidence_source} confidence {review_confidence:.1f}% is below the "
+            f"{SUPPORTED_AUTO_CLOSE_MIN_CONFIDENCE:.0f}% automatic-closure threshold."
+        )
+
+    return reasons
+
+
 def _condition_results_for_status(
     contract: RequirementContract,
     status: str,
 ) -> list[ConditionVerificationResult]:
-    condition_status = {
-        "SUPPORTED": "PROVEN",
-        "PARTIAL": "PENDING",
-        "CONFLICT": "FAILED",
-        "MISSING": "UNTESTED",
-        "UNKNOWN": "INCONCLUSIVE",
-    }.get(status.upper(), "UNTESTED")
+    """Create honest atomic placeholders when only a top-level record exists.
+
+    A requirement-level PASS/FAIL/PARTIAL record does not establish that every
+    atomic condition has the same state. Only an explicit absence record can
+    safely map every condition to UNTESTED; all other undifferentiated
+    top-level outcomes remain INCONCLUSIVE until condition evidence is read.
+    """
+    top_level_status = status.upper()
+    condition_status = "UNTESTED" if top_level_status == "MISSING" else "INCONCLUSIVE"
+    reason = (
+        "Authoritative workflow record confirms that verification evidence is absent."
+        if condition_status == "UNTESTED"
+        else (
+            f"Top-level {top_level_status} record does not identify the outcome of this "
+            "individual atomic condition."
+        )
+    )
     conditions = contract.atomic_conditions or []
     return [
         ConditionVerificationResult(
             condition_id=c.condition_id,
             description=c.description,
             status=condition_status,
+            reason=reason,
         )
         for c in conditions
     ]
@@ -94,6 +214,7 @@ def _format_evidence_items(candidate_chunks: list[dict]) -> list[dict]:
             "doc_type": c.get("doc_type", "Document"),
             "page_number": c.get("page_number"),
             "quote": c.get("content") or c.get("quote", ""),
+            "document_profile": c.get("document_profile"),
         }
         for c in candidate_chunks
     ]
@@ -289,7 +410,9 @@ def _deterministic_prechecks(
     contract: RequirementContract,
     candidate_chunks: list[dict],
     spec_doc_names: Optional[set[str]] = None,
+    defer_missing: bool = False,
     defer_partial: bool = False,
+    defer_conflict: bool = False,
 ) -> tuple[Optional[tuple[list[dict], list[dict], list]], Optional[RequirementAssessment]]:
     """Shared deterministic pre-check chain: empty evidence, spec self-reference,
     cross-document contradictions, and compliance-matrix verdicts.
@@ -311,14 +434,16 @@ def _deterministic_prechecks(
 
     # Formal compliance matrix test verdicts (e.g. NOT STARTED, IN PROGRESS, PASS, FAIL)
     verdict_outcome = validate_test_verdict(contract, claims)
-    if verdict_outcome and verdict_outcome.status in ("MISSING", "CONFLICT"):
+    if verdict_outcome and verdict_outcome.status == "MISSING" and not defer_missing:
+        return None, _verdict_assessment(contract, verdict_outcome, claims=claims)
+    if verdict_outcome and verdict_outcome.status == "CONFLICT" and not defer_conflict:
         return None, _verdict_assessment(contract, verdict_outcome, claims=claims)
     if verdict_outcome and verdict_outcome.status == "PARTIAL" and not defer_partial:
         return None, _verdict_assessment(contract, verdict_outcome, claims=claims)
 
     # Cross-document / contract contradictions -> CONFLICT
     contradiction: Optional[ContradictionFinding] = detect_cross_document_contradiction(evidence_items, contract)
-    if contradiction and contradiction.has_conflict:
+    if contradiction and contradiction.has_conflict and not defer_conflict:
         return None, _conflict_assessment(contract, evidence_items, contradiction)
 
     return (evidence_items, non_spec_items, claims), None
@@ -348,7 +473,21 @@ def _finalize_assessment(
             reason="Evidence could not be deterministically verified.",
         )
 
+    diagnostics = dict(pipeline_diagnostics or {
+        "decision_source": "deterministic_validator",
+        "final_status": outcome.status,
+    })
     cov_status, rev_state = status_mapping.get(outcome.status, ("Unknown", "Needs review"))
+    review_reasons = _supported_review_gate(outcome, diagnostics, contract)
+    if cov_status == "Supported" and review_reasons:
+        rev_state = "Needs review"
+
+    diagnostics["review_gate"] = {
+        "policy": "supported_evidence_and_contract_audit_v2",
+        "required": bool(review_reasons),
+        "auto_close_eligible": cov_status == "Supported" and not review_reasons,
+        "reasons": review_reasons,
+    }
 
     highlight = outcome.highlight
     links = []
@@ -366,19 +505,24 @@ def _finalize_assessment(
             highlight=highlight if is_highlight_src else None,
         ))
 
+    recommendation = RECOMMENDATIONS.get(cov_status, "Perform engineering review.")
+    if cov_status == "Supported" and review_reasons:
+        recommendation = (
+            "Review the atomic proof, extraction completeness, and evidence-admissibility "
+            "warnings before approval. "
+            "The predicted coverage remains Supported, but automatic closure is disabled."
+        )
+
     return RequirementAssessment(
         coverage_status=cov_status,
         confidence=outcome.confidence,
         review_state=rev_state,
         ai_analysis=outcome.reason,
-        ai_recommendation=RECOMMENDATIONS.get(cov_status, "Perform engineering review."),
+        ai_recommendation=recommendation,
         evidence_links=links,
         contract=contract,
         condition_results=(outcome.condition_results or _condition_results_for_status(contract, outcome.status)),
-        pipeline_diagnostics=dict(pipeline_diagnostics or {
-            "decision_source": "deterministic_validator",
-            "final_status": outcome.status,
-        }),
+        pipeline_diagnostics=diagnostics,
     )
 
 
@@ -390,6 +534,9 @@ def assess_requirement_coverage(
     candidate_chunks: list[dict],
     spec_doc_names: Optional[set[str]] = None,
     conditions: Optional[list[dict[str, Any]]] = None,
+    clause_coverage: Optional[list[dict[str, Any]]] = None,
+    unmapped_obligations: Optional[list[str]] = None,
+    contract_complete: Optional[bool] = None,
 ) -> RequirementAssessment:
     """Assess a requirement using the deterministic validation engine only (no LLM calls)."""
     contract = parse_requirement_contract(
@@ -398,13 +545,20 @@ def assess_requirement_coverage(
         description=description,
         category=category,
         structured_conditions=conditions,
+        clause_coverage=clause_coverage,
+        unmapped_obligations=unmapped_obligations,
+        contract_complete=contract_complete,
     )
 
-    context, decided = _deterministic_prechecks(contract, candidate_chunks, spec_doc_names=spec_doc_names)
+    context, decided = _deterministic_prechecks(
+        contract,
+        candidate_chunks,
+        spec_doc_names=spec_doc_names,
+    )
     if decided:
         return decided
 
-    evidence_items, non_spec_items, claims = context
+    _evidence_items, non_spec_items, _claims = context
 
     # One authoritative decision path for both single- and multi-condition
     # requirements. Type-specific validators remain available as helpers, but
@@ -425,7 +579,7 @@ def assess_requirement_coverage(
         contract,
         non_spec_items,
         validation_outcome,
-        pipeline_diagnostics=getattr(reasoner_result, "_diagnostics", {}),
+        pipeline_diagnostics=dict(getattr(reasoner_result, "_diagnostics", {})),
     )
 
 
@@ -439,6 +593,9 @@ async def assess_requirement_coverage_async(
     thinking_level: Optional[str] = None,
     spec_doc_names: Optional[set[str]] = None,
     conditions: Optional[list[dict[str, Any]]] = None,
+    clause_coverage: Optional[list[dict[str, Any]]] = None,
+    unmapped_obligations: Optional[list[str]] = None,
+    contract_complete: Optional[bool] = None,
 ) -> RequirementAssessment:
     """Async assessment that escalates inconclusive cases to the LLM verification reasoner."""
     contract = parse_requirement_contract(
@@ -447,13 +604,22 @@ async def assess_requirement_coverage_async(
         description=description,
         category=category,
         structured_conditions=conditions,
+        clause_coverage=clause_coverage,
+        unmapped_obligations=unmapped_obligations,
+        contract_complete=contract_complete,
     )
 
-    context, decided = _deterministic_prechecks(contract, candidate_chunks, spec_doc_names=spec_doc_names)
+    context, decided = _deterministic_prechecks(
+        contract,
+        candidate_chunks,
+        spec_doc_names=spec_doc_names,
+        defer_missing=True,
+        defer_conflict=True,
+    )
     if decided:
         return decided
 
-    evidence_items, non_spec_items, claims = context
+    _evidence_items, non_spec_items, _claims = context
 
     # Single- and multi-condition requirements share the same semantic
     # reasoner and finalizer. This prevents a keyword validator from approving
@@ -478,7 +644,7 @@ async def assess_requirement_coverage_async(
         contract,
         non_spec_items,
         validation_outcome,
-        pipeline_diagnostics=getattr(reasoner_result, "_diagnostics", {}),
+        pipeline_diagnostics=dict(getattr(reasoner_result, "_diagnostics", {})),
     )
 
 
@@ -508,6 +674,9 @@ async def batch_assess_requirements(
             description=item.get("description", ""),
             category=item.get("category", "General"),
             structured_conditions=item.get("conditions"),
+            clause_coverage=item.get("clause_coverage"),
+            unmapped_obligations=item.get("unmapped_obligations"),
+            contract_complete=item.get("contract_complete"),
         )
         candidate_chunks = item.get("candidate_chunks", [])
 
@@ -515,17 +684,15 @@ async def batch_assess_requirements(
             contract,
             candidate_chunks,
             spec_doc_names=spec_doc_names,
+            defer_missing=True,
             defer_partial=True,
+            defer_conflict=True,
         )
         if decided:
             assessments[req_code] = decided
             continue
 
-        evidence_items, non_spec_items, claims = context
-        workflow_verdict = validate_test_verdict(contract, claims)
-        authoritative_partial = bool(
-            workflow_verdict and workflow_verdict.status == "PARTIAL"
-        )
+        _evidence_items, non_spec_items, _claims = context
 
         # Every unresolved requirement is queued for the same qualified
         # condition-level reasoner, regardless of condition count.
@@ -534,7 +701,6 @@ async def batch_assess_requirements(
             "contract": contract,
             "candidate_chunks": candidate_chunks,
             "non_spec_items": non_spec_items,
-            "authoritative_partial": authoritative_partial,
         })
 
 
@@ -558,19 +724,10 @@ async def batch_assess_requirements(
             req_code = item["req_code"]
             res = batch_results.get(req_code)
             if res:
-                resolved_status = res.status
-                resolved_reason = res.reason
-                if item.get("authoritative_partial") and resolved_status != "CONFLICT":
-                    resolved_status = "PARTIAL"
-                    resolved_reason = (
-                        "An authoritative verification record remains IN PROGRESS; "
-                        "condition-level evidence is reported separately, but the full requirement cannot close yet. "
-                        f"Reasoner detail: {res.reason}"
-                    )
                 outcome = ValidationOutcome(
-                    status=resolved_status,
+                    status=res.status,
                     confidence=float(res.confidence),
-                    reason=resolved_reason,
+                    reason=res.reason,
                     highlight=res.highlight,
                     condition_results=res.condition_results,
                 )
@@ -580,11 +737,12 @@ async def batch_assess_requirements(
                     confidence=75.0,
                     reason="Evaluated through compliance assessment engine.",
                 )
+            pipeline_diagnostics = dict(getattr(res, "_diagnostics", {}) if res else {})
             assessments[req_code] = _finalize_assessment(
                 item["contract"],
                 item["non_spec_items"],
                 outcome,
-                pipeline_diagnostics=(getattr(res, "_diagnostics", {}) if res else {}),
+                pipeline_diagnostics=pipeline_diagnostics,
             )
 
         done_count = min(i + len(batch), len(pre_processed))

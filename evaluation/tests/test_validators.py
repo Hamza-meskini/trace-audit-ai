@@ -11,7 +11,13 @@ if str(BACKEND_DIR) not in sys.path:
 
 from app.schemas.contract import parse_requirement_contract, RequirementContract
 from app.schemas.claim import EvidenceClaim, extract_claims_from_chunk
-from app.services.units import convert_value, are_units_compatible, normalize_unit_str
+from app.services.units import (
+    UnitCompatibility,
+    convert_value,
+    are_units_compatible,
+    normalize_unit_str,
+    unit_compatibility,
+)
 from app.services.validators.numeric_range import validate_numeric_range
 from app.services.validators.threshold import validate_threshold
 from app.services.validators.duration import validate_duration
@@ -38,6 +44,48 @@ class TestDeterministicValidators(unittest.TestCase):
         self.assertFalse(are_units_compatible("v", "a"))
         self.assertTrue(are_units_compatible("v", "kv"))
         self.assertTrue(are_units_compatible("ua", "a"))
+
+    def test_spelling_and_symbol_variants_use_physical_dimensions(self):
+        self.assertEqual(unit_compatibility("Volts", "V"), UnitCompatibility.COMPATIBLE)
+        self.assertEqual(unit_compatibility("Ohms", "Ω"), UnitCompatibility.COMPATIBLE)
+        self.assertEqual(
+            unit_compatibility("Ohms per Volt", "Ω/V"),
+            UnitCompatibility.COMPATIBLE,
+        )
+        self.assertEqual(unit_compatibility("VDC", "V"), UnitCompatibility.COMPATIBLE)
+        self.assertEqual(normalize_unit_str("Volts"), "v")
+        self.assertEqual(normalize_unit_str("V DC"), "v")
+
+    def test_unit_engine_converts_scales_offsets_and_compound_units(self):
+        self.assertAlmostEqual(convert_value(5000.0, "mV", "V"), 5.0)
+        self.assertAlmostEqual(convert_value(185.0, "deg F", "°C"), 85.0)
+        self.assertEqual(convert_value(88639780.0, "Ohms per Volt", "Ω/V"), 88639780.0)
+
+    def test_unknown_and_incompatible_units_are_distinct(self):
+        self.assertEqual(
+            unit_compatibility("vendor mystery unit", "V"),
+            UnitCompatibility.UNKNOWN,
+        )
+        self.assertEqual(unit_compatibility("kW", "A"), UnitCompatibility.INCOMPATIBLE)
+
+    def test_range_claim_converts_only_dimensionally_compatible_endpoints(self):
+        compatible = extract_claims_from_chunk({
+            "chunk_id": "E1",
+            "document_name": "lab.pdf",
+            "content": "Measured sweep 150 kHz to 2.5 GHz during the test.",
+        })
+        ranges = [claim for claim in compatible if claim.claim_type == "numeric_range"]
+        self.assertEqual(len(ranges), 1)
+        self.assertAlmostEqual(ranges[0].min_value, 0.00015)
+        self.assertAlmostEqual(ranges[0].max_value, 2.5)
+        self.assertEqual(normalize_unit_str(ranges[0].unit), normalize_unit_str("GHz"))
+
+        incompatible = extract_claims_from_chunk({
+            "chunk_id": "E2",
+            "document_name": "lab.pdf",
+            "content": "Measured operating window 5 V to 10 A during the test.",
+        })
+        self.assertFalse(any(claim.claim_type == "numeric_range" for claim in incompatible))
 
     def test_numeric_range_fully_covered(self):
         """Discrete tested sweep spanning [400V, 800V] should return SUPPORTED."""

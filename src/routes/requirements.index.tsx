@@ -54,7 +54,7 @@ function RequirementsPage() {
     category,
     severity,
     status: tab === "Needs review" ? undefined : tab,
-    review: tab === "Needs review" ? "needs_review" : undefined,
+    review: tab === "Needs review" ? "Needs review" : undefined,
   });
 
   const { data: documentsList } = useDocuments(activeProjectId);

@@ -35,6 +35,13 @@ class AtomicConditionContract(BaseModel):
     verification_method: Optional[str] = None  # "physical_test", "simulation", "calculation", "inspection"
 
 
+class ClauseCoverageContract(BaseModel):
+    """Trace one obligation-bearing source clause to its atomic conditions."""
+
+    clause: str
+    condition_ids: list[str] = Field(default_factory=list)
+
+
 class RequirementContract(BaseModel):
     """Structured engineering requirement contract."""
 
@@ -54,6 +61,12 @@ class RequirementContract(BaseModel):
     unit: Optional[str] = None
     conditions: list[str] = Field(default_factory=list)
     atomic_conditions: list[AtomicConditionContract] = Field(default_factory=list)
+    clause_coverage: list[ClauseCoverageContract] = Field(default_factory=list)
+    unmapped_obligations: list[str] = Field(default_factory=list)
+    # None preserves compatibility for legacy/manually-created contracts that
+    # pre-date extraction completeness reporting. New LLM extractions always
+    # provide an explicit boolean.
+    contract_complete: Optional[bool] = None
     verification_method: Optional[str] = None  # "physical_test", "calculation", "simulation", "inspection"
     scope: Optional[str] = None  # "BCU", "ASIC", "Pack", "Inverter", "System"
     mandatory: bool = True
@@ -90,6 +103,9 @@ def parse_requirement_contract(
     description: Optional[str] = None,
     category: str = "General",
     structured_conditions: Optional[list[dict[str, Any]]] = None,
+    clause_coverage: Optional[list[dict[str, Any]]] = None,
+    unmapped_obligations: Optional[list[str]] = None,
+    contract_complete: Optional[bool] = None,
 ) -> RequirementContract:
     """Build a structured RequirementContract from requirement text deterministically.
     
@@ -125,6 +141,12 @@ def parse_requirement_contract(
         verification_method=v_method,
         scope=scope,
         raw_text=full_text,
+        clause_coverage=[
+            ClauseCoverageContract.model_validate(item)
+            for item in (clause_coverage or [])
+        ],
+        unmapped_obligations=list(unmapped_obligations or []),
+        contract_complete=contract_complete,
     )
 
     # A structured condition tree is canonical whenever the caller has one.

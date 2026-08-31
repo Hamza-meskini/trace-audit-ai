@@ -125,6 +125,7 @@ async def run_benchmark(
                     "doc_type": "Specification" if "SRS" in doc_path.name or "Spec" in doc_path.name else "Test Report",
                     "page_number": pc.page_number,
                     "content": pc.content,
+                    "metadata": pc.metadata,
                 }
                 all_chunks.append(chunk_dict)
 

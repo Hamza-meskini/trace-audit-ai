@@ -60,6 +60,16 @@ class ExtractedCondition(BaseModel):
         return None
 
 
+class ExtractedClauseCoverage(BaseModel):
+    """Mapping from an obligation-bearing source clause to atomic conditions."""
+
+    clause: str = Field(description="Exact or minimally normalized obligation-bearing clause")
+    condition_ids: list[str] = Field(
+        default_factory=list,
+        description="IDs of all atomic conditions that formalize this clause",
+    )
+
+
 
 class ExtractedRequirement(BaseModel):
     req_code: str = Field(description="Requirement identifier, e.g. REQ-001")
@@ -69,6 +79,12 @@ class ExtractedRequirement(BaseModel):
     severity: str = Field("Medium", description="Severity: Critical, High, Medium, Low")
     parameters: list[ExtractedParameter] = Field(default_factory=list)
     conditions: list[ExtractedCondition] = Field(default_factory=list)
+    clause_coverage: list[ExtractedClauseCoverage] = Field(default_factory=list)
+    unmapped_obligations: list[str] = Field(default_factory=list)
+    contract_complete: bool = Field(
+        False,
+        description="True only when every obligation-bearing clause maps to one or more conditions",
+    )
 
 
 class ExtractionResult(BaseModel):
@@ -210,6 +226,11 @@ def fallback_extract_requirements(text_content: str, doc_name: str = "") -> list
             )
             for c in contract.atomic_conditions
         ]
+        # The local prose parser can preserve a usable fallback condition tree,
+        # but it cannot certify exhaustive semantic decomposition. Keep the
+        # requirement auditable and explicitly disable automatic closure.
+        req.unmapped_obligations = [req.description or req.title]
+        req.contract_complete = False
     return reqs
 
 
@@ -326,6 +347,51 @@ def _normalize_extracted_requirements(
                 condition.condition_id = f"{req.req_code}-C{index}"
             if not condition.description.strip():
                 condition.description = condition.parameter or req.title
+
+        condition_ids = {
+            condition.condition_id
+            for condition in req.conditions
+            if condition.condition_id
+        }
+        mandatory_ids = {
+            condition.condition_id
+            for condition in req.conditions
+            if condition.mandatory and condition.condition_id
+        }
+        covered_ids: set[str] = set()
+        invalid_mapping = False
+        normalized_unmapped = [
+            obligation.strip()
+            for obligation in req.unmapped_obligations
+            if obligation and obligation.strip()
+        ]
+
+        for mapping in req.clause_coverage:
+            mapping.clause = mapping.clause.strip()
+            supplied_ids = list(dict.fromkeys(
+                condition_id.strip()
+                for condition_id in mapping.condition_ids
+                if condition_id and condition_id.strip()
+            ))
+            valid_ids = [condition_id for condition_id in supplied_ids if condition_id in condition_ids]
+            mapping.condition_ids = valid_ids
+            covered_ids.update(valid_ids)
+            if not mapping.clause or not valid_ids or len(valid_ids) != len(supplied_ids):
+                invalid_mapping = True
+                if mapping.clause:
+                    normalized_unmapped.append(mapping.clause)
+
+        req.unmapped_obligations = list(dict.fromkeys(normalized_unmapped))
+        internally_complete = (
+            bool(req.conditions)
+            and bool(req.clause_coverage)
+            and not invalid_mapping
+            and not req.unmapped_obligations
+            and mandatory_ids.issubset(covered_ids)
+        )
+        # Never promote an uncertain model result to complete. Python only
+        # rejects internally inconsistent completeness claims.
+        req.contract_complete = bool(req.contract_complete and internally_complete)
     return requirements
 
 
@@ -346,6 +412,16 @@ For each requirement, provide:
 - parameters (numeric values, min/max limits, units like V, °C, kV, IP rating, MTBF hours)
 - conditions (one entry per independently verifiable clause, with a stable condition_id,
   description, parameter, operator, threshold/min/max, unit, and mandatory flag)
+- clause_coverage (one entry for every obligation-bearing clause in the description;
+  copy the clause and list every condition_id that formalizes it)
+- unmapped_obligations (obligation-bearing clauses that could not be formalized; use [] only when none exist)
+- contract_complete (true only when every obligation-bearing clause is represented by one or more conditions,
+  every mandatory condition is referenced by clause_coverage, and unmapped_obligations is empty)
+
+Treat required actions, triggers/preconditions, required outcomes, interfaces, operating modes,
+timing limits, quantities, ranges, tolerances, and verification-method constraints as separate
+conditions whenever each can independently pass or fail. A shared timing limit does not replace
+the actions or outcomes that must occur within that time.
 """
 
 
@@ -362,6 +438,9 @@ async def _extract_chunk_with_retry(
     system_instruction = (
         "You extract structured engineering requirements accurately. Preserve every joined clause as a separate "
         "atomic condition; never merge values with different units or omit a pending verification dimension. "
+        "Build an exhaustive clause-to-condition coverage map. Mark contract_complete false whenever an "
+        "obligation is unmapped, a mapping is uncertain, or a required action/outcome is represented only by "
+        "a shared numeric timing condition. "
         "Return only complete JSON; never stop part-way through a requirement."
     )
     result: Optional[ExtractionResult] = None

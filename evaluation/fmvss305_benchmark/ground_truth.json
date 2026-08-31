@@ -1,0 +1,775 @@
+{
+  "benchmark_id": "fmvss305-public-evidence-v1",
+  "version": "1.0.0",
+  "description": "Focused public-document verification benchmark using the historical 49 CFR 571.305 requirements and one NHTSA/Calspan FMVSS 305 indicant test report.",
+  "scope": "This benchmark measures evidence retrieval, document authority, atomic condition reasoning, regulatory logic, review gating, and final aggregation for selected clauses. It is not an exhaustive annotation of every clause in 49 CFR 571.305 and is not a legal compliance determination.",
+  "documents": {
+    "requirements": {
+      "filename": "FMVSS_305_Requirements_2024-11-27.pdf",
+      "role": "SPECIFICATION",
+      "effective_date": "2024-11-27"
+    },
+    "evidence": {
+      "filename": "305-2400152-TEST.pdf",
+      "role": "TEST_REPORT",
+      "expected_source_authority": "EMPIRICAL_TEST",
+      "test_date": "2024-11-27"
+    }
+  },
+  "status_definitions": {
+    "SUPPORTED": "Every applicable mandatory condition is proven, including satisfaction of any regulatory alternative or conditional logic.",
+    "PARTIAL": "At least one applicable condition is proven and at least one remains pending or untested.",
+    "MISSING": "No relevant evidence addresses the requirement.",
+    "UNKNOWN": "Relevant evidence exists but cannot establish the condition, including unevaluated visual-only proof.",
+    "CONFLICT": "Qualified evidence demonstrates a violation or contradiction."
+  },
+  "requirements": [
+    {
+      "requirement_id": "FMVSS-305-S5.1",
+      "clause": "S5.1",
+      "title": "Electrolyte spillage from propulsion batteries",
+      "requirement_page": 3,
+      "requirement_text": "Not more than 5.0 liters of electrolyte from propulsion batteries shall spill outside the passenger compartment, and no visible trace of electrolyte shall spill into the passenger compartment. Spillage is measured from the time the vehicle ceases motion after a barrier impact test until 30 minutes thereafter, and throughout any static rollover after a barrier impact test.",
+      "category": "Crash Safety",
+      "expected_status": "SUPPORTED",
+      "expected_review_state": "Reviewed",
+      "logic": {
+        "operator": "ALL_OF",
+        "condition_ids": ["S5.1-C1", "S5.1-C2", "S5.1-C3"]
+      },
+      "conditions": [
+        {
+          "condition_id": "S5.1-C1",
+          "description": "Total propulsion battery electrolyte spillage outside the passenger compartment is no more than 5.0 liters.",
+          "parameter": "electrolyte spillage",
+          "operator": "<=",
+          "threshold": 5.0,
+          "unit": "liters",
+          "mandatory": true,
+          "expected_status": "PROVEN",
+          "evidence": [
+            {
+              "document": "305-2400152-TEST.pdf",
+              "page": 12,
+              "quote": "Total Spillage 0.0 Liters None",
+              "claim_value_role": "OBSERVED",
+              "expected_source_authority": "EMPIRICAL_TEST"
+            }
+          ]
+        },
+        {
+          "condition_id": "S5.1-C2",
+          "description": "No visible electrolyte enters the passenger compartment.",
+          "parameter": "passenger compartment electrolyte spillage",
+          "operator": "==",
+          "threshold": 0.0,
+          "unit": "liters",
+          "mandatory": true,
+          "expected_status": "PROVEN",
+          "evidence": [
+            {
+              "document": "305-2400152-TEST.pdf",
+              "page": 11,
+              "quote": "Is propulsion battery electrolyte spillage visible in the passenger compartment? None Passed",
+              "claim_value_role": "OBSERVED",
+              "expected_source_authority": "EMPIRICAL_TEST"
+            },
+            {
+              "document": "305-2400152-TEST.pdf",
+              "page": 12,
+              "quote": "Is propulsion battery electrolyte spillage visible in the passenger compartment? No",
+              "claim_value_role": "STATUS_ONLY",
+              "expected_source_authority": "EMPIRICAL_TEST"
+            }
+          ]
+        },
+        {
+          "condition_id": "S5.1-C3",
+          "description": "Spillage is observed through the post-impact collection period and throughout the static rollover.",
+          "parameter": "observation period",
+          "operator": ">=",
+          "threshold": 30.0,
+          "unit": "minutes",
+          "mandatory": true,
+          "expected_status": "PROVEN",
+          "evidence": [
+            {
+              "document": "305-2400152-TEST.pdf",
+              "page": 6,
+              "quote": "observations were made related to electrolyte spillage and battery retention. A static rollover was subsequently performed",
+              "claim_value_role": "STATUS_ONLY",
+              "expected_source_authority": "EMPIRICAL_TEST"
+            },
+            {
+              "document": "305-2400152-TEST.pdf",
+              "page": 12,
+              "quote": "DETERMINATION OF PROPULSION BATTERY ELECTROLYTE COLLECTION TIME PERIOD",
+              "claim_value_role": "OBSERVED",
+              "expected_source_authority": "EMPIRICAL_TEST"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "requirement_id": "FMVSS-305-S5.2",
+      "clause": "S5.2",
+      "title": "Electric energy storage/conversion device retention",
+      "requirement_page": 3,
+      "requirement_text": "During and after each test specified in S6, electric energy storage/conversion devices shall remain attached to the vehicle by at least one component anchorage, bracket, or load-transferring structure, and devices located outside the occupant compartment shall not enter the occupant compartment.",
+      "category": "Crash Safety",
+      "expected_status": "SUPPORTED",
+      "expected_review_state": "Reviewed",
+      "logic": {
+        "operator": "ALL_OF",
+        "condition_ids": ["S5.2-C1", "S5.2-C2"]
+      },
+      "conditions": [
+        {
+          "condition_id": "S5.2-C1",
+          "description": "The propulsion battery remains retained by the vehicle during and after the test.",
+          "parameter": "battery retention",
+          "operator": "==",
+          "threshold": "retained",
+          "mandatory": true,
+          "expected_status": "PROVEN",
+          "evidence": [
+            {
+              "document": "305-2400152-TEST.pdf",
+              "page": 6,
+              "quote": "appears to meet the requirements for electrolyte spillage, electrical isolation, and battery retention",
+              "claim_value_role": "STATUS_ONLY",
+              "expected_source_authority": "EMPIRICAL_TEST"
+            },
+            {
+              "document": "305-2400152-TEST.pdf",
+              "page": 11,
+              "quote": "Propulsion Battery Module movement within the passenger compartment None Passed",
+              "claim_value_role": "OBSERVED",
+              "expected_source_authority": "EMPIRICAL_TEST"
+            }
+          ]
+        },
+        {
+          "condition_id": "S5.2-C2",
+          "description": "A propulsion battery component outside the occupant compartment does not enter the occupant compartment.",
+          "parameter": "battery component intrusion",
+          "operator": "==",
+          "threshold": "none",
+          "mandatory": true,
+          "expected_status": "PROVEN",
+          "evidence": [
+            {
+              "document": "305-2400152-TEST.pdf",
+              "page": 11,
+              "quote": "Intrusion of an outside Propulsion Battery Component into the passenger compartment None Passed",
+              "claim_value_role": "OBSERVED",
+              "expected_source_authority": "EMPIRICAL_TEST"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "requirement_id": "FMVSS-305-S5.3",
+      "clause": "S5.3",
+      "title": "Electrical safety after the crash test",
+      "requirement_page": 3,
+      "requirement_text": "After each test specified in S6, each high voltage source must meet one of the following: the electrical isolation requirements of S5.3(a), the voltage level requirements of S5.3(b), or the physical barrier protection requirements of S5.3(c).",
+      "category": "Electrical Safety",
+      "expected_status": "SUPPORTED",
+      "expected_review_state": "Reviewed",
+      "logic": {
+        "operator": "ANY_OF",
+        "condition_ids": ["S5.3-PATH-A", "S5.3-PATH-B", "S5.3-PATH-C"],
+        "notes": "Only one permitted path must be proven. The report selects and proves the electrical-isolation path."
+      },
+      "conditions": [
+        {
+          "condition_id": "S5.3-PATH-A",
+          "description": "The applicable electrical-isolation path is satisfied after impact and throughout rollover.",
+          "parameter": "electrical isolation",
+          "operator": ">=",
+          "threshold": 500.0,
+          "unit": "ohms/volt",
+          "mandatory": true,
+          "expected_status": "PROVEN",
+          "evidence": [
+            {
+              "document": "305-2400152-TEST.pdf",
+              "page": 11,
+              "quote": "Ri/Vb = 88,639,780 ohms/volt. Is the Electrical Isolation Value greater than or equal to 500 ohms/volt? Yes",
+              "claim_value_role": "OBSERVED",
+              "expected_source_authority": "EMPIRICAL_TEST"
+            },
+            {
+              "document": "305-2400152-TEST.pdf",
+              "page": 13,
+              "quote": "Is the Electrical Isolation Value ≥ 500 Ω/V (Yes/No)? X Yes",
+              "claim_value_role": "STATUS_ONLY",
+              "expected_source_authority": "EMPIRICAL_TEST"
+            }
+          ]
+        },
+        {
+          "condition_id": "S5.3-PATH-B",
+          "description": "The alternative low-voltage path is satisfied.",
+          "parameter": "voltage level",
+          "operator": "<=",
+          "threshold": 60.0,
+          "unit": "VDC",
+          "mandatory": false,
+          "expected_status": "NOT_APPLICABLE",
+          "evidence": []
+        },
+        {
+          "condition_id": "S5.3-PATH-C",
+          "description": "The alternative physical-barrier protection path is satisfied.",
+          "parameter": "physical barrier protection",
+          "operator": "==",
+          "threshold": "satisfied",
+          "mandatory": false,
+          "expected_status": "NOT_APPLICABLE",
+          "evidence": []
+        }
+      ]
+    },
+    {
+      "requirement_id": "FMVSS-305-S6.3",
+      "clause": "S6.3",
+      "title": "Side moving deformable barrier impact",
+      "requirement_page": 7,
+      "requirement_text": "The vehicle must meet S5.1, S5.2 and S5.3 when impacted from the side by a barrier conforming to part 587 at a speed up to and including 54 km/h, with the appropriate part 572 test dummies specified in 571.214.",
+      "category": "Test Applicability",
+      "expected_status": "PARTIAL",
+      "expected_review_state": "Needs review",
+      "logic": {
+        "operator": "ALL_OF",
+        "condition_ids": ["S6.3-C1", "S6.3-C2", "S6.3-C3", "S6.3-C4", "S6.3-C5"]
+      },
+      "conditions": [
+        {
+          "condition_id": "S6.3-C1",
+          "description": "The vehicle is subjected to a side moving deformable barrier impact.",
+          "parameter": "impact type",
+          "operator": "==",
+          "threshold": "side moving deformable barrier",
+          "mandatory": true,
+          "expected_status": "PROVEN",
+          "evidence": [
+            {
+              "document": "305-2400152-TEST.pdf",
+              "page": 6,
+              "quote": "A moving deformable barrier side impact test was conducted",
+              "claim_value_role": "OBSERVED",
+              "expected_source_authority": "EMPIRICAL_TEST"
+            }
+          ]
+        },
+        {
+          "condition_id": "S6.3-C2",
+          "description": "The impact speed is no more than 54 km/h.",
+          "parameter": "barrier speed",
+          "operator": "<=",
+          "threshold": 54.0,
+          "unit": "km/h",
+          "mandatory": true,
+          "expected_status": "PROVEN",
+          "evidence": [
+            {
+              "document": "305-2400152-TEST.pdf",
+              "page": 6,
+              "quote": "velocity of 53.10 kph (32.99 mph)",
+              "claim_value_role": "OBSERVED",
+              "expected_source_authority": "EMPIRICAL_TEST"
+            }
+          ]
+        },
+        {
+          "condition_id": "S6.3-C3",
+          "description": "The moving deformable barrier is documented as conforming to 49 CFR part 587.",
+          "parameter": "barrier conformity",
+          "operator": "==",
+          "threshold": "49 CFR part 587",
+          "mandatory": true,
+          "expected_status": "UNTESTED",
+          "evidence": []
+        },
+        {
+          "condition_id": "S6.3-C4",
+          "description": "The report documents the appropriate part 572 dummies specified in 571.214.",
+          "parameter": "test dummies",
+          "operator": "==",
+          "threshold": "applicable part 572 dummies",
+          "mandatory": true,
+          "expected_status": "UNTESTED",
+          "evidence": []
+        },
+        {
+          "condition_id": "S6.3-C5",
+          "description": "The tested vehicle meets S5.1, S5.2 and S5.3 for the side-impact indicant test.",
+          "parameter": "side impact safety outcome",
+          "operator": "==",
+          "threshold": "meets requirements",
+          "mandatory": true,
+          "expected_status": "PROVEN",
+          "evidence": [
+            {
+              "document": "305-2400152-TEST.pdf",
+              "page": 6,
+              "quote": "appears to meet the requirements for electrolyte spillage, electrical isolation, and battery retention during FMVSS No.305 Indicant testing",
+              "claim_value_role": "STATUS_ONLY",
+              "expected_source_authority": "EMPIRICAL_TEST"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "requirement_id": "FMVSS-305-S6.4",
+      "clause": "S6.4",
+      "title": "Post-impact static rollover",
+      "requirement_page": 7,
+      "requirement_text": "The vehicle must meet S5.1, S5.2 and S5.3 after being rotated on its longitudinal axis to each successive increment of 90 degrees after the impact test.",
+      "category": "Crash Safety",
+      "expected_status": "SUPPORTED",
+      "expected_review_state": "Reviewed",
+      "logic": {
+        "operator": "ALL_OF",
+        "condition_ids": ["S6.4-C1", "S6.4-C2", "S6.4-C3", "S6.4-C4"]
+      },
+      "conditions": [
+        {
+          "condition_id": "S6.4-C1",
+          "description": "The vehicle is rotated successively to 90, 180, 270 and 360 degrees after impact.",
+          "parameter": "rollover stages",
+          "operator": "==",
+          "threshold": "90, 180, 270, 360 degrees",
+          "unit": "degrees",
+          "mandatory": true,
+          "expected_status": "PROVEN",
+          "evidence": [
+            {
+              "document": "305-2400152-TEST.pdf",
+              "page": 12,
+              "quote": "0 degrees to 90 degrees; 90 degrees to 180 degrees; 180 degrees to 270 degrees; 270 degrees to 360 degrees",
+              "claim_value_role": "OBSERVED",
+              "expected_source_authority": "EMPIRICAL_TEST"
+            },
+            {
+              "document": "305-2400152-TEST.pdf",
+              "page": 14,
+              "quote": "successive increment of 90 degrees, 180 degrees, 270 degrees, and 360 degrees of the static rollover test",
+              "claim_value_role": "OBSERVED",
+              "expected_source_authority": "EMPIRICAL_TEST"
+            }
+          ]
+        },
+        {
+          "condition_id": "S6.4-C2",
+          "description": "Electrolyte spillage remains within S5.1 throughout rollover.",
+          "parameter": "rollover electrolyte spillage",
+          "operator": "<=",
+          "threshold": 5.0,
+          "unit": "liters",
+          "mandatory": true,
+          "expected_status": "PROVEN",
+          "evidence": [
+            {
+              "document": "305-2400152-TEST.pdf",
+              "page": 12,
+              "quote": "Total Spillage 0.0 Liters None",
+              "claim_value_role": "OBSERVED",
+              "expected_source_authority": "EMPIRICAL_TEST"
+            }
+          ]
+        },
+        {
+          "condition_id": "S6.4-C3",
+          "description": "Battery retention remains compliant during the test sequence.",
+          "parameter": "battery retention",
+          "operator": "==",
+          "threshold": "meets requirements",
+          "mandatory": true,
+          "expected_status": "PROVEN",
+          "evidence": [
+            {
+              "document": "305-2400152-TEST.pdf",
+              "page": 6,
+              "quote": "appears to meet the requirements for electrolyte spillage, electrical isolation, and battery retention",
+              "claim_value_role": "STATUS_ONLY",
+              "expected_source_authority": "EMPIRICAL_TEST"
+            }
+          ]
+        },
+        {
+          "condition_id": "S6.4-C4",
+          "description": "Electrical safety remains compliant at the rollover stages.",
+          "parameter": "rollover electrical isolation",
+          "operator": "==",
+          "threshold": "compliant",
+          "mandatory": true,
+          "expected_status": "PROVEN",
+          "evidence": [
+            {
+              "document": "305-2400152-TEST.pdf",
+              "page": 13,
+              "quote": "Is the Electrical Isolation Value ≥ 500 Ω/V (Yes/No)? X Yes",
+              "claim_value_role": "STATUS_ONLY",
+              "expected_source_authority": "EMPIRICAL_TEST"
+            },
+            {
+              "document": "305-2400152-TEST.pdf",
+              "page": 14,
+              "quote": "This zero voltage condition is considered as being compliant",
+              "claim_value_role": "STATUS_ONLY",
+              "expected_source_authority": "EMPIRICAL_TEST"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "requirement_id": "FMVSS-305-S7.1C",
+      "clause": "S7.1(c)",
+      "title": "State of charge for an on-board rechargeable source",
+      "requirement_page": 8,
+      "requirement_text": "If the electric energy storage device is rechargeable only by an energy source on the vehicle, it is tested at any state of charge within the normal operating voltage defined by the vehicle manufacturer.",
+      "category": "Test Conditions",
+      "expected_status": "SUPPORTED",
+      "expected_review_state": "Reviewed",
+      "logic": {
+        "operator": "IF_THEN",
+        "if_condition_id": "S7.1C-C1",
+        "then_condition_ids": ["S7.1C-C2"]
+      },
+      "conditions": [
+        {
+          "condition_id": "S7.1C-C1",
+          "description": "The propulsion battery is rechargeable only by an energy source located on the vehicle.",
+          "parameter": "charging source",
+          "operator": "==",
+          "threshold": "on-board only",
+          "mandatory": true,
+          "expected_status": "PROVEN",
+          "evidence": [
+            {
+              "document": "305-2400152-TEST.pdf",
+              "page": 9,
+              "quote": "Propulsion battery system only rechargeable by an energy source located on the vehicle",
+              "claim_value_role": "OBSERVED",
+              "expected_source_authority": "EMPIRICAL_TEST"
+            }
+          ]
+        },
+        {
+          "condition_id": "S7.1C-C2",
+          "description": "The test voltage is within the manufacturer-defined normal operating voltage range.",
+          "parameter": "test voltage",
+          "operator": "between",
+          "min_value": 160.0,
+          "max_value": 275.2,
+          "unit": "V",
+          "mandatory": true,
+          "expected_status": "PROVEN",
+          "evidence": [
+            {
+              "document": "305-2400152-TEST.pdf",
+              "page": 9,
+              "quote": "Minimum State of Charge 160 V; Maximum State of Charge 275.2 V; Test Voltage 228.6 V",
+              "claim_value_role": "OBSERVED",
+              "expected_source_authority": "EMPIRICAL_TEST"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "requirement_id": "FMVSS-305-S7.2",
+      "clause": "S7.2",
+      "title": "Vehicle in activated or ready-to-drive position",
+      "requirement_page": 8,
+      "requirement_text": "The switch or device providing power from the energy storage/conversion system to the propulsion system is in the activated or ready-to-drive position.",
+      "category": "Test Conditions",
+      "expected_status": "SUPPORTED",
+      "expected_review_state": "Reviewed",
+      "logic": {
+        "operator": "ALL_OF",
+        "condition_ids": ["S7.2-C1"]
+      },
+      "conditions": [
+        {
+          "condition_id": "S7.2-C1",
+          "description": "The propulsion battery is connected and the vehicle is in the ready-to-drive position for the measurement.",
+          "parameter": "vehicle power state",
+          "operator": "==",
+          "threshold": "ready-to-drive",
+          "mandatory": true,
+          "expected_status": "PROVEN",
+          "evidence": [
+            {
+              "document": "305-2400152-TEST.pdf",
+              "page": 10,
+              "quote": "Propulsion Battery Voltage: ready to drive position 228.6 V",
+              "claim_value_role": "OBSERVED",
+              "expected_source_authority": "EMPIRICAL_TEST"
+            },
+            {
+              "document": "305-2400152-TEST.pdf",
+              "page": 10,
+              "quote": "The measurement shall be made with the propulsion battery connected to the vehicle propulsion system, and the vehicle in the ready-to-drive position",
+              "claim_value_role": "STATUS_ONLY",
+              "expected_source_authority": "EMPIRICAL_TEST"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "requirement_id": "FMVSS-305-S7.6.2",
+      "clause": "S7.6.2",
+      "title": "Voltmeter internal resistance",
+      "requirement_page": 9,
+      "requirement_text": "The voltmeter used in the test has an internal resistance of at least 10 megaohms.",
+      "category": "Test Method",
+      "expected_status": "SUPPORTED",
+      "expected_review_state": "Reviewed",
+      "logic": {
+        "operator": "ALL_OF",
+        "condition_ids": ["S7.6.2-C1"]
+      },
+      "conditions": [
+        {
+          "condition_id": "S7.6.2-C1",
+          "description": "The voltmeter internal resistance is at least 10 megaohms.",
+          "parameter": "voltmeter internal resistance",
+          "operator": ">=",
+          "threshold": 10.0,
+          "unit": "MOhm",
+          "mandatory": true,
+          "expected_status": "PROVEN",
+          "evidence": [
+            {
+              "document": "305-2400152-TEST.pdf",
+              "page": 11,
+              "quote": "Internal Impedance Value MOhm 10",
+              "claim_value_role": "OBSERVED",
+              "expected_source_authority": "EMPIRICAL_TEST"
+            },
+            {
+              "document": "305-2400152-TEST.pdf",
+              "page": 12,
+              "quote": "Internal Impedance Value MOhm 10",
+              "claim_value_role": "OBSERVED",
+              "expected_source_authority": "EMPIRICAL_TEST"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "requirement_id": "FMVSS-305-S7.6.6",
+      "clause": "S7.6.6",
+      "title": "Electrical-isolation calculation when V1 is at least V2",
+      "requirement_page": 9,
+      "requirement_text": "If V1 is greater than or equal to V2, insert a known resistance Ro between the negative side of the high voltage source and the electrical chassis, measure V1 prime, calculate Ri using the specified formula, and divide Ri by the working voltage to obtain electrical isolation in ohms per volt.",
+      "category": "Test Method",
+      "expected_status": "SUPPORTED",
+      "expected_review_state": "Reviewed",
+      "logic": {
+        "operator": "IF_THEN",
+        "if_condition_id": "S7.6.6-C1",
+        "then_condition_ids": ["S7.6.6-C2", "S7.6.6-C3", "S7.6.6-C4"]
+      },
+      "conditions": [
+        {
+          "condition_id": "S7.6.6-C1",
+          "description": "The applicability condition V1 is greater than or equal to V2 is met post-impact.",
+          "parameter": "V1 versus V2",
+          "operator": ">=",
+          "threshold": "V2",
+          "mandatory": true,
+          "expected_status": "PROVEN",
+          "evidence": [
+            {
+              "document": "305-2400152-TEST.pdf",
+              "page": 11,
+              "quote": "V1 = 3.4 V; V2 = 2.7 V",
+              "claim_value_role": "OBSERVED",
+              "expected_source_authority": "EMPIRICAL_TEST"
+            }
+          ]
+        },
+        {
+          "condition_id": "S7.6.6-C2",
+          "description": "A known resistance Ro is used for the post-impact isolation measurement.",
+          "parameter": "known resistance Ro",
+          "operator": "==",
+          "threshold": 150900.0,
+          "unit": "ohms",
+          "mandatory": true,
+          "expected_status": "PROVEN",
+          "evidence": [
+            {
+              "document": "305-2400152-TEST.pdf",
+              "page": 11,
+              "quote": "Ro = 150,900 ohms",
+              "claim_value_role": "OBSERVED",
+              "expected_source_authority": "EMPIRICAL_TEST"
+            }
+          ]
+        },
+        {
+          "condition_id": "S7.6.6-C3",
+          "description": "V1 prime is measured with Ro installed.",
+          "parameter": "V1 prime",
+          "operator": "==",
+          "threshold": 0.1,
+          "unit": "V",
+          "mandatory": true,
+          "expected_status": "PROVEN",
+          "evidence": [
+            {
+              "document": "305-2400152-TEST.pdf",
+              "page": 11,
+              "quote": "V1 prime = 0.1 V",
+              "claim_value_role": "OBSERVED",
+              "expected_source_authority": "EMPIRICAL_TEST"
+            }
+          ]
+        },
+        {
+          "condition_id": "S7.6.6-C4",
+          "description": "Ri is calculated and divided by Vb to obtain electrical isolation in ohms per volt.",
+          "parameter": "electrical isolation",
+          "operator": "==",
+          "threshold": 88639780.0,
+          "unit": "ohms/volt",
+          "mandatory": true,
+          "expected_status": "PROVEN",
+          "evidence": [
+            {
+              "document": "305-2400152-TEST.pdf",
+              "page": 11,
+              "quote": "Ri = 8,863,978 ohms; Ri/Vb = 88,639,780 ohms/volt",
+              "claim_value_role": "OBSERVED",
+              "expected_source_authority": "EMPIRICAL_TEST"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "requirement_id": "FMVSS-305-S5.4.1.1",
+      "clause": "S5.4.1.1",
+      "title": "High-voltage warning marking",
+      "requirement_page": 4,
+      "requirement_text": "The required symbol is present on or near electric energy storage devices, is visible on removable protection barriers exposing high-voltage live parts, is yellow, and has a black border and arrow.",
+      "category": "Visual Inspection",
+      "expected_status": "UNKNOWN",
+      "expected_review_state": "Needs review",
+      "requires_visual_evidence": true,
+      "logic": {
+        "operator": "ALL_OF",
+        "condition_ids": ["S5.4.1.1-C1", "S5.4.1.1-C2", "S5.4.1.1-C3"]
+      },
+      "conditions": [
+        {
+          "condition_id": "S5.4.1.1-C1",
+          "description": "The required warning symbol is present on or near each applicable energy storage device.",
+          "parameter": "warning symbol presence",
+          "operator": "==",
+          "threshold": "present",
+          "mandatory": true,
+          "expected_status": "INCONCLUSIVE",
+          "requires_visual_evidence": true,
+          "evidence": [
+            {
+              "document": "305-2400152-TEST.pdf",
+              "page": 17,
+              "quote": "Figure 305-1: Auxiliary Power Module Warning Label; Figure 305-2: Power Inverter Warning Label",
+              "claim_value_role": "UNCLEAR",
+              "expected_source_authority": "EMPIRICAL_TEST"
+            }
+          ]
+        },
+        {
+          "condition_id": "S5.4.1.1-C2",
+          "description": "The symbol is visible on applicable removable electrical protection barriers.",
+          "parameter": "warning symbol visibility",
+          "operator": "==",
+          "threshold": "visible",
+          "mandatory": true,
+          "expected_status": "INCONCLUSIVE",
+          "requires_visual_evidence": true,
+          "evidence": [
+            {
+              "document": "305-2400152-TEST.pdf",
+              "page": 18,
+              "quote": "Figure 305-3 First Responder Warning Label; Figure 305-4: First Responder Warning Label Location",
+              "claim_value_role": "UNCLEAR",
+              "expected_source_authority": "EMPIRICAL_TEST"
+            }
+          ]
+        },
+        {
+          "condition_id": "S5.4.1.1-C3",
+          "description": "The symbol is yellow with a black border and arrow.",
+          "parameter": "warning symbol color",
+          "operator": "==",
+          "threshold": "yellow with black border and arrow",
+          "mandatory": true,
+          "expected_status": "INCONCLUSIVE",
+          "requires_visual_evidence": true,
+          "evidence": [
+            {
+              "document": "305-2400152-TEST.pdf",
+              "page": 17,
+              "quote": "Figure 305-1: Auxiliary Power Module Warning Label",
+              "claim_value_role": "UNCLEAR",
+              "expected_source_authority": "EMPIRICAL_TEST"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "requirement_id": "FMVSS-305-S5.4.6.3",
+      "clause": "S5.4.6.3",
+      "title": "Prevent drive-away while connected for charging",
+      "requirement_page": 7,
+      "requirement_text": "If the on-board energy storage device can be externally charged, vehicle movement of more than 150 mm by its own propulsion system shall not be possible while a charge connector permitting charging is physically connected.",
+      "category": "Operational Safety",
+      "expected_status": "MISSING",
+      "expected_review_state": "Open",
+      "logic": {
+        "operator": "IF_THEN",
+        "if_condition_id": "S5.4.6.3-C1",
+        "then_condition_ids": ["S5.4.6.3-C2"]
+      },
+      "conditions": [
+        {
+          "condition_id": "S5.4.6.3-C1",
+          "description": "The vehicle is externally chargeable and connected in a manner permitting charging.",
+          "parameter": "charging connection",
+          "operator": "==",
+          "threshold": "connected",
+          "mandatory": true,
+          "expected_status": "UNTESTED",
+          "evidence": []
+        },
+        {
+          "condition_id": "S5.4.6.3-C2",
+          "description": "Self-propelled vehicle movement does not exceed 150 mm while connected for charging.",
+          "parameter": "vehicle movement while charging",
+          "operator": "<=",
+          "threshold": 150.0,
+          "unit": "mm",
+          "mandatory": true,
+          "expected_status": "UNTESTED",
+          "evidence": []
+        }
+      ]
+    }
+  ]
+}

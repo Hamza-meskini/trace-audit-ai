@@ -1,0 +1,5 @@
+-r requirements.txt
+
+# Preferred layout/OCR/table backend. A PyMuPDF layout fallback remains
+# available for controlled rollout and lightweight local development.
+docling==2.124.0

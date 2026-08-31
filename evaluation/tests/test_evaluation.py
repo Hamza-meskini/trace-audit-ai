@@ -32,6 +32,7 @@ from evaluation.metrics import (
 from evaluation.report import generate_markdown_report
 from evaluation.run_evaluation import load_ground_truth
 from evaluation.export_excel_trace import export_benchmark_audit_trace_excel
+from evaluation.run_complex_benchmark import calculate_review_gate_safety_metrics
 
 
 class TestEvaluationFramework(unittest.TestCase):
@@ -79,6 +80,10 @@ class TestEvaluationFramework(unittest.TestCase):
             "expected": "SUPPORTED",
             "predicted": "SUPPORTED",
             "confidence": 95,
+            "review_state": "Reviewed",
+            "review_required": False,
+            "auto_close_eligible": True,
+            "review_gate_reasons": [],
         }}
 
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -106,6 +111,14 @@ class TestEvaluationFramework(unittest.TestCase):
                     "stage_diagnostics": {
                         "aggregation_oracle": {"accuracy": 100.0},
                         "audit_defensible_accuracy": 100.0,
+                    },
+                    "review_gate_safety_metrics": {
+                        "false_supported_predictions": 0,
+                        "false_supported_routed_to_review": 0,
+                        "false_automatic_closures": 0,
+                        "review_gate_capture_rate": None,
+                        "automatic_closure_precision": 100.0,
+                        "supported_review_rate": 0.0,
                     },
                     "extraction_metrics": {
                         "contract_mismatches": [{
@@ -136,8 +149,53 @@ class TestEvaluationFramework(unittest.TestCase):
                 self.assertEqual(workbook["Atomic_Condition_Diagnostics"]["L2"].value, "CORRECTED")
                 self.assertEqual(workbook["Contract_Field_Diagnostics"]["C2"].value, "parameter")
                 self.assertEqual(workbook["Executive_Summary"]["G17"].value, 0.0)
+                self.assertEqual(workbook["Executive_Summary"]["F27"].value, "False automatic closures")
+                self.assertEqual(workbook["Executive_Summary"]["G27"].value, 0)
+                self.assertEqual(sheet["R1"].value, "Review State")
+                self.assertEqual(sheet["R2"].value, "Reviewed")
+                self.assertEqual(sheet["T1"].value, "Auto-Close Eligible?")
+                self.assertEqual(sheet["T2"].value, "YES")
             finally:
                 workbook.close()
+
+    def test_review_gate_safety_metrics_keep_classification_and_closure_risk_separate(self):
+        predictions = {
+            "REQ-001": {
+                "expected": "SUPPORTED",
+                "predicted": "SUPPORTED",
+                "review_required": False,
+                "auto_close_eligible": True,
+            },
+            "REQ-002": {
+                "expected": "UNKNOWN",
+                "predicted": "SUPPORTED",
+                "review_required": True,
+                "auto_close_eligible": False,
+            },
+            "REQ-003": {
+                "expected": "PARTIAL",
+                "predicted": "SUPPORTED",
+                "review_required": False,
+                "auto_close_eligible": True,
+            },
+            "REQ-004": {
+                "expected": "PARTIAL",
+                "predicted": "PARTIAL",
+                "review_required": True,
+                "auto_close_eligible": False,
+            },
+        }
+
+        metrics = calculate_review_gate_safety_metrics(predictions)
+
+        self.assertEqual(metrics["supported_predictions"], 3)
+        self.assertEqual(metrics["false_supported_predictions"], 2)
+        self.assertEqual(metrics["false_supported_routed_to_review"], 1)
+        self.assertEqual(metrics["false_automatic_closures"], 1)
+        self.assertEqual(metrics["review_gate_capture_rate"], 50.0)
+        self.assertEqual(metrics["automatic_closure_precision"], 50.0)
+        self.assertEqual(metrics["supported_review_rate"], 33.33)
+        self.assertEqual(metrics["false_automatic_closure_requirement_ids"], ["REQ-003"])
 
     def test_excel_summary_uses_actual_mismatch_count(self):
         failures = [

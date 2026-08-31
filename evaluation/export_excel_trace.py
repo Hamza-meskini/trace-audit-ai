@@ -120,7 +120,7 @@ def export_benchmark_audit_trace_excel(
         ("Conflict Detection", f"{sm.get('conflict_f1', 93.0):.1f}%", "D3:D4"),
         ("Extraction F1", f"{em.get('f1', 99.5):.1f}%", "E3:E4"),
         ("Passage Recall@3", f"{rm.get('passage_recall_at_3', 100.0):.1f}%", "F3:F4"),
-        ("Exact Contract Recall", f"{em.get('atomic_condition_exact_recall', 0.0):.1f}%", "G3:G4"),
+        ("Normalized Exact Contract", f"{em.get('atomic_condition_exact_recall', 0.0):.1f}%", "G3:G4"),
     ]
 
     for title, val, cell_range in kpi_cards:
@@ -247,15 +247,50 @@ def export_benchmark_audit_trace_excel(
     ws_sum.cell(row=16, column=7, value="Value").font = section_font
     ws_sum.cell(row=16, column=7).fill = section_fill
     stage_rows = [
-        ("Raw LLM atomic accuracy", raw_llm_metrics.get("condition_accuracy")),
-        ("Final atomic accuracy", condition_metrics.get("condition_accuracy")),
+        ("Raw LLM mixed-label agreement", raw_llm_metrics.get("condition_accuracy")),
+        ("Final mixed-label agreement", condition_metrics.get("condition_accuracy")),
+        (
+            "Explicit atomic accuracy",
+            condition_metrics.get("accuracy_by_ground_truth_source", {}).get("explicit", {}).get("accuracy"),
+        ),
         ("Aggregation oracle accuracy", stage_metrics.get("aggregation_oracle", {}).get("accuracy")),
-        ("Audit-defensible accuracy", stage_metrics.get("audit_defensible_accuracy")),
+        (
+            "Explicit-GT audit defensibility",
+            stage_metrics.get("explicit_ground_truth_audit", {}).get("accuracy"),
+        ),
+        (
+            "Self-reported contract completeness",
+            em.get("self_reported_contract_completeness_rate"),
+        ),
     ]
     for row_index, (label, value) in enumerate(stage_rows, start=17):
         ws_sum.cell(row=row_index, column=6, value=label).border = thin_border
         value_cell = ws_sum.cell(row=row_index, column=7, value=(value / 100.0 if value is not None else None))
         value_cell.number_format = "0.00%"
+        value_cell.border = thin_border
+
+    # Business-safety metrics are separate from semantic accuracy.  Counts
+    # stay as counts; rates use percentage formatting.
+    review_safety = results.get("review_gate_safety_metrics", {})
+    ws_sum.cell(row=23, column=6, value="Review-Gate Business Safety").font = Font(bold=True, size=11, color="1E293B")
+    ws_sum.cell(row=24, column=6, value="Metric").font = section_font
+    ws_sum.cell(row=24, column=6).fill = section_fill
+    ws_sum.cell(row=24, column=7, value="Value").font = section_font
+    ws_sum.cell(row=24, column=7).fill = section_fill
+    safety_rows = [
+        ("False SUPPORTED predictions", review_safety.get("false_supported_predictions", 0), False),
+        ("Routed safely to review", review_safety.get("false_supported_routed_to_review", 0), False),
+        ("False automatic closures", review_safety.get("false_automatic_closures", 0), False),
+        ("Review-gate capture rate", review_safety.get("review_gate_capture_rate"), True),
+        ("Automatic-closure precision", review_safety.get("automatic_closure_precision"), True),
+        ("Supported review rate", review_safety.get("supported_review_rate"), True),
+    ]
+    for row_index, (label, value, is_percent) in enumerate(safety_rows, start=25):
+        ws_sum.cell(row=row_index, column=6, value=label).border = thin_border
+        stored_value = value / 100.0 if is_percent and value is not None else value
+        value_cell = ws_sum.cell(row=row_index, column=7, value=stored_value)
+        if is_percent:
+            value_cell.number_format = "0.00%"
         value_cell.border = thin_border
 
     # =========================================================================
@@ -282,6 +317,10 @@ def export_benchmark_audit_trace_excel(
         "AI Analysis / Justification",
         "AI Recommendation",
         "Error Root Cause",
+        "Review State",
+        "Review Required?",
+        "Auto-Close Eligible?",
+        "Review-Gate Reasons",
     ]
 
     ws_trace.append(trace_headers)
@@ -310,6 +349,10 @@ def export_benchmark_audit_trace_excel(
         expected = predictions.get(req_id, {}).get("expected", r.get("expected_status", "UNKNOWN"))
         predicted = predictions.get(req_id, {}).get("predicted", "UNKNOWN")
         conf = predictions.get(req_id, {}).get("confidence", 85)
+        review_state = predictions.get(req_id, {}).get("review_state", "Needs review")
+        review_required = bool(predictions.get(req_id, {}).get("review_required", False))
+        auto_close_eligible = bool(predictions.get(req_id, {}).get("auto_close_eligible", False))
+        review_gate_reasons = predictions.get(req_id, {}).get("review_gate_reasons", [])
 
         # Conditions summary
         cond_strs = []
@@ -389,6 +432,10 @@ def export_benchmark_audit_trace_excel(
             ai_analysis,
             ai_rec,
             err_cat,
+            review_state,
+            "YES" if review_required else "NO",
+            "YES" if auto_close_eligible else "NO",
+            "\n".join(review_gate_reasons) if review_gate_reasons else "-",
         ]
         ws_trace.append(row_vals)
         ws_trace.row_dimensions[r_idx].height = 45
@@ -418,6 +465,18 @@ def export_benchmark_audit_trace_excel(
             exp_cell.fill, exp_cell.font = status_colors[expected]
         if predicted in status_colors:
             pred_cell.fill, pred_cell.font = status_colors[predicted]
+
+        review_cell = ws_trace.cell(row=r_idx, column=19)
+        auto_close_cell = ws_trace.cell(row=r_idx, column=20)
+        if review_required:
+            review_cell.fill = PatternFill(start_color="FEF3C7", fill_type="solid")
+            review_cell.font = Font(color="92400E", bold=True)
+        if auto_close_eligible and expected != "SUPPORTED":
+            auto_close_cell.fill = mismatch_fill
+            auto_close_cell.font = mismatch_font
+        elif auto_close_eligible:
+            auto_close_cell.fill = match_fill
+            auto_close_cell.font = match_font
 
     # =========================================================================
     # TAB 3: MISMATCHES DEEP DIVE
@@ -612,7 +671,7 @@ def export_benchmark_audit_trace_excel(
         "Full_Pipeline_Trace_100_Reqs": {
             1: 14, 2: 18, 3: 26, 4: 38, 5: 38, 6: 28, 7: 28, 8: 14,
             9: 14, 10: 12, 11: 12, 12: 28, 13: 45, 14: 28, 15: 45,
-            16: 35, 17: 25
+            16: 35, 17: 25, 18: 18, 19: 18, 20: 20, 21: 55
         },
         "Mismatches_Deep_Dive": {
             1: 14, 2: 18, 3: 26, 4: 14, 5: 14, 6: 25, 7: 28, 8: 45, 9: 45, 10: 45

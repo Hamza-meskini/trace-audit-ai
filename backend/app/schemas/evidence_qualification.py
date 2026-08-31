@@ -395,7 +395,11 @@ class EvidenceQualification(BaseModel):
     evidence_id: str                      # e.g. "E1" — matches prompt labeling
     source_chunk_id: Optional[str] = None  # stable link back to the retrieved chunk
     document_name: str
+    document_role: Optional[str] = None
+    document_profile_confidence: Optional[float] = None
     source_authority: str                 # SourceAuthority literal value
+    passage_modality: str = "unknown"
+    relevance_status: Literal["RELEVANT", "NOT_RELEVANT", "UNCERTAIN"] = "UNCERTAIN"
     entity_scope: str = "System"
     parameter: Optional[str] = None           # primary canonical parameter
     parameters_found: list[str] = Field(default_factory=list)  # all canonical groups present

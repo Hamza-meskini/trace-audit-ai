@@ -8,6 +8,7 @@ with deterministic fallback), and findings generation for a project.
 import os
 import uuid
 import logging
+import time
 from typing import Optional
 from sqlalchemy import select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -17,13 +18,49 @@ from app.models.project import Project
 from app.models.document import Document, EvidenceChunk
 from app.models.requirement import Requirement, RequirementEvidence
 from app.models.finding import Finding
-from app.services.ingestion import parse_document
+from app.services.ingestion import (
+    INGESTION_SCHEMA_VERSION,
+    file_sha256,
+    parse_document_with_metadata,
+)
 from app.services.extraction import extract_requirements_from_text
 from app.services.retrieval import retrieve_candidate_evidence_hybrid, precompute_chunk_embeddings
 from app.services.classification import batch_assess_requirements
-from app.services.document_classifier import discover_specification_documents
+from app.services.document_classifier import (
+    ROLE_DISPLAY_NAMES,
+    discover_specification_documents,
+    profile_documents,
+)
+from app.services.visual_analysis import describe_retrieved_figures
 
 logger = logging.getLogger("traceaudit.pipeline")
+
+
+def _retrieval_chunk(
+    chunk: EvidenceChunk,
+    document: Document,
+) -> dict:
+    metadata = dict(chunk.metadata_json or {})
+    return {
+        "id": chunk.id,
+        "document_id": document.id,
+        "document_name": document.original_filename,
+        "doc_type": document.doc_type,
+        "page_number": chunk.page_number,
+        "content": chunk.content,
+        "metadata": metadata,
+        "document_profile": metadata.get("document_profile"),
+    }
+
+
+def _cache_matches_source(existing_chunks: list[EvidenceChunk], storage_path: str) -> bool:
+    if not existing_chunks or not os.path.exists(storage_path):
+        return False
+    metadata = existing_chunks[0].metadata_json or {}
+    if metadata.get("ingestion_schema_version") != INGESTION_SCHEMA_VERSION:
+        return False
+    cached_sha = metadata.get("source_sha256")
+    return bool(cached_sha and cached_sha == file_sha256(storage_path))
 
 
 async def run_audit_pipeline(
@@ -35,6 +72,9 @@ async def run_audit_pipeline(
     """Execute the full audit pipeline for a project."""
     active_model = model or "gemini-3.7-flash"
     active_thinking = thinking_level or "HIGH"
+    pipeline_started = time.perf_counter()
+    stage_timings: dict[str, float] = {}
+    ingestion_diagnostics: list[dict] = []
     # 1. Fetch project
     result = await db.execute(select(Project).where(Project.id == project_id))
     project = result.scalar_one_or_none()
@@ -51,7 +91,9 @@ async def run_audit_pipeline(
     documents = doc_result.scalars().all()
 
     all_chunks_for_retrieval = []
+    evidence_chunk_models: dict[str, EvidenceChunk] = {}
 
+    ingestion_started = time.perf_counter()
     for doc in documents:
         # Check if chunks already exist
         chunk_check = await db.execute(
@@ -59,10 +101,33 @@ async def run_audit_pipeline(
         )
         existing_chunks = chunk_check.scalars().all()
 
-        if not existing_chunks and os.path.exists(doc.storage_path):
+        cache_is_current = _cache_matches_source(existing_chunks, doc.storage_path)
+
+        if (not existing_chunks or not cache_is_current) and os.path.exists(doc.storage_path):
             try:
-                parsed_chunks = parse_document(doc.storage_path)
-                doc.page_count = len(parsed_chunks)
+                parsed_document = parse_document_with_metadata(doc.storage_path)
+                parsed_chunks = parsed_document.chunks
+
+                # Parse successfully before replacing stale rows, so a parser
+                # failure never destroys the last usable index.
+                if existing_chunks:
+                    stale_ids = [chunk.id for chunk in existing_chunks]
+                    await db.execute(
+                        delete(RequirementEvidence).where(
+                            RequirementEvidence.evidence_chunk_id.in_(stale_ids)
+                        )
+                    )
+                    await db.execute(
+                        delete(EvidenceChunk).where(EvidenceChunk.document_id == doc.id)
+                    )
+
+                doc.page_count = parsed_document.page_count or None
+                ingestion_diagnostics.append({
+                    "document_id": doc.id,
+                    "document_name": doc.original_filename,
+                    "cache": "refreshed" if existing_chunks else "created",
+                    **parsed_document.diagnostics,
+                })
                 for pc in parsed_chunks:
                     ec = EvidenceChunk(
                         id=str(uuid.uuid4()),
@@ -73,38 +138,70 @@ async def run_audit_pipeline(
                         metadata_json=pc.metadata,
                     )
                     db.add(ec)
-                    all_chunks_for_retrieval.append({
-                        "id": ec.id,
-                        "document_id": doc.id,
-                        "document_name": doc.original_filename,
-                        "doc_type": doc.doc_type,
-                        "page_number": ec.page_number,
-                        "content": ec.content,
-                    })
+                    evidence_chunk_models[ec.id] = ec
+                    all_chunks_for_retrieval.append(_retrieval_chunk(ec, doc))
                 doc.processing_status = "Indexed"
             except Exception as ex:
                 logger.error(f"Failed parsing document {doc.original_filename}: {ex}")
                 doc.processing_status = "Error"
         else:
             for ec in existing_chunks:
-                all_chunks_for_retrieval.append({
-                    "id": ec.id,
-                    "document_id": doc.id,
-                    "document_name": doc.original_filename,
-                    "doc_type": doc.doc_type,
-                    "page_number": ec.page_number,
-                    "content": ec.content,
-                })
+                evidence_chunk_models[ec.id] = ec
+                all_chunks_for_retrieval.append(_retrieval_chunk(ec, doc))
+            cached_diagnostics = (
+                (existing_chunks[0].metadata_json or {}).get("document_diagnostics", {})
+                if existing_chunks else {}
+            )
+            ingestion_diagnostics.append({
+                "document_id": doc.id,
+                "document_name": doc.original_filename,
+                "cache": "hit",
+                **cached_diagnostics,
+            })
             doc.processing_status = "Indexed"
 
     await db.flush()
+    stage_timings["ingestion_seconds"] = round(time.perf_counter() - ingestion_started, 3)
 
-    # Discover specification documents dynamically via content heuristics & LLM role classification
+    # Profile every document once from content and structure. The profile is
+    # cached on chunk metadata and reused by retrieval and evidence
+    # qualification; filenames remain only weak hints.
+    profiling_started = time.perf_counter()
+    document_profiles = await profile_documents(
+        documents=documents,
+        all_chunks=all_chunks_for_retrieval,
+        model=active_model,
+        thinking_level=active_thinking,
+    )
+    for doc in documents:
+        profile = document_profiles.get(doc.id)
+        if not profile:
+            continue
+        profile_data = profile.model_dump()
+        doc.doc_type = ROLE_DISPLAY_NAMES.get(profile.primary_role, doc.doc_type)
+        for chunk in all_chunks_for_retrieval:
+            if chunk.get("document_id") != doc.id:
+                continue
+            chunk["doc_type"] = doc.doc_type
+            chunk["document_profile"] = profile_data
+            model_chunk = evidence_chunk_models.get(chunk["id"])
+            if model_chunk is not None:
+                metadata = dict(model_chunk.metadata_json or {})
+                metadata["document_profile"] = profile_data
+                model_chunk.metadata_json = metadata
+
+    await db.flush()
+    stage_timings["document_profiling_seconds"] = round(
+        time.perf_counter() - profiling_started, 3
+    )
+
+    # Discover specification documents from the same persisted profiles.
     spec_docs, spec_doc_names = await discover_specification_documents(
         documents=documents,
         all_chunks=all_chunks_for_retrieval,
         model=active_model,
         thinking_level=active_thinking,
+        document_profiles=document_profiles,
     )
 
     # 3. If no requirements exist yet, extract them from specification docs or create baseline
@@ -143,6 +240,11 @@ async def run_audit_pipeline(
                         extracted_parameters={
                             "parameters": [p.model_dump() for p in er.parameters],
                             "conditions": [c.model_dump() for c in er.conditions],
+                            "clause_coverage": [
+                                item.model_dump() for item in er.clause_coverage
+                            ],
+                            "unmapped_obligations": list(er.unmapped_obligations),
+                            "contract_complete": er.contract_complete,
                         },
                     )
                     db.add(req)
@@ -166,6 +268,7 @@ async def run_audit_pipeline(
     logger.info(f"Pre-computed embeddings for {len(all_chunks_for_retrieval)} chunks")
 
     # 4b. Retrieve candidate evidence per requirement (hybrid BM25 + semantic)
+    retrieval_started = time.perf_counter()
     req_items = []
     for req in requirements:
         # Clear existing evidence links for this requirement
@@ -176,12 +279,28 @@ async def run_audit_pipeline(
         # Hybrid retrieval: BM25 + Gemini embedding cosine similarity.
         # Spec docs are excluded from candidates (self-referential, they contain
         # the requirement text itself and always outrank true evidence).
+        extraction_data = req.extracted_parameters or {}
+        structured_conditions = extraction_data.get("conditions", [])
+        condition_queries = [
+            " ".join(str(value) for value in (
+                req.req_code,
+                condition.get("description", ""),
+                condition.get("parameter", ""),
+                condition.get("operator", ""),
+                condition.get("threshold", ""),
+                condition.get("min_value", ""),
+                condition.get("max_value", ""),
+                condition.get("unit", ""),
+            ) if value not in (None, ""))
+            for condition in structured_conditions
+        ]
         retrieved = await retrieve_candidate_evidence_hybrid(
             f"{req.req_code} {req.title} {req.description or ''}",
             all_chunks_for_retrieval,
             chunk_embeddings=chunk_embeddings,
             top_k=4,
             exclude_doc_names=spec_doc_names,
+            condition_queries=condition_queries,
         )
 
         candidate_chunks = [
@@ -192,6 +311,8 @@ async def run_audit_pipeline(
                 "doc_type": r.doc_type,
                 "page_number": r.page_number,
                 "content": r.content,
+                "document_profile": r.document_profile,
+                "metadata": r.metadata,
             }
             for r in retrieved
         ]
@@ -201,19 +322,72 @@ async def run_audit_pipeline(
             "title": req.title,
             "description": req.description,
             "category": req.category,
-            "conditions": (req.extracted_parameters or {}).get("conditions", []),
+            "conditions": structured_conditions,
+            "clause_coverage": extraction_data.get("clause_coverage", []),
+            "unmapped_obligations": extraction_data.get("unmapped_obligations", []),
+            # None means a legacy database record that pre-dates completeness
+            # reporting. It is not silently treated as an explicit failure.
+            "contract_complete": extraction_data.get("contract_complete"),
             "candidate_chunks": candidate_chunks,
         })
+
+    stage_timings["retrieval_seconds"] = round(time.perf_counter() - retrieval_started, 3)
+    retrieval_diagnostics = {
+        "requirements": len(req_items),
+        "requirements_without_candidates": sum(
+            not item.get("candidate_chunks") for item in req_items
+        ),
+        "candidate_chunks_total": sum(
+            len(item.get("candidate_chunks", [])) for item in req_items
+        ),
+        "structured_table_candidates": sum(
+            (candidate.get("metadata") or {}).get("block_type") == "table"
+            for item in req_items for candidate in item.get("candidate_chunks", [])
+        ),
+        "figure_candidates": sum(
+            (candidate.get("metadata") or {}).get("block_type") == "figure"
+            for item in req_items for candidate in item.get("candidate_chunks", [])
+        ),
+    }
+
+    # Render and describe only figures selected by retrieval. Descriptions are
+    # persisted on the chunk and reused across requirements and later runs.
+    vision_started = time.perf_counter()
+    visual_diagnostics = await describe_retrieved_figures(
+        req_items,
+        {document.id: document for document in documents},
+        evidence_chunk_models,
+        model=active_model,
+    )
+    stage_timings["visual_analysis_seconds"] = round(
+        time.perf_counter() - vision_started, 3
+    )
 
     # 4b. Batched hybrid verification: deterministic validators first,
     # LLM multi-condition reasoning (with Databricks cascade fallback) for
     # inconclusive requirements — same engine used by offline evaluation.
+    reasoning_started = time.perf_counter()
     assessments = await batch_assess_requirements(
         req_items=req_items,
         model=active_model,
         thinking_level=active_thinking,
         spec_doc_names=spec_doc_names,
     )
+    stage_timings["reasoning_seconds"] = round(time.perf_counter() - reasoning_started, 3)
+    reasoning_diagnostics = {
+        "assessments_produced": len(assessments),
+        "assessments_missing": max(0, len(requirements) - len(assessments)),
+        "coverage_statuses": {
+            status: sum(
+                assessment.coverage_status == status for assessment in assessments.values()
+            )
+            for status in ("Supported", "Partial", "Missing", "Conflict", "Unknown")
+        },
+        "review_required": sum(
+            str(assessment.review_state).lower() in {"needs review", "open"}
+            for assessment in assessments.values()
+        ),
+    }
 
     # 4c. Persist assessment results, evidence links, and findings
     for req in requirements:
@@ -277,6 +451,14 @@ async def run_audit_pipeline(
     project.status = "Analysis complete"
     await db.commit()
 
+    stage_timings["total_seconds"] = round(time.perf_counter() - pipeline_started, 3)
+    logger.info(
+        "Audit pipeline diagnostics: timings=%s ingestion=%s visual=%s",
+        stage_timings,
+        ingestion_diagnostics,
+        visual_diagnostics,
+    )
+
     return {
         "status": "success",
         "project_id": project_id,
@@ -285,4 +467,11 @@ async def run_audit_pipeline(
         "requirements_analyzed": len(requirements),
         "documents_indexed": len(documents),
         "findings_generated": finding_idx - 1,
+        "diagnostics": {
+            "stage_timings": stage_timings,
+            "documents": ingestion_diagnostics,
+            "retrieval": retrieval_diagnostics,
+            "visual_analysis": visual_diagnostics,
+            "reasoning": reasoning_diagnostics,
+        },
     }

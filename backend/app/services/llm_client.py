@@ -10,6 +10,7 @@ Supports Thinking via thinkingConfig (https://ai.google.dev/gemini-api/docs/thin
 import json
 import re
 import asyncio
+import base64
 import logging
 from typing import Type, TypeVar, Optional, Any
 import httpx
@@ -94,6 +95,8 @@ async def call_gemini_generate_content(
     thinking_level: Optional[str] = None,
     max_output_tokens: int = 8192,
     timeout: float = 90.0,
+    image_bytes: Optional[bytes] = None,
+    image_mime_type: str = "image/png",
 ) -> Optional[str]:
     """Call Google Gemini generateContent API via REST with Thinking capabilities enabled."""
     api_key = settings.effective_gemini_api_key
@@ -128,10 +131,19 @@ async def call_gemini_generate_content(
         if response_schema:
             generation_config["responseSchema"] = response_schema
 
+    parts: list[dict[str, Any]] = [{"text": prompt}]
+    if image_bytes:
+        parts.append({
+            "inline_data": {
+                "mime_type": image_mime_type,
+                "data": base64.b64encode(image_bytes).decode("ascii"),
+            }
+        })
+
     payload: dict[str, Any] = {
         "contents": [
             {
-                "parts": [{"text": prompt}]
+                "parts": parts
             }
         ],
         "generationConfig": generation_config,

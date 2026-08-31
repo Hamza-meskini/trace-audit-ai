@@ -1,7 +1,9 @@
 """Pydantic Schema for Structured Multi-Condition Verification Reasoning."""
 
+import re
 from typing import Literal, Optional, Any
 from pydantic import BaseModel, Field, PrivateAttr, field_validator
+from pydantic.json_schema import SkipJsonSchema
 
 
 AtomicConditionStatus = Literal["PROVEN", "FAILED", "PENDING", "UNTESTED", "NOT_APPLICABLE", "INCONCLUSIVE"]
@@ -131,12 +133,11 @@ class ConditionVerificationResult(BaseModel):
     condition_id: str
     description: Optional[str] = None
     status: AtomicConditionStatus = "UNTESTED"
-    # These fields make the model's semantic comparison auditable.
-    # `semantic_status` and validation fields are populated/overwritten by the
-    # pipeline; observed facts and their role are produced by the LLM.
-    semantic_status: Optional[AtomicConditionStatus] = None
-    validation_state: ConditionValidationState = "UNRESOLVED"
-    validation_notes: list[str] = Field(default_factory=list)
+    # Pipeline-owned audit fields are intentionally omitted from the JSON
+    # schema shown to the LLM. The model supplies semantic facts; Python owns
+    # validation metadata.
+    validation_state: SkipJsonSchema[ConditionValidationState] = "UNRESOLVED"
+    validation_notes: SkipJsonSchema[list[str]] = Field(default_factory=list)
     observed_parameter: Optional[str] = None
     observed_value: Optional[str] = None
     observed_min_value: Optional[float] = None
@@ -153,11 +154,44 @@ class ConditionVerificationResult(BaseModel):
     def _validate_status(cls, v: Any) -> str:
         return normalize_condition_status(v)
 
-    @field_validator("semantic_status", mode="before")
+    @field_validator("observed_value", mode="before")
     @classmethod
-    def _validate_semantic_status(cls, v: Any) -> Any:
-        return None if v is None else normalize_condition_status(v)
+    def _coerce_observed_value(cls, value: Any) -> Optional[str]:
+        """Accept harmless scalar variations without rejecting a whole LLM batch."""
+        if value is None:
+            return None
+        if isinstance(value, str):
+            cleaned = value.strip()
+            return cleaned or None
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            return str(value)
+        return str(value).strip() or None
 
+    @field_validator("observed_min_value", "observed_max_value", mode="before")
+    @classmethod
+    def _coerce_observed_bound(cls, value: Any) -> Optional[float]:
+        """Parse numeric bounds even when the model includes the unit in the scalar."""
+        if value is None or value == "":
+            return None
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            return float(value)
+        if isinstance(value, str):
+            match = re.search(r"[-+]?(?:\d+(?:[.,]\d*)?|[.,]\d+)(?:[eE][-+]?\d+)?", value)
+            if match:
+                try:
+                    return float(match.group(0).replace(",", "."))
+                except ValueError:
+                    return None
+        # An unusable optional audit field must not invalidate sibling results.
+        return None
+
+    @field_validator("observed_unit", mode="before")
+    @classmethod
+    def _coerce_observed_unit(cls, value: Any) -> Optional[str]:
+        if value is None:
+            return None
+        cleaned = str(value).strip()
+        return cleaned or None
 
 class EvidenceFinding(BaseModel):
     """An explicit finding observed from a specific evidence excerpt."""

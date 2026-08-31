@@ -1,6 +1,6 @@
 """Structured Evidence Claim schema and extraction engine."""
 
-from typing import Optional, Union, Literal
+from typing import Any, Optional, Union, Literal
 from pydantic import BaseModel, Field, model_validator
 import re
 import uuid
@@ -11,7 +11,12 @@ from app.schemas.evidence_qualification import (
     normalize_entity_scope,
     normalize_parameter,
 )
-from app.services.units import convert_value, normalize_unit_str
+from app.services.units import (
+    UnitCompatibility,
+    convert_value,
+    normalize_unit_str,
+    unit_compatibility,
+)
 
 
 REQ_CODE_REGEX = re.compile(r"\b(REQ[-_]?[A-Za-z0-9_-]*\d+)\b", re.IGNORECASE)
@@ -41,15 +46,56 @@ SourceAuthority = Literal[
 ]
 
 
+_PROFILE_ROLE_TO_AUTHORITY: dict[str, SourceAuthority] = {
+    "TEST_REPORT": "EMPIRICAL_TEST",
+    "DATASHEET": "DATASHEET",
+    "COMPLIANCE_MATRIX": "COMPLIANCE_MATRIX",
+    "ARCHITECTURE": "ARCHITECTURE_SPEC",
+    # Normative specifications define the obligation; they are not empirical
+    # proof. ARCHITECTURE_SPEC keeps them on the design/non-test side of the
+    # existing authority taxonomy when they are not excluded upstream.
+    "SPECIFICATION": "ARCHITECTURE_SPEC",
+}
+
+
+def _profile_value(profile: Optional[dict[str, Any]], key: str) -> Any:
+    if not profile:
+        return None
+    if isinstance(profile, dict):
+        return profile.get(key)
+    return getattr(profile, key, None)
+
+
 def classify_source_authority(
     doc_name: str,
     content: str = "",
     doc_type: Optional[str] = None,
+    document_profile: Optional[dict[str, Any]] = None,
 ) -> SourceAuthority:
-    """Classify the evidence source authority level consistently across the system."""
+    """Classify stable document authority, independently of passage modality."""
     dn = doc_name.lower()
     ct = content.lower()
     dt = (doc_type or "").lower()
+
+    # A content-derived document profile is the strongest identity signal. It
+    # is produced once per document and includes auditable page/quote evidence.
+    profiled_role = str(_profile_value(document_profile, "primary_role") or "").upper()
+    profiled_authority = _PROFILE_ROLE_TO_AUTHORITY.get(profiled_role)
+    if profiled_authority:
+        return profiled_authority
+
+    # Explicit/dynamically updated document types are the next signal. Unlike
+    # filename matching this works for arbitrary names such as 305-2400152.pdf.
+    if "test report" in dt or "laboratory report" in dt:
+        return "EMPIRICAL_TEST"
+    if "validation report" in dt:
+        return "VALIDATION_REPORT"
+    if "qualification" in dt:
+        return "QUALIFICATION_TEST"
+    if "supplier" in dt or "datasheet" in dt:
+        return "DATASHEET"
+    if "architecture" in dt or "technical specification" in dt or "regulatory specification" in dt:
+        return "ARCHITECTURE_SPEC"
 
     # 1. Compliance Matrix
     if "compliance matrix" in dt or "compliance_matrix" in dt or dn.endswith(".xlsx") or "matrix" in dn:
@@ -63,7 +109,9 @@ def classify_source_authority(
     strong_simulation_markers = (
         "spice", "ltspice", "matlab", "simulink", "cfd", "model predicts",
         "modeling calculation", "theoretical simulation", "ansys",
-        "finite element", "transient simulation",
+        "finite element", "transient simulation", "simulation records",
+        "analytical calculations", "analytical modelling", "analytical modeling",
+        "modeling:", "modelling:",
     )
     physical_action_markers = (
         " applied ", " measured ", " observed ", " recorded ", " injected ",
@@ -119,6 +167,47 @@ def classify_source_authority(
         return "ARCHITECTURE_SPEC"
 
     return "UNKNOWN"
+
+
+def classify_passage_modality(
+    content: str,
+    document_profile: Optional[dict[str, Any]] = None,
+) -> str:
+    """Classify what a passage says without rewriting document authority."""
+    lower = f" {content.lower()} "
+    profile_basis = str(_profile_value(document_profile, "verification_basis") or "").lower()
+    calculation_markers = (
+        "calculation", "calculated", "equation", "formula", "derived", "ri/vb",
+    )
+    physical_markers = (
+        "measured", "observed", "recorded", "test result", "data sheet no.",
+        "impact test", "rollover", "test date", "passed", "failed",
+    )
+    inspection_markers = (
+        "visual inspection", "photograph", "photo no.", "observed visually",
+    )
+    strong_simulation_markers = (
+        "finite element", "matlab", "simulink", "cfd", "spice", "model predicts",
+        "analytical calculations", "simulation records", "theoretical simulation",
+    )
+
+    has_calculation = any(marker in lower for marker in calculation_markers)
+    has_physical = any(marker in lower for marker in physical_markers)
+    if any(marker in lower for marker in inspection_markers):
+        return "inspection"
+    if any(marker in lower for marker in strong_simulation_markers):
+        return "simulation"
+    if any(marker in lower for marker in ("simulation", "simulated")) and not has_physical:
+        return "simulation"
+    if has_calculation and (has_physical or profile_basis == "physical_test"):
+        return "derived_test_calculation"
+    if has_calculation:
+        return "calculation"
+    if has_physical or profile_basis == "physical_test":
+        return "physical_test"
+    if re.search(r"\bshall\b|\bmust\b|\brequired\s+to\b", lower):
+        return "normative_statement"
+    return "unknown"
 
 
 class EvidenceClaim(BaseModel):
@@ -269,6 +358,24 @@ def _isolate_relevant_passage(text: str, contract: Optional[RequirementContract]
         if required_overlap and overlap >= required_overlap:
             selected.append(line.strip())
 
+    # PDF tables frequently extract one cell per line. Score compact sliding
+    # windows so a parameter, rollover stage, value, unit, and verdict can be
+    # kept together instead of each isolated cell failing the line threshold.
+    if not selected and terms:
+        lines = [line.strip() for line in text.splitlines() if line.strip()]
+        best_window: list[str] = []
+        best_overlap = 0
+        window_size = min(18, max(8, len(lines)))
+        for start in range(len(lines)):
+            window = lines[start:start + window_size]
+            joined = " ".join(window).lower()
+            overlap = sum(1 for term in terms if term in joined)
+            if overlap > best_overlap:
+                best_overlap = overlap
+                best_window = window
+        if best_overlap >= required_overlap:
+            selected = best_window
+
     if not selected and not terms and len(text) <= 300 and re.search(r"\d", text) and any(
         marker in text.lower() for marker in ("tested", "measured", "verified", "verdict", "evaluated")
     ):
@@ -292,6 +399,26 @@ def _infer_claim_parameter(snippet: str, unit: Optional[str]) -> Optional[str]:
     if preferred:
         return preferred
     return normalize_parameter(found[0]) if found else None
+
+
+def _resolve_range_unit_capture(unit: Optional[str]) -> str:
+    """Remove regex-captured prose only when Pint validates the shorter unit.
+
+    ``RANGE_REGEX`` permits a second word for legitimate units such as
+    ``V DC``. In ordinary sentences that slot can instead capture the next
+    word (``GHz during``). The unit parser, rather than a vocabulary of prose
+    words, decides whether the complete or shortened expression is valid.
+    """
+    candidate = (unit or "").strip()
+    if not candidate or normalize_unit_str(candidate):
+        return candidate
+    pieces = candidate.split()
+    while len(pieces) > 1:
+        pieces.pop()
+        shortened = " ".join(pieces)
+        if normalize_unit_str(shortened):
+            return shortened
+    return candidate
 
 
 _NON_OBSERVED_VALUE_MARKERS = (
@@ -335,6 +462,7 @@ def extract_claims_from_chunk(
     text = chunk.get("quote") or chunk.get("content") or ""
     doc_name = chunk.get("document_name", "Document")
     doc_type = chunk.get("doc_type")
+    document_profile = chunk.get("document_profile")
     page_num = chunk.get("page_number")
     chunk_id = chunk.get("chunk_id") or chunk.get("id")
     claims: list[EvidenceClaim] = []
@@ -347,7 +475,12 @@ def extract_claims_from_chunk(
     target_text = re.sub(r"�(?=[sSaA]\b)", "u", target_text)
     target_text = re.sub(r"(?<=[A-Za-z])�(?=[+-]?\d)", " to ", target_text)
 
-    source_auth = classify_source_authority(doc_name, target_text, doc_type)
+    source_auth = classify_source_authority(
+        doc_name,
+        target_text,
+        doc_type,
+        document_profile=document_profile,
+    )
 
     # Determine entity scope from the local passage, not the complete page.
     entity_scope = normalize_entity_scope(target_text, doc_name)
@@ -375,21 +508,32 @@ def extract_claims_from_chunk(
             if _numeric_value_is_non_observed(target_text, m.start(), m.end()):
                 continue
             min_v = float(m.group(1))
-            unit_pre = m.group(2)
+            unit_pre = _resolve_range_unit_capture(m.group(2))
             max_v = float(m.group(3))
-            unit_post = m.group(4)
+            unit_post = _resolve_range_unit_capture(m.group(4))
             unit = (unit_post or unit_pre or "").strip()
-            # Mixed-unit ranges (150 kHz–2.5 GHz) must normalize each endpoint
-            # before they are represented by one claim unit.
-            if contract and unit_pre and unit_post and normalize_unit_str(unit_pre) != normalize_unit_str(unit_post):
-                range_condition = next(
-                    (c for c in contract.atomic_conditions if c.min_value is not None and c.max_value is not None and c.unit),
-                    None,
-                )
-                target_unit = range_condition.unit if range_condition else unit_post
-                converted_min = convert_value(min_v, unit_pre, target_unit)
-                converted_max = convert_value(max_v, unit_post, target_unit)
-                if converted_min is not None and converted_max is not None:
+            # A range claim can carry only one unit, so merge mixed-unit
+            # endpoints only when the standards unit engine proves that they
+            # have the same dimensionality. Unknown or incompatible pairs stay
+            # available to the semantic LLM as passage text, but are not turned
+            # into a misleading deterministic numeric claim.
+            if unit_pre and unit_post:
+                compatibility = unit_compatibility(unit_pre, unit_post)
+                if compatibility != UnitCompatibility.COMPATIBLE:
+                    continue
+                if normalize_unit_str(unit_pre) != normalize_unit_str(unit_post):
+                    range_condition = next(
+                        (
+                            c for c in (contract.atomic_conditions if contract else [])
+                            if c.min_value is not None and c.max_value is not None and c.unit
+                        ),
+                        None,
+                    )
+                    target_unit = range_condition.unit if range_condition else unit_post
+                    converted_min = convert_value(min_v, unit_pre, target_unit)
+                    converted_max = convert_value(max_v, unit_post, target_unit)
+                    if converted_min is None or converted_max is None:
+                        continue
                     min_v, max_v, unit = converted_min, converted_max, target_unit
 
             quote = target_text[max(0, m.start() - 40):min(len(target_text), m.end() + 40)]

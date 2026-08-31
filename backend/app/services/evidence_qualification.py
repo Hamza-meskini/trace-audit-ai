@@ -12,7 +12,12 @@ produced here. Never duplicate these rules elsewhere.
 import logging
 from typing import Any, Optional
 
-from app.schemas.claim import EvidenceClaim, classify_source_authority, _isolate_relevant_passage
+from app.schemas.claim import (
+    EvidenceClaim,
+    _isolate_relevant_passage,
+    classify_passage_modality,
+    classify_source_authority,
+)
 from app.schemas.contract import RequirementContract
 from app.schemas.evidence_qualification import (
     AUTHORITY_TO_METHOD,
@@ -56,6 +61,21 @@ def _contract_parameters(contract: RequirementContract) -> list[str]:
     return params
 
 
+def _profile_field(profile: Optional[dict[str, Any]], key: str, default: Any = None) -> Any:
+    if not profile:
+        return default
+    return profile.get(key, default) if isinstance(profile, dict) else getattr(profile, key, default)
+
+
+def _evidence_method(authority: str, passage_modality: str) -> str:
+    """Derive method from the passage while retaining stable document identity."""
+    if passage_modality in {"physical_test", "derived_test_calculation"}:
+        return "physical_test"
+    if passage_modality in {"simulation", "calculation", "inspection"}:
+        return passage_modality
+    return AUTHORITY_TO_METHOD.get(authority, "unknown")
+
+
 def qualify_evidence(
     contract: RequirementContract,
     evidence_id: str,
@@ -64,16 +84,26 @@ def qualify_evidence(
     doc_type: Optional[str] = None,
     evidence_parameter: Optional[str] = None,
     source_chunk_id: Optional[str] = None,
+    document_profile: Optional[dict[str, Any]] = None,
 ) -> EvidenceQualification:
     """Qualify one evidence unit against one requirement contract."""
     local_content = _isolate_relevant_passage(content, contract)
+    document_role = _profile_field(document_profile, "primary_role")
+    profile_confidence = _profile_field(document_profile, "confidence")
+    profile_requires_review = bool(_profile_field(document_profile, "requires_review", False))
     if not local_content.strip():
         # Keep conservative scope/parameter facts from the raw passage for
         # contradiction screening. The passage remains NOT_QUALIFIED for
         # proof, but a matching ASIC hard limit may still refute an ASIC
         # requirement while the same limit must not refute a BCU requirement.
-        raw_authority = classify_source_authority(document_name, content, doc_type)
-        raw_method = AUTHORITY_TO_METHOD.get(raw_authority, "unknown")
+        raw_authority = classify_source_authority(
+            document_name,
+            content,
+            doc_type,
+            document_profile=document_profile,
+        )
+        raw_modality = classify_passage_modality(content, document_profile)
+        raw_method = _evidence_method(raw_authority, raw_modality)
         raw_scope = normalize_entity_scope(content, document_name)
         raw_params = extract_parameters_from_text(content)
         required_params = _contract_parameters(contract)
@@ -92,7 +122,11 @@ def qualify_evidence(
             evidence_id=evidence_id,
             source_chunk_id=source_chunk_id,
             document_name=document_name,
+            document_role=document_role,
+            document_profile_confidence=profile_confidence,
             source_authority=raw_authority,
+            passage_modality=raw_modality,
+            relevance_status="NOT_RELEVANT",
             entity_scope=raw_scope,
             parameter=raw_params[0] if raw_params else None,
             parameters_found=raw_params,
@@ -106,8 +140,14 @@ def qualify_evidence(
             reason="Retrieved chunk does not contain a local passage addressing this requirement.",
         )
 
-    authority = classify_source_authority(document_name, local_content, doc_type)
-    method = AUTHORITY_TO_METHOD.get(authority, "unknown")
+    authority = classify_source_authority(
+        document_name,
+        local_content,
+        doc_type,
+        document_profile=document_profile,
+    )
+    passage_modality = classify_passage_modality(local_content, document_profile)
+    method = _evidence_method(authority, passage_modality)
     scope = normalize_entity_scope(local_content, document_name)
     params_found = extract_parameters_from_text(local_content)
     if evidence_parameter:
@@ -136,7 +176,10 @@ def qualify_evidence(
     # empirical / matrix records for physical requirements, a simulation study
     # for simulation requirements, an inspection record for inspection, etc.
     required_method = normalize_required_method(contract.verification_method)
-    is_authoritative = method_ok and authority != "COMPLIANCE_MATRIX" and (
+    profile_trusted = not profile_requires_review and (
+        profile_confidence is None or float(profile_confidence) >= 65.0
+    )
+    is_authoritative = profile_trusted and method_ok and authority != "COMPLIANCE_MATRIX" and (
         method == "physical_test" or method == required_method
     )
 
@@ -165,7 +208,10 @@ def qualify_evidence(
         )
     elif not is_authoritative:
         status = "PARTIALLY_QUALIFIED"
-        reasons.append(f"authority '{authority}' is method-compatible but not a formal verification record")
+        if not profile_trusted:
+            reasons.append("document profile is low-confidence and requires human review")
+        else:
+            reasons.append(f"authority '{authority}' is method-compatible but not a formal verification record")
     elif scope_ok is None:
         status = "PARTIALLY_QUALIFIED"
         reasons.append("entity scope of the evidence could not be established")
@@ -179,7 +225,11 @@ def qualify_evidence(
         evidence_id=evidence_id,
         source_chunk_id=source_chunk_id,
         document_name=document_name,
+        document_role=document_role,
+        document_profile_confidence=profile_confidence,
         source_authority=authority,
+        passage_modality=passage_modality,
+        relevance_status="RELEVANT",
         entity_scope=scope,
         parameter=primary_param,
         parameters_found=params_found,
@@ -212,6 +262,7 @@ def qualify_evidence_chunks(
             content=(chunk.get("content") or chunk.get("quote") or "").strip(),
             doc_type=chunk.get("doc_type"),
             source_chunk_id=chunk.get("chunk_id") or chunk.get("id"),
+            document_profile=chunk.get("document_profile"),
         ))
     return quals
 
@@ -266,7 +317,8 @@ def format_qualification_annotation(q: EvidenceQualification) -> str:
     scope = f", scope={q.entity_scope} (required={q.scope_compatible if q.scope_compatible is not None else 'unknown'})"
     param = f", parameter={q.parameter or 'n/a'}"
     return (
-        f"[QUALIFICATION {flag} {q.qualification_status} | authority={q.source_authority} "
+        f"[QUALIFICATION {flag} {q.qualification_status} | role={q.document_role or 'unknown'} "
+        f"| authority={q.source_authority} | passage={q.passage_modality} | relevance={q.relevance_status} "
         f"| method={q.verification_method} vs required={q.required_verification_method or 'physical_test'} "
         f"(compatible={str(q.method_compatible).lower()}){scope}{param}] {q.reason}"
     )

@@ -86,3 +86,9 @@ evaluation/results/*.xlsx
 
 # Review tool temp files
 .review-tmp/
+
+# Temporary working directories
+tmp/
+
+# Codex visualizations / analysis artifacts
+.codex/

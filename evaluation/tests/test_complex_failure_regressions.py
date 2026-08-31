@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock, patch
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "backend"))
 
 from app.schemas.claim import classify_source_authority, extract_all_evidence_claims, extract_claims_from_chunk
-from app.schemas.contract import parse_requirement_contract
+from app.schemas.contract import AtomicConditionContract, RequirementContract, parse_requirement_contract
 from app.schemas.evidence_qualification import extract_parameters_from_text
 from app.schemas.verification_result import ConditionVerificationResult, VerificationAnalysisResult
 from app.services.classification import (
@@ -26,8 +26,7 @@ from app.services.verdict_aggregator import (
     finalize_verdict,
 )
 from app.services.verification_reasoner import (
-    _repair_contradicted_conditions,
-    _reconcile_llm_conditions_with_deterministic_facts,
+    _audit_llm_condition_metadata,
     rule_based_multi_condition_verification,
 )
 
@@ -162,7 +161,7 @@ class TestObservedComplexBenchmarkFailures(unittest.TestCase):
         self.assertIsNone(deferred)
         self.assertIsNotNone(context)
 
-    def test_batch_reasoner_enriches_partial_conditions_without_closing_workflow(self):
+    def test_batch_reasoner_does_not_override_conditions_from_workflow_record(self):
         contract = contract_for("REQ-AUT-063")
         candidates = [chunk(
             "20_Master_Compliance_Verification_Matrix.xlsx",
@@ -195,9 +194,54 @@ class TestObservedComplexBenchmarkFailures(unittest.TestCase):
 
         assessments = asyncio.run(run_scenario())
         assessment = assessments[contract.req_code]
-        self.assertEqual(assessment.coverage_status, "Partial")
+        self.assertEqual(assessment.coverage_status, "Supported")
         self.assertTrue(all(result.status == "PROVEN" for result in assessment.condition_results))
-        self.assertIn("remains IN PROGRESS", assessment.ai_analysis)
+        self.assertNotIn("remains IN PROGRESS", assessment.ai_analysis)
+
+    def test_batch_reasoner_preserves_aggregated_mixed_atomic_results_without_override(self):
+        contract = contract_for("REQ-AUT-025")
+        candidates = [chunk(
+            "20_Master_Compliance_Verification_Matrix.xlsx",
+            "Requirement ID: REQ-AUT-025; Verification Status: FAIL; one limit failed.",
+            "Compliance matrix",
+        )]
+        reasoner_result = VerificationAnalysisResult(
+            status="CONFLICT",
+            confidence=91,
+            condition_results=[
+                ConditionVerificationResult(
+                    condition_id=contract.atomic_conditions[0].condition_id,
+                    status="FAILED",
+                ),
+                ConditionVerificationResult(
+                    condition_id=contract.atomic_conditions[1].condition_id,
+                    status="PROVEN",
+                ),
+            ],
+            reason="Condition-level evidence is mixed.",
+        )
+
+        async def run_scenario():
+            mocked = AsyncMock(return_value={contract.req_code: reasoner_result})
+            with patch("app.services.verification_reasoner.evaluate_batch_verification", mocked):
+                result = await batch_assess_requirements([{
+                    "req_code": contract.req_code,
+                    "title": contract.title,
+                    "description": contract.description,
+                    "category": contract.category,
+                    "conditions": [condition.model_dump() for condition in contract.atomic_conditions],
+                    "candidate_chunks": candidates,
+                }])
+                self.assertEqual(mocked.await_count, 1)
+                return result
+
+        assessment = asyncio.run(run_scenario())[contract.req_code]
+        self.assertEqual(assessment.coverage_status, "Conflict")
+        self.assertEqual(
+            [condition.status for condition in assessment.condition_results],
+            ["FAILED", "PROVEN"],
+        )
+        self.assertNotIn("authoritative_status_override", assessment.pipeline_diagnostics)
 
     def test_req_071_watchdog_passage_qualifies_at_local_scope(self):
         contract = contract_for("REQ-AUT-071")
@@ -383,7 +427,7 @@ class TestObservedComplexBenchmarkFailures(unittest.TestCase):
         self.assertIn("latency", latency)
         self.assertNotIn("persistence_time", latency)
 
-    def test_llm_quote_not_present_in_cited_evidence_is_rejected(self):
+    def test_llm_quote_not_present_is_flagged_without_status_override(self):
         contract = contract_for("REQ-AUT-011")
         content = "TC-INV-011 measured phase current at 680 A. Verdict: PASS."
         q = qualify_evidence(contract, "E1", "08_BMS_Functional_Safety_Validation_Report.pdf", content)
@@ -404,8 +448,9 @@ class TestObservedComplexBenchmarkFailures(unittest.TestCase):
             [q],
             qualified_contents={"E1": content},
         )
-        self.assertNotEqual(result.status, "SUPPORTED")
-        self.assertEqual(result.condition_results[0].status, "INCONCLUSIVE")
+        self.assertEqual(result.status, "PARTIAL")
+        self.assertEqual(result.condition_results[0].status, "PROVEN")
+        self.assertEqual(result.condition_results[0].validation_state, "CONTRADICTED")
 
     def test_run5_heuristic_qualification_flags_without_overriding_semantics(self):
         cases = {
@@ -452,7 +497,7 @@ class TestObservedComplexBenchmarkFailures(unittest.TestCase):
                 )
                 self.assertEqual(result.status, "PARTIAL")
                 self.assertEqual(result.condition_results[0].status, "PENDING")
-                self.assertEqual(result.condition_results[0].validation_state, "UNRESOLVED")
+                self.assertEqual(result.condition_results[0].validation_state, "VALID")
 
     def test_req_041_nominal_tolerance_and_load_are_composite_numeric_proof(self):
         result = rule_based_multi_condition_verification(
@@ -466,7 +511,7 @@ class TestObservedComplexBenchmarkFailures(unittest.TestCase):
         self.assertEqual(result.status, "SUPPORTED")
         self.assertTrue(all(item.status == "PROVEN" for item in result.condition_results))
 
-    def test_req_042_missing_llm_citation_is_repaired_from_traceable_numeric_claim(self):
+    def test_req_042_missing_llm_citation_is_flagged_without_semantic_rewrite(self):
         contract = contract_for("REQ-AUT-042")
         candidates = [chunk(
             "13_Thermal_Runaway_Venting_Validation_Report.pdf",
@@ -488,14 +533,22 @@ class TestObservedComplexBenchmarkFailures(unittest.TestCase):
             ],
             reason="All conditions proven.",
         )
-        repaired = _reconcile_llm_conditions_with_deterministic_facts(
-            contract, provisional, candidates, qualifications
-        )
+        repaired = _audit_llm_condition_metadata(contract, provisional)
         maximum = next(item for item in repaired.condition_results if item.condition_id == "C-042-2")
-        self.assertEqual(maximum.evidence_ids, ["E1"])
-        self.assertIn("8500 rpm", maximum.quote)
+        self.assertEqual(maximum.evidence_ids, [])
+        self.assertIsNone(maximum.quote)
 
-    def test_req_082_paraphrased_llm_quote_is_replaced_by_exact_numeric_evidence(self):
+        final = finalize_verdict(
+            contract,
+            repaired,
+            qualifications,
+            qualified_contents={"E1": candidates[0]["content"]},
+        )
+        maximum = next(item for item in final.condition_results if item.condition_id == "C-042-2")
+        self.assertEqual(maximum.status, "PROVEN")
+        self.assertEqual(maximum.validation_state, "CONTRADICTED")
+
+    def test_req_082_paraphrased_llm_quote_is_flagged_not_rewritten(self):
         contract = contract_for("REQ-AUT-082")
         candidates = [chunk(
             "17_Cybersecurity_HSM_SecOC_Validation_Report.pdf",
@@ -515,12 +568,13 @@ class TestObservedComplexBenchmarkFailures(unittest.TestCase):
             reason="CMAC timing was verified.",
         )
 
-        repaired = _reconcile_llm_conditions_with_deterministic_facts(
-            contract, provisional, candidates, qualifications
-        )
+        repaired = _audit_llm_condition_metadata(contract, provisional)
         self.assertEqual(repaired.condition_results[0].status, "PROVEN")
         self.assertEqual(repaired.condition_results[0].evidence_ids, ["E1"])
-        self.assertIn("28.5 µs", repaired.condition_results[0].quote)
+        self.assertEqual(
+            repaired.condition_results[0].quote,
+            "The measured CMAC duration satisfied the required timing limit.",
+        )
 
         final = finalize_verdict(
             contract,
@@ -530,6 +584,8 @@ class TestObservedComplexBenchmarkFailures(unittest.TestCase):
             has_relevant_evidence=True,
         )
         self.assertEqual(final.status, "SUPPORTED")
+        self.assertEqual(final.condition_results[0].status, "PROVEN")
+        self.assertEqual(final.condition_results[0].validation_state, "CONTRADICTED")
 
     def test_matrix_mirror_cannot_cross_wire_report_evidence_id_and_quote(self):
         contract = contract_for("REQ-AUT-082")
@@ -570,9 +626,7 @@ class TestObservedComplexBenchmarkFailures(unittest.TestCase):
             )],
             reason="Supported by the empirical report.",
         )
-        repaired = _reconcile_llm_conditions_with_deterministic_facts(
-            contract, provisional, candidates, qualifications
-        )
+        repaired = _audit_llm_condition_metadata(contract, provisional)
         self.assertEqual(repaired.condition_results[0].evidence_ids, ["E2"])
         self.assertIn("TC-SEC-082", repaired.condition_results[0].quote)
 
@@ -622,18 +676,12 @@ class TestObservedComplexBenchmarkFailures(unittest.TestCase):
             reason="Inrush was claimed as supported.",
         )
 
-        reconciled = _reconcile_llm_conditions_with_deterministic_facts(
-            contract,
-            provisional,
-            candidates,
-            qualifications,
-        )
+        reconciled = _audit_llm_condition_metadata(contract, provisional)
 
         result = reconciled.condition_results[0]
         self.assertEqual(result.status, "PROVEN")
-        self.assertEqual(result.semantic_status, "PROVEN")
         self.assertEqual(result.validation_state, "UNRESOLVED")
-        self.assertIn("parser could not independently confirm", result.validation_notes[0])
+        self.assertIn("Structured numeric fields were insufficient", result.validation_notes[0])
 
     def test_pending_target_is_not_extracted_as_an_observed_numeric_claim(self):
         contract = contract_for("REQ-AUT-014")
@@ -680,73 +728,90 @@ class TestObservedComplexBenchmarkFailures(unittest.TestCase):
             reason="Claimed inrush compliance.",
         )
 
-        reconciled = _reconcile_llm_conditions_with_deterministic_facts(
-            contract,
-            result,
-            candidates,
-            qualify_evidence_chunks(contract, candidates),
-        )
+        reconciled = _audit_llm_condition_metadata(contract, result)
 
         condition = reconciled.condition_results[0]
         self.assertEqual(condition.status, "PROVEN")
         self.assertEqual(condition.validation_state, "CONTRADICTED")
         self.assertIn("incompatible", " ".join(condition.validation_notes))
 
-    def test_focused_semantic_repair_not_python_chooses_replacement_status(self):
-        contract = contract_for("REQ-AUT-030")
-        candidates = [chunk(
-            "heater_validation.pdf",
-            "PTC heater soft-start reached 5.4 kW. Verdict: PASS.",
-        )]
-        qualifications = qualify_evidence_chunks(contract, candidates)
-        analysis = VerificationAnalysisResult(
+    def test_equivalent_unit_wording_does_not_create_a_review_warning(self):
+        contract = RequirementContract(
+            requirement_id="REQ-UNIT-001",
+            req_code="REQ-UNIT-001",
+            title="Isolation resistance",
+            description="Isolation resistance shall be at least 500 Ω/V.",
+            requirement_type="threshold",
+            atomic_conditions=[AtomicConditionContract(
+                condition_id="C-1",
+                description="Isolation resistance >= 500 Ω/V",
+                parameter="isolation_resistance",
+                operator=">=",
+                threshold=500.0,
+                unit="Ω/V",
+            )],
+        )
+        result = VerificationAnalysisResult(
             status="SUPPORTED",
-            confidence=90,
+            confidence=95,
             condition_results=[ConditionVerificationResult(
-                condition_id="C-030-1",
+                condition_id="C-1",
                 status="PROVEN",
-                semantic_status="PROVEN",
-                validation_state="CONTRADICTED",
-                validation_notes=["Observed unit 'kW' is incompatible with required unit 'A'."],
-                evidence_ids=["E1"],
-                quote=candidates[0]["content"],
-            )],
-            reason="Initial semantic decision.",
-        )
-        repaired_response = VerificationAnalysisResult(
-            status="UNKNOWN",
-            confidence=94,
-            condition_results=[ConditionVerificationResult(
-                condition_id="C-030-1",
-                status="INCONCLUSIVE",
-                evidence_ids=["E1"],
-                quote=candidates[0]["content"],
+                observed_parameter="isolation_resistance",
+                observed_value="88639780",
+                observed_unit="Ohms per Volt",
                 evidence_value_role="OBSERVED",
-                relationship="NOT_ADDRESSED",
-                reason="Heater power does not establish the inrush-current limit.",
+                relationship="SATISFIES",
+                evidence_ids=["E1"],
+                quote="Electrical isolation value was 88,639,780 Ohms per Volt.",
             )],
-            reason="Focused review corrected the semantic mapping.",
+            reason="Measured value exceeds the limit.",
         )
 
-        with patch(
-            "app.services.verification_reasoner.generate_structured",
-            new=AsyncMock(return_value=repaired_response),
-        ):
-            repaired = asyncio.run(_repair_contradicted_conditions(
-                contract,
-                analysis,
-                candidates,
-                qualifications,
-                model="test-model",
-                thinking_level="low",
-            ))
+        audited = _audit_llm_condition_metadata(contract, result)
 
-        self.assertEqual(repaired.condition_results[0].status, "INCONCLUSIVE")
-        self.assertTrue(repaired._diagnostics["semantic_repair_performed"])
-        self.assertEqual(
-            repaired._diagnostics["condition_transitions"][0]["stage"],
-            "semantic_repair",
+        condition = audited.condition_results[0]
+        self.assertEqual(condition.status, "PROVEN")
+        self.assertEqual(condition.validation_state, "VALID")
+        self.assertNotIn("incompatible", " ".join(condition.validation_notes).lower())
+
+    def test_unparseable_unit_is_unresolved_not_contradicted(self):
+        contract = RequirementContract(
+            requirement_id="REQ-UNIT-002",
+            req_code="REQ-UNIT-002",
+            title="Vendor index",
+            description="Vendor index shall be at least 5 quanta.",
+            requirement_type="threshold",
+            atomic_conditions=[AtomicConditionContract(
+                condition_id="C-1",
+                description="Vendor index >= 5 quanta",
+                parameter="vendor_index",
+                operator=">=",
+                threshold=5.0,
+                unit="quanta",
+            )],
         )
+        result = VerificationAnalysisResult(
+            status="SUPPORTED",
+            confidence=80,
+            condition_results=[ConditionVerificationResult(
+                condition_id="C-1",
+                status="PROVEN",
+                observed_parameter="vendor_index",
+                observed_value="8",
+                observed_unit="vendor quanta",
+                evidence_value_role="OBSERVED",
+                relationship="SATISFIES",
+            )],
+            reason="Vendor-specific unit requires review.",
+        )
+
+        audited = _audit_llm_condition_metadata(contract, result)
+
+        condition = audited.condition_results[0]
+        self.assertEqual(condition.status, "PROVEN")
+        self.assertEqual(condition.validation_state, "UNRESOLVED")
+        self.assertIn("could not safely resolve", " ".join(condition.validation_notes))
 
     def test_req_092_jump_start_simulation_phrase_is_a_physical_test(self):
         text = (
@@ -762,6 +827,68 @@ class TestObservedComplexBenchmarkFailures(unittest.TestCase):
             [chunk("12_Electrical_Transient_Overvoltage_Report.pdf", text)],
         )
         self.assertEqual(result.status, "SUPPORTED")
+
+    def test_analytical_modeling_passage_inside_validation_report_is_simulation(self):
+        text = (
+            "Analytical Calculations & Simulation Records. Venting Acoustic Modeling: "
+            "a model predicts the sensor baseline response under an ideal pulse."
+        )
+        self.assertEqual(
+            classify_source_authority("thermal_validation_report.pdf", text),
+            "SIMULATION",
+        )
+
+    def test_pending_not_addressed_structured_result_is_flagged_not_rewritten(self):
+        contract = contract_for("REQ-AUT-009")
+        result = VerificationAnalysisResult(
+            status="PARTIAL",
+            confidence=80,
+            condition_results=[ConditionVerificationResult(
+                condition_id=contract.atomic_conditions[0].condition_id,
+                status="PENDING",
+                evidence_value_role="NOT_ADDRESSED",
+                relationship="NOT_ADDRESSED",
+                reason="No pack-level timing measurement exists.",
+            )],
+            reason="Partial.",
+        )
+
+        validated = _audit_llm_condition_metadata(contract, result)
+
+        self.assertEqual(validated.condition_results[0].status, "PENDING")
+        self.assertEqual(validated.condition_results[0].validation_state, "CONTRADICTED")
+
+    def test_invalid_batch_response_retries_only_missing_item_through_llm(self):
+        from app.services.verification_reasoner import evaluate_batch_verification
+
+        contract = contract_for("REQ-AUT-061")
+        retry_result = VerificationAnalysisResult(
+            status="SUPPORTED",
+            confidence=90,
+            condition_results=[ConditionVerificationResult(
+                condition_id=contract.atomic_conditions[0].condition_id,
+                status="PROVEN",
+            )],
+            reason="Recovered by the single-requirement LLM retry.",
+        )
+
+        async def run_scenario():
+            with patch(
+                "app.services.verification_reasoner.generate_structured",
+                new=AsyncMock(return_value=None),
+            ), patch(
+                "app.services.verification_reasoner.evaluate_requirement_verification",
+                new=AsyncMock(return_value=retry_result),
+            ) as retry:
+                results = await evaluate_batch_verification([{
+                    "contract": contract,
+                    "candidate_chunks": [],
+                }])
+                self.assertEqual(retry.await_count, 1)
+                return results
+
+        results = asyncio.run(run_scenario())
+        self.assertEqual(results[contract.req_code].status, "SUPPORTED")
 
     def test_req_095_water_failure_dominates_earlier_dust_pass(self):
         contract = contract_for("REQ-AUT-095")

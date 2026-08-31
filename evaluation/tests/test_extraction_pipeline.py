@@ -9,9 +9,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "backend"))
 
 from app.services.extraction import (
     ExtractionResult,
+    ExtractedClauseCoverage,
     ExtractedCondition,
     ExtractedRequirement,
     _extract_chunk_with_retry,
+    _normalize_extracted_requirements,
     _split_text_into_chunks,
 )
 from evaluation.run_complex_benchmark import (
@@ -41,6 +43,14 @@ def requirement(code: str, text: str) -> ExtractedRequirement:
                 unit="V",
             )
         ],
+        clause_coverage=[
+            ExtractedClauseCoverage(
+                clause=text,
+                condition_ids=[f"{code}-C1"],
+            )
+        ],
+        unmapped_obligations=[],
+        contract_complete=True,
     )
 
 
@@ -66,6 +76,31 @@ class TestRequirementBoundaryChunking(unittest.TestCase):
         )
         self.assertIsNone(condition.min_value)
         self.assertEqual(condition.max_value, 50.0)
+
+    def test_complete_contract_requires_consistent_clause_coverage(self):
+        extracted = requirement(
+            "REQ-AUT-001",
+            "Detect corruption and boot the golden image within three seconds.",
+        )
+
+        normalized = _normalize_extracted_requirements([extracted])[0]
+
+        self.assertTrue(normalized.contract_complete)
+        self.assertEqual(normalized.unmapped_obligations, [])
+
+    def test_unknown_condition_reference_rejects_completeness_claim(self):
+        extracted = requirement("REQ-AUT-001", "Detect corruption.")
+        extracted.clause_coverage = [
+            ExtractedClauseCoverage(
+                clause="Detect corruption",
+                condition_ids=["REQ-AUT-001-C99"],
+            )
+        ]
+
+        normalized = _normalize_extracted_requirements([extracted])[0]
+
+        self.assertFalse(normalized.contract_complete)
+        self.assertEqual(normalized.unmapped_obligations, ["Detect corruption"])
 
 
 class TestAdaptiveExtractionRetry(unittest.IsolatedAsyncioTestCase):
@@ -137,8 +172,14 @@ class TestBenchmarkRequirementSource(unittest.TestCase):
 
         self.assertEqual(end_to_end[0]["description"], "extracted voltage clause")
         self.assertEqual(end_to_end[0]["conditions"][0]["condition_id"], "REQ-AUT-001-C1")
+        self.assertTrue(end_to_end[0]["contract_complete"])
+        self.assertEqual(
+            end_to_end[0]["clause_coverage"][0]["condition_ids"],
+            ["REQ-AUT-001-C1"],
+        )
         self.assertEqual(oracle[0]["description"], "oracle requirement text")
         self.assertEqual(oracle[0]["conditions"][0]["condition_id"], "C-001-1")
+        self.assertTrue(oracle[0]["contract_complete"])
 
     def test_condition_recall_is_semantic_not_tied_to_oracle_ids(self):
         extracted = requirement("REQ-AUT-001", "voltage shall not exceed 12 V")
@@ -209,6 +250,66 @@ class TestBenchmarkRequirementSource(unittest.TestCase):
         self.assertEqual(result["metrics"]["operator_accuracy"], 0.0)
         self.assertEqual(result["metrics"]["threshold_accuracy"], 100.0)
         self.assertEqual(result["metrics"]["full_exact_recall"], 0.0)
+
+    def test_between_min_max_matches_legacy_threshold_string(self):
+        extracted = requirement("REQ-AUT-001", "torque operating range")
+        extracted.conditions[0] = ExtractedCondition(
+            condition_id="C-001-1",
+            description="torque operating range",
+            parameter="torque_range",
+            operator="between",
+            min_value=50.0,
+            max_value=350.0,
+            unit="Nm",
+        )
+        ground_truth = [{
+            "requirement_id": "REQ-AUT-001",
+            "conditions": [{
+                "condition_id": "C-001-1",
+                "description": "torque operating range",
+                "parameter": "torque_range",
+                "operator": "between",
+                "threshold": "50.0-350.0",
+                "min_value": "",
+                "max_value": "",
+                "unit": "Nm",
+            }],
+        }]
+
+        pairs = _match_extracted_contracts(ground_truth, {extracted.req_code: extracted})
+        result = _decomposed_contract_metrics(pairs)
+
+        self.assertEqual(_count_exactly_matched_conditions(
+            ground_truth, {extracted.req_code: extracted}
+        ), 1)
+        self.assertEqual(result["metrics"]["threshold_accuracy"], 100.0)
+        self.assertEqual(result["metrics"]["full_exact_recall"], 100.0)
+        self.assertEqual(result["mismatches"], [])
+
+    def test_blank_optional_unit_is_not_scored_as_a_failure(self):
+        extracted = requirement("REQ-AUT-001", "feature enabled")
+        extracted.conditions[0].parameter = "feature_enabled"
+        extracted.conditions[0].operator = "=="
+        extracted.conditions[0].threshold = True
+        extracted.conditions[0].unit = None
+        ground_truth = [{
+            "requirement_id": "REQ-AUT-001",
+            "conditions": [{
+                "condition_id": "C-001-1",
+                "description": "feature enabled",
+                "parameter": "feature_enabled",
+                "operator": "==",
+                "threshold": True,
+                "unit": "",
+            }],
+        }]
+
+        result = _decomposed_contract_metrics(
+            _match_extracted_contracts(ground_truth, {extracted.req_code: extracted})
+        )
+
+        self.assertNotIn("unit", result["metrics"]["field_denominators"])
+        self.assertEqual(result["mismatches"], [])
 
     def test_explicit_atomic_truth_overrides_legacy_inference(self):
         requirement_data = {"expected_status": "CONFLICT"}

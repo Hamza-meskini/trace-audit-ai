@@ -113,6 +113,15 @@ def _build_pipeline_requirements(
                 "category": item.get("category", "General"),
                 "severity": item.get("severity", "Medium"),
                 "conditions": list(item.get("conditions", [])),
+                "clause_coverage": [
+                    {
+                        "clause": condition.get("description") or condition.get("condition_id", ""),
+                        "condition_ids": [condition.get("condition_id", "")],
+                    }
+                    for condition in item.get("conditions", [])
+                ],
+                "unmapped_obligations": [],
+                "contract_complete": True,
             }
             for item in ground_truth_reqs
         ]
@@ -127,6 +136,11 @@ def _build_pipeline_requirements(
             "category": item.category,
             "severity": item.severity,
             "conditions": [condition.model_dump(exclude_none=True) for condition in item.conditions],
+            "clause_coverage": [
+                mapping.model_dump(exclude_none=True) for mapping in item.clause_coverage
+            ],
+            "unmapped_obligations": list(item.unmapped_obligations),
+            "contract_complete": item.contract_complete,
         }
         for item in extracted_reqs
     ]
@@ -346,6 +360,46 @@ def _normalized_contract_value(value: Any) -> Any:
         return re.sub(r"[\s_-]+", "", text)
 
 
+def _contract_value_present(value: Any) -> bool:
+    """False for optional contract fields represented as None or blank text."""
+    return value is not None and (not isinstance(value, str) or bool(value.strip()))
+
+
+def _range_bounds(contract_data: dict[str, Any]) -> Optional[tuple[float, float]]:
+    """Read a BETWEEN range from min/max fields or a legacy threshold string."""
+    min_value = contract_data.get("min_value")
+    max_value = contract_data.get("max_value")
+    if _contract_value_present(min_value) and _contract_value_present(max_value):
+        try:
+            return float(min_value), float(max_value)
+        except (TypeError, ValueError):
+            return None
+
+    threshold = contract_data.get("threshold")
+    if not isinstance(threshold, str):
+        return None
+    threshold_text = re.sub(r"(?<=\d)\s*[-–—]\s*(?=\d)", " to ", threshold)
+    numbers = re.findall(r"[-+]?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?", threshold_text)
+    if len(numbers) != 2:
+        return None
+    return float(numbers[0]), float(numbers[1])
+
+
+def _range_representations_match(
+    expected: dict[str, Any],
+    actual: dict[str, Any],
+) -> bool:
+    if str(expected.get("operator") or "").lower() != "between":
+        return False
+    if str(actual.get("operator") or "").lower() != "between":
+        return False
+    expected_bounds = _range_bounds(expected)
+    actual_bounds = _range_bounds(actual)
+    if expected_bounds is None or actual_bounds is None:
+        return False
+    return all(abs(left - right) <= 1e-9 for left, right in zip(expected_bounds, actual_bounds))
+
+
 def _condition_contract_exact(expected: dict[str, Any], extracted: Any) -> bool:
     actual = extracted.model_dump(exclude_none=True)
     expected_operator = "==" if expected.get("operator") == "=" else expected.get("operator")
@@ -356,9 +410,11 @@ def _condition_contract_exact(expected: dict[str, Any], extracted: Any) -> bool:
         return False
     if _normalized_contract_value(expected.get("unit") or "") != _normalized_contract_value(actual.get("unit") or ""):
         return False
+    if _range_representations_match(expected, actual):
+        return True
     for field in ("threshold", "min_value", "max_value"):
         expected_value = expected.get(field)
-        if expected_value is not None and _normalized_contract_value(expected_value) != _normalized_contract_value(actual.get(field)):
+        if _contract_value_present(expected_value) and _normalized_contract_value(expected_value) != _normalized_contract_value(actual.get(field)):
             return False
     return True
 
@@ -419,6 +475,77 @@ def _percent(correct: int, total: int) -> Optional[float]:
     return round(correct / total * 100.0, 2) if total else None
 
 
+def calculate_review_gate_safety_metrics(
+    predictions: dict[str, dict[str, Any]],
+) -> dict[str, Any]:
+    """Measure operational safety separately from semantic verdict accuracy.
+
+    A false SUPPORTED prediction is still a classification error.  It only
+    becomes a business-safety failure when the review gate also allows it to
+    close automatically.  Keeping both measurements prevents the workflow
+    safety layer from hiding model errors.
+    """
+    supported_predictions = 0
+    supported_review_required = 0
+    supported_auto_close_eligible = 0
+    correct_supported_auto_closures = 0
+    false_supported_ids: list[str] = []
+    caught_false_supported_ids: list[str] = []
+    false_auto_close_ids: list[str] = []
+
+    for req_id, prediction in predictions.items():
+        expected = normalize_status_5(prediction.get("expected"))
+        predicted = normalize_status_5(prediction.get("predicted"))
+        if predicted != "SUPPORTED":
+            continue
+
+        supported_predictions += 1
+        review_required = bool(prediction.get("review_required", False))
+        auto_close_eligible = bool(prediction.get("auto_close_eligible", False))
+        is_false_supported = expected != "SUPPORTED"
+
+        if review_required:
+            supported_review_required += 1
+        if auto_close_eligible:
+            supported_auto_close_eligible += 1
+            if is_false_supported:
+                false_auto_close_ids.append(req_id)
+            else:
+                correct_supported_auto_closures += 1
+
+        if is_false_supported:
+            false_supported_ids.append(req_id)
+            if review_required and not auto_close_eligible:
+                caught_false_supported_ids.append(req_id)
+
+    false_supported_count = len(false_supported_ids)
+    return {
+        "policy": "supported_evidence_audit_v1",
+        "supported_predictions": supported_predictions,
+        "supported_review_required": supported_review_required,
+        "supported_auto_close_eligible": supported_auto_close_eligible,
+        "correct_supported_auto_closures": correct_supported_auto_closures,
+        "false_supported_predictions": false_supported_count,
+        "false_supported_routed_to_review": len(caught_false_supported_ids),
+        "false_automatic_closures": len(false_auto_close_ids),
+        "supported_review_rate": _percent(supported_review_required, supported_predictions),
+        "review_gate_capture_rate": _percent(len(caught_false_supported_ids), false_supported_count),
+        "automatic_closure_precision": _percent(
+            correct_supported_auto_closures,
+            supported_auto_close_eligible,
+        ),
+        "false_supported_requirement_ids": false_supported_ids,
+        "review_gate_caught_requirement_ids": caught_false_supported_ids,
+        "false_automatic_closure_requirement_ids": false_auto_close_ids,
+        "definitions": {
+            "false_supported_prediction": "Predicted SUPPORTED while benchmark ground truth is not SUPPORTED.",
+            "false_automatic_closure": "False SUPPORTED prediction with auto_close_eligible=true.",
+            "review_gate_capture_rate": "False SUPPORTED predictions safely routed to review / all false SUPPORTED predictions.",
+            "automatic_closure_precision": "Correct SUPPORTED automatic closures / all SUPPORTED automatic closures.",
+        },
+    }
+
+
 def _decomposed_contract_metrics(pairs: list[dict[str, Any]]) -> dict[str, Any]:
     """Separate decomposition, naming, operator, values, and units."""
     field_totals = Counter()
@@ -434,13 +561,16 @@ def _decomposed_contract_metrics(pairs: list[dict[str, Any]]) -> dict[str, Any]:
             exact += int(_condition_contract_exact(expected, _ContractView(actual)))
 
         failed_fields: list[str] = []
+        range_equivalent = bool(actual and _range_representations_match(expected, actual))
         for field in ("parameter", "operator", "threshold", "min_value", "max_value", "unit"):
-            if expected.get(field) is None:
+            if not _contract_value_present(expected.get(field)):
                 continue
             field_totals[field] += 1
             actual_value = actual.get(field) if actual else None
             expected_value = expected.get(field)
-            if field == "operator":
+            if field in ("threshold", "min_value", "max_value") and range_equivalent:
+                matches = True
+            elif field == "operator":
                 left = "==" if expected_value == "=" else expected_value
                 right = "==" if actual_value == "=" else actual_value
                 matches = left == right
@@ -451,13 +581,14 @@ def _decomposed_contract_metrics(pairs: list[dict[str, Any]]) -> dict[str, Any]:
             else:
                 failed_fields.append(field)
 
-        if expected.get("parameter") is not None:
-            field_totals["parameter_canonical"] += 1
+        if _contract_value_present(expected.get("parameter")):
             expected_parameter = normalize_parameter(str(expected.get("parameter") or ""))
             actual_parameter = normalize_parameter(str(actual.get("parameter") or "")) if actual else None
-            if expected_parameter and expected_parameter == actual_parameter:
-                field_correct["parameter_canonical"] += 1
-        if expected.get("unit") is not None:
+            if expected_parameter:
+                field_totals["parameter_canonical"] += 1
+                if expected_parameter == actual_parameter:
+                    field_correct["parameter_canonical"] += 1
+        if _contract_value_present(expected.get("unit")):
             field_totals["unit_compatible"] += 1
             if actual and are_units_compatible(expected.get("unit"), actual.get("unit")):
                 field_correct["unit_compatible"] += 1
@@ -479,6 +610,7 @@ def _decomposed_contract_metrics(pairs: list[dict[str, Any]]) -> dict[str, Any]:
         "full_exact_recall": _percent(exact, total),
         "parameter_exact_accuracy": _percent(field_correct["parameter"], field_totals["parameter"]),
         "parameter_canonical_accuracy": _percent(field_correct["parameter_canonical"], field_totals["parameter_canonical"]),
+        "parameter_canonical_coverage": _percent(field_totals["parameter_canonical"], total),
         "operator_accuracy": _percent(field_correct["operator"], field_totals["operator"]),
         "threshold_accuracy": _percent(field_correct["threshold"], field_totals["threshold"]),
         "min_value_accuracy": _percent(field_correct["min_value"], field_totals["min_value"]),
@@ -486,6 +618,9 @@ def _decomposed_contract_metrics(pairs: list[dict[str, Any]]) -> dict[str, Any]:
         "unit_exact_accuracy": _percent(field_correct["unit"], field_totals["unit"]),
         "unit_compatible_accuracy": _percent(field_correct["unit_compatible"], field_totals["unit_compatible"]),
         "field_denominators": dict(field_totals),
+        "exact_recall_definition": (
+            "Exact normalized parameter/operator/unit/value match; equivalent BETWEEN threshold-string and min/max representations match."
+        ),
     }
     return {"metrics": metrics, "mismatches": mismatches}
 
@@ -629,6 +764,7 @@ async def run_benchmark(mode: str = "end-to-end"):
                     "doc_type": "Technical specification" if "01_" in df.name else ("Compliance matrix" if df.suffix == ".xlsx" else "Test report"),
                     "page_number": c.page_number,
                     "content": c.content,
+                    "metadata": c.metadata,
                 })
                 chunk_id_counter += 1
         except Exception as ex:
@@ -685,6 +821,24 @@ async def run_benchmark(mode: str = "end-to-end"):
     contract_diagnostics = _decomposed_contract_metrics(
         _match_extracted_contracts(ground_truth_reqs, extracted_dict)
     )
+    complete_contract_ids = [
+        requirement.req_code
+        for requirement in extracted_reqs
+        if requirement.contract_complete
+    ]
+    incomplete_contract_ids = [
+        requirement.req_code
+        for requirement in extracted_reqs
+        if not requirement.contract_complete
+    ]
+    unmapped_obligation_count = sum(
+        len(requirement.unmapped_obligations)
+        for requirement in extracted_reqs
+    )
+    self_reported_completeness_rate = _percent(
+        len(complete_contract_ids),
+        len(extracted_reqs),
+    )
 
     print(f"  • Ground Truth Requirements : {len(ground_truth_reqs)}")
     print(f"  • Extracted Requirements    : {len(extracted_reqs)}")
@@ -693,11 +847,18 @@ async def run_benchmark(mode: str = "end-to-end"):
     print(f"  • Extraction F1-Score       : {ext_f1:.2f}%")
     print(f"  • Requirement ID Recall     : {id_tp_extract / len(ground_truth_reqs) * 100.0:.2f}%")
     print(f"  • Atomic Condition Recall   : {ext_condition_recall:.2f}%")
-    print(f"  • Exact Contract Recall     : {exact_condition_recall:.2f}%")
+    print(f"  • Normalized Exact Contract Recall: {exact_condition_recall:.2f}%")
+    print(
+        "  • Extraction Completeness Gate: "
+        f"{self_reported_completeness_rate:.2f}% "
+        f"({len(complete_contract_ids)}/{len(extracted_reqs)} contracts internally complete; "
+        f"{unmapped_obligation_count} unmapped obligation(s))"
+    )
     print(
         "  • Contract Field Accuracy  : "
         f"parameter={contract_diagnostics['metrics']['parameter_exact_accuracy']}%, "
-        f"canonical-parameter={contract_diagnostics['metrics']['parameter_canonical_accuracy']}%, "
+        f"canonical-parameter={contract_diagnostics['metrics']['parameter_canonical_accuracy']}% "
+        f"(coverage={contract_diagnostics['metrics']['parameter_canonical_coverage']}%), "
         f"operator={contract_diagnostics['metrics']['operator_accuracy']}%, "
         f"unit={contract_diagnostics['metrics']['unit_exact_accuracy']}%"
     )
@@ -729,12 +890,26 @@ async def run_benchmark(mode: str = "end-to-end"):
 
         # Hybrid retrieval — the SRS itself is excluded from candidates because its
         # chunks contain the requirement text verbatim and always occupy rank 1.
+        condition_queries = [
+            " ".join(str(value) for value in (
+                req_id,
+                condition.get("description", ""),
+                condition.get("parameter", ""),
+                condition.get("operator", ""),
+                condition.get("threshold", ""),
+                condition.get("min_value", ""),
+                condition.get("max_value", ""),
+                condition.get("unit", ""),
+            ) if value not in (None, ""))
+            for condition in source_req.get("conditions", [])
+        ]
         retrieved = await retrieve_candidate_evidence_hybrid(
             requirement_text=query_text,
             chunks=all_chunks,
             chunk_embeddings=chunk_embeddings,
             top_k=5,
             exclude_doc_names={SRS_DOC_NAME},
+            condition_queries=condition_queries,
         )
 
         candidate_chunks = [
@@ -887,6 +1062,8 @@ async def run_benchmark(mode: str = "end-to-end"):
     raw_llm_correct = 0
     python_transition_effect = Counter()
     audit_defensible_count = 0
+    explicit_audit_defensible_count = 0
+    requirements_with_explicit_atomic_truth = 0
     condition_records: list[dict[str, Any]] = []
     unsupported_claims = 0  # Missing evidence falsely claimed as SUPPORTED
     extraction_missing_count = 0
@@ -900,11 +1077,26 @@ async def run_benchmark(mode: str = "end-to-end"):
         gt_link = links_by_id.get(req_id, {})
         retrieved_chunks = retrieved_by_req.get(req_id, [])
         diagnostics = dict(assessment.pipeline_diagnostics if assessment else {})
+        review_gate = dict(diagnostics.get("review_gate") or {})
+        review_state = assessment.review_state if assessment else "Needs review"
+        review_required = bool(
+            review_gate.get("required", review_state == "Needs review")
+        )
+        auto_close_eligible = bool(
+            review_gate.get(
+                "auto_close_eligible",
+                actual_status == "SUPPORTED" and review_state in {"Reviewed", "Approved"},
+            )
+        )
 
         predictions[req_id] = {
             "expected": expected_status,
             "predicted": actual_status,
             "confidence": assessment.confidence if assessment else 0.0,
+            "review_state": review_state,
+            "review_required": review_required,
+            "auto_close_eligible": auto_close_eligible,
+            "review_gate_reasons": list(review_gate.get("reasons") or []),
             "reason": assessment.ai_analysis if assessment else "None",
             "condition_results": [
                 result.model_dump() for result in (assessment.condition_results if assessment else [])
@@ -961,6 +1153,10 @@ async def run_benchmark(mode: str = "end-to-end"):
                 "difficulty": r.get("difficulty", "Hard"),
                 "expected_status": expected_status,
                 "predicted_status": actual_status,
+                "review_state": review_state,
+                "review_required": review_required,
+                "auto_close_eligible": auto_close_eligible,
+                "review_gate_reasons": list(review_gate.get("reasons") or []),
                 "failure_category": cat,
                 "reason": assessment.ai_analysis if assessment else "No analysis produced",
                 "retrieved_evidence": [c["content"][:100] for c in retrieved_chunks[:2]],
@@ -979,6 +1175,8 @@ async def run_benchmark(mode: str = "end-to-end"):
         reconciled_results = list(diagnostics.get("post_reconciliation_condition_results", []))
         pre_qualification_results = list(diagnostics.get("pre_qualification_condition_results", []))
         requirement_conditions_correct = True
+        requirement_explicit_conditions_correct = True
+        requirement_has_explicit_atomic_truth = False
         requirement_attribution_complete = True
 
         for cond in conds:
@@ -996,6 +1194,11 @@ async def run_benchmark(mode: str = "end-to-end"):
             condition_confusion[gt_cond_status][pred_cond_status] += 1
             condition_matches = pred_cond_status == gt_cond_status
             requirement_conditions_correct = requirement_conditions_correct and condition_matches
+            if label_source == "explicit":
+                requirement_has_explicit_atomic_truth = True
+                requirement_explicit_conditions_correct = (
+                    requirement_explicit_conditions_correct and condition_matches
+                )
 
             if condition_matches:
                 correct_atomic_conditions += 1
@@ -1073,6 +1276,10 @@ async def run_benchmark(mode: str = "end-to-end"):
 
         if is_correct and requirement_conditions_correct and requirement_attribution_complete:
             audit_defensible_count += 1
+        if requirement_has_explicit_atomic_truth:
+            requirements_with_explicit_atomic_truth += 1
+            if is_correct and requirement_explicit_conditions_correct and requirement_attribution_complete:
+                explicit_audit_defensible_count += 1
 
         # Unsupported claims (Hallucination on MISSING)
         if expected_status == "MISSING" and actual_status == "SUPPORTED":
@@ -1137,7 +1344,22 @@ async def run_benchmark(mode: str = "end-to-end"):
         }
         for source, count in condition_label_sources.items()
     }
+    explicit_condition_metrics = condition_accuracy_by_label_source.get("explicit", {
+        "total": 0,
+        "correct": 0,
+        "accuracy": None,
+    })
+    inferred_condition_metrics = condition_accuracy_by_label_source.get("inferred_from_requirement", {
+        "total": 0,
+        "correct": 0,
+        "accuracy": None,
+    })
+    explicit_audit_defensible_accuracy = _percent(
+        explicit_audit_defensible_count,
+        requirements_with_explicit_atomic_truth,
+    )
     aggregation_oracle = _aggregation_oracle_metrics(ground_truth_reqs, links_by_id)
+    review_gate_metrics = calculate_review_gate_safety_metrics(predictions)
     elapsed_time = round(time.time() - start_time, 2)
 
 
@@ -1160,7 +1382,19 @@ async def run_benchmark(mode: str = "end-to-end"):
     print(f"  • Partial Detection F1     : {per_class_metrics['PARTIAL']['f1']:.2f}%")
     print(f"  • UNKNOWN Detection F1     : {per_class_metrics['UNKNOWN']['f1']:.2f}%")
     print(f"  • Unsupported Claim Rate   : {unsupported_rate:.2f}% ({unsupported_claims} false verifications on missing)")
-    print(f"  • Condition-Level Accuracy : {cond_acc:.2f}% (P: {cond_prec:.2f}%, R: {cond_rec:.2f}%, F1: {cond_f1:.2f}%)")
+    print(f"  • Mixed-Provenance Atomic Agreement: {cond_acc:.2f}% (P: {cond_prec:.2f}%, R: {cond_rec:.2f}%, F1: {cond_f1:.2f}%)")
+    if explicit_condition_metrics["accuracy"] is not None:
+        print(
+            "  • Explicit Atomic Accuracy : "
+            f"{explicit_condition_metrics['accuracy']:.2f}% "
+            f"({explicit_condition_metrics['correct']}/{explicit_condition_metrics['total']})"
+        )
+    if inferred_condition_metrics["accuracy"] is not None:
+        print(
+            "  • Inferred Atomic Agreement: "
+            f"{inferred_condition_metrics['accuracy']:.2f}% "
+            f"({inferred_condition_metrics['correct']}/{inferred_condition_metrics['total']}; not authoritative ground truth)"
+        )
     print(f"  • Numeric-Condition Verdict Accuracy: {num_acc:.2f}%")
     if raw_llm_accuracy is not None:
         print(f"  • Raw LLM Condition Accuracy: {raw_llm_accuracy:.2f}% ({raw_llm_total} LLM-scored conditions)")
@@ -1172,8 +1406,39 @@ async def run_benchmark(mode: str = "end-to-end"):
         )
     print(f"  • Aggregation Oracle Accuracy: {aggregation_oracle['accuracy']:.2f}%")
     print(f"  • Audit-Defensible Accuracy : {audit_defensible_accuracy:.2f}%")
+    if explicit_audit_defensible_accuracy is not None:
+        print(
+            "  • Explicit-GT Audit Defensibility: "
+            f"{explicit_audit_defensible_accuracy:.2f}% "
+            f"({explicit_audit_defensible_count}/{requirements_with_explicit_atomic_truth} requirements with explicit atomic truth)"
+        )
     if not condition_label_sources.get("explicit"):
         print("  • Atomic Ground Truth       : INFERRED from requirement labels (no explicit condition labels present)")
+    capture_rate = review_gate_metrics["review_gate_capture_rate"]
+    closure_precision = review_gate_metrics["automatic_closure_precision"]
+    print("\nReview-Gate Business Safety Metrics:")
+    print(
+        "  • False SUPPORTED Predictions: "
+        f"{review_gate_metrics['false_supported_predictions']}"
+    )
+    print(
+        "  • Routed Safely to Review    : "
+        f"{review_gate_metrics['false_supported_routed_to_review']}"
+    )
+    print(
+        "  • False Automatic Closures   : "
+        f"{review_gate_metrics['false_automatic_closures']}"
+    )
+    print(
+        "  • Review-Gate Capture Rate   : "
+        f"{capture_rate:.2f}%" if capture_rate is not None else
+        "  • Review-Gate Capture Rate   : N/A (no false SUPPORTED predictions)"
+    )
+    print(
+        "  • Automatic-Closure Precision: "
+        f"{closure_precision:.2f}%" if closure_precision is not None else
+        "  • Automatic-Closure Precision: N/A (no automatic closures)"
+    )
     print(f"  • Total Benchmark Runtime  : {elapsed_time}s")
 
     # Output JSON results
@@ -1196,6 +1461,10 @@ async def run_benchmark(mode: str = "end-to-end"):
             "missing_required_ids": extraction_missing_count,
             "decomposed_contract_metrics": contract_diagnostics["metrics"],
             "contract_mismatches": contract_diagnostics["mismatches"],
+            "self_reported_contract_completeness_rate": round(self_reported_completeness_rate, 2),
+            "complete_contract_ids": complete_contract_ids,
+            "incomplete_contract_ids": incomplete_contract_ids,
+            "unmapped_obligation_count": unmapped_obligation_count,
         },
         "retrieval_metrics": {
             "document_recall_at_1": round(doc_r1, 2),
@@ -1231,9 +1500,11 @@ async def run_benchmark(mode: str = "end-to-end"):
             "condition_recall": round(cond_rec, 2),
             "condition_f1": round(cond_f1, 2),
             "ground_truth_note": (
-                "Atomic labels are scored separately by provenance. Historical inferred labels are derived "
-                "from final requirement status and missing_conditions; explicit labels are authoritative."
+                "Primary atomic accuracy is the explicit-label metric. Mixed-provenance and inferred-label "
+                "agreement are retained for regression tracking only; inferred labels are derived from final "
+                "requirement status and missing_conditions and are not independently annotated truth."
             ),
+            "primary_accuracy_metric": "accuracy_by_ground_truth_source.explicit.accuracy",
             "ground_truth_label_sources": dict(condition_label_sources),
             "accuracy_by_ground_truth_source": condition_accuracy_by_label_source,
             "status_confusion_matrix": condition_confusion,
@@ -1253,7 +1524,17 @@ async def run_benchmark(mode: str = "end-to-end"):
                 "Final verdict correct, every atomic verdict correct, and every decisive PROVEN/FAILED/PENDING "
                 "condition contains an evidence ID and quote."
             ),
+            "explicit_ground_truth_audit": {
+                "requirements": requirements_with_explicit_atomic_truth,
+                "audit_defensible_requirements": explicit_audit_defensible_count,
+                "accuracy": explicit_audit_defensible_accuracy,
+                "definition": (
+                    "Among requirements with explicit atomic truth: final verdict correct, every explicitly "
+                    "labeled atomic verdict correct, and every decisive predicted condition is traceable."
+                ),
+            },
         },
+        "review_gate_safety_metrics": review_gate_metrics,
         "specialty_metrics": {
             "conflict_f1": per_class_metrics["CONFLICT"]["f1"],
             "missing_f1": per_class_metrics["MISSING"]["f1"],
@@ -1317,6 +1598,7 @@ def generate_markdown_report(results: dict, failures: list[dict]):
     rm = results["retrieval_metrics"]
     em = results["extraction_metrics"]
     sm = results["specialty_metrics"]
+    review_safety = results.get("review_gate_safety_metrics", {})
     cm_data = results.get("condition_metrics", {})
     stage_data = results.get("stage_diagnostics", {})
     raw_llm_data = cm_data.get("raw_llm", {})
@@ -1325,6 +1607,15 @@ def generate_markdown_report(results: dict, failures: list[dict]):
     aggregation_oracle_acc = stage_data.get("aggregation_oracle", {}).get("accuracy")
     transition_effect = cm_data.get("python_transition_effect", {})
     label_sources = cm_data.get("ground_truth_label_sources", {})
+    explicit_atomic_accuracy = (
+        cm_data.get("accuracy_by_ground_truth_source", {})
+        .get("explicit", {})
+        .get("accuracy")
+    )
+    explicit_atomic_display = (
+        f"{explicit_atomic_accuracy:.2f}%"
+        if explicit_atomic_accuracy is not None else "N/A"
+    )
     matrix = vm["confusion_matrix"]
 
     failure_cat_counts = Counter(f["failure_category"] for f in failures)
@@ -1367,15 +1658,19 @@ The 100-requirement synthetic benchmark tests real-world automotive compliance a
 ```
 Pipeline Performance Summary:
   • Requirement Extraction F1 : {em['f1']:.2f}%
-  • Exact Extracted Contract Recall: {em.get('atomic_condition_exact_recall', 0):.2f}%
+  • Normalized Exact Contract Recall: {em.get('atomic_condition_exact_recall', 0):.2f}%
+  • Extraction Completeness Gate: {em.get('self_reported_contract_completeness_rate', 0):.2f}% ({len(em.get('incomplete_contract_ids', []))} routed as incomplete)
   • Document Retrieval Recall@3: {rm['document_recall_at_3']:.2f}% | Recall@5: {rm['document_recall_at_5']:.2f}% (MRR: {rm['document_mrr']:.4f})
   • Document-qualified Passage Recall@3: {rm['passage_recall_at_3']:.2f}% | Recall@5: {rm['passage_recall_at_5']:.2f}% (MRR: {rm['passage_mrr']:.4f})
   • 5-Class Requirement Macro F1: {vm['macro_f1']:.2f}% (Accuracy: {vm['accuracy']:.2f}%)
-  • Atomic Condition Accuracy  : {cm_data.get('condition_accuracy', sm.get('condition_accuracy', 0)):.2f}% (F1: {cm_data.get('condition_f1', 0):.2f}%)
+  • Mixed-Provenance Atomic Agreement: {cm_data.get('condition_accuracy', sm.get('condition_accuracy', 0)):.2f}% (F1: {cm_data.get('condition_f1', 0):.2f}%)
+  • Explicit Atomic Accuracy   : {explicit_atomic_display}
   • Raw LLM Atomic Accuracy    : {f'{raw_llm_acc:.2f}%' if raw_llm_acc is not None else 'N/A (no LLM path)'}
   • Aggregation Oracle Accuracy: {f'{aggregation_oracle_acc:.2f}%' if aggregation_oracle_acc is not None else 'N/A'}
   • Audit-Defensible Accuracy  : {f'{audit_defensible_acc:.2f}%' if audit_defensible_acc is not None else 'N/A'}
   • Unsupported Claim Rate    : {sm['unsupported_claim_rate']:.2f}% (Evidence-grounded)
+  • False Automatic Closures  : {review_safety.get('false_automatic_closures', 0)}
+  • Auto-Closure Precision    : {f"{review_safety.get('automatic_closure_precision'):.2f}%" if review_safety.get('automatic_closure_precision') is not None else 'N/A'}
 ```
 
 Atomic ground-truth provenance: **{label_sources.get('explicit', 0)} explicit** condition labels and **{label_sources.get('inferred_from_requirement', 0)} inferred** labels. Inferred labels are derived from the final requirement status and `missing_conditions`; they are useful for regression tracking but are not independently annotated atomic truth.
@@ -1411,11 +1706,25 @@ Atomic ground-truth provenance: **{label_sources.get('explicit', 0)} explicit** 
 | **Missing Evidence Detection F1** | **{sm['missing_f1']:.2f}%** | >= 90.0% | {'✅ Met' if sm['missing_f1'] >= 90 else '⚠️ Review Needed'} |
 | **Partial Compliance Detection F1** | **{sm['partial_f1']:.2f}%** | >= 85.0% | {'✅ Met' if sm['partial_f1'] >= 85 else '⚠️ Review Needed'} |
 | **UNKNOWN Detection F1** | **{sm.get('unknown_f1', 0):.2f}%** | >= 70.0% | {'✅ Met' if sm.get('unknown_f1', 0) >= 70 else '⚠️ Review Needed'} |
-| **Atomic Condition Accuracy** | **{cm_data.get('condition_accuracy', 0):.2f}%** | >= 90.0% | {'✅ Met' if cm_data.get('condition_accuracy', 0) >= 90 else '⚠️ Review Needed'} |
+| **Mixed-Provenance Atomic Agreement** | **{cm_data.get('condition_accuracy', 0):.2f}%** | Regression only | Inferred labels are not authoritative |
+| **Explicit Atomic Accuracy** | **{explicit_atomic_display}** | >= 90.0% | {'✅ Met' if (explicit_atomic_accuracy or 0) >= 90 else '⚠️ Review Needed'} |
 | **Atomic Condition F1** | **{cm_data.get('condition_f1', 0):.2f}%** | >= 85.0% | {'✅ Met' if cm_data.get('condition_f1', 0) >= 85 else '⚠️ Review Needed'} |
 | **Numeric-Condition Verdict Accuracy** | **{sm['numeric_condition_verdict_accuracy']:.2f}%** | >= 90.0% | {'✅ Met' if sm['numeric_condition_verdict_accuracy'] >= 90 else '⚠️ Review Needed'} |
 | **Audit-Defensible Accuracy** | **{(audit_defensible_acc or 0):.2f}%** | >= 90.0% | {'✅ Met' if (audit_defensible_acc or 0) >= 90 else '⚠️ Review Needed'} |
 | **Unsupported Claim Rate** | **{sm['unsupported_claim_rate']:.2f}%** | <= 5.0% | {'✅ Safe' if sm['unsupported_claim_rate'] <= 5 else '❌ High Risk'} |
+
+### Review-Gate Business Safety
+
+The review gate does not change semantic verdict accuracy. It controls whether a predicted `SUPPORTED` requirement is safe to close automatically.
+
+| Metric | Result | Safety Target | Assessment |
+|---|:---:|:---:|:---:|
+| **False SUPPORTED Predictions** | **{review_safety.get('false_supported_predictions', 0)}** | Classification diagnostic | Reported separately |
+| **False SUPPORTED Routed to Review** | **{review_safety.get('false_supported_routed_to_review', 0)}** | All false SUPPORTED | {'✅' if review_safety.get('false_supported_routed_to_review', 0) == review_safety.get('false_supported_predictions', 0) else '⚠️'} |
+| **Review-Gate Capture Rate** | **{f"{review_safety.get('review_gate_capture_rate'):.2f}%" if review_safety.get('review_gate_capture_rate') is not None else 'N/A'}** | 100% | {'✅ Safe' if review_safety.get('review_gate_capture_rate') in (None, 100.0) else '❌ Review Escapes'} |
+| **False Automatic Closures** | **{review_safety.get('false_automatic_closures', 0)}** | 0 | {'✅ Safe' if review_safety.get('false_automatic_closures', 0) == 0 else '❌ Unsafe'} |
+| **Automatic-Closure Precision** | **{f"{review_safety.get('automatic_closure_precision'):.2f}%" if review_safety.get('automatic_closure_precision') is not None else 'N/A'}** | 100% | {'✅ Safe' if review_safety.get('automatic_closure_precision') in (None, 100.0) else '❌ Unsafe'} |
+| **Supported Review Rate** | **{f"{review_safety.get('supported_review_rate'):.2f}%" if review_safety.get('supported_review_rate') is not None else 'N/A'}** | Monitor | Workflow load indicator |
 
 ---
 

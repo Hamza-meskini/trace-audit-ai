@@ -37,6 +37,8 @@ class RetrievedChunk:
     content: str
     score: float
     matched_terms: list[str]
+    document_profile: Optional[dict[str, Any]] = None
+    metadata: Optional[dict[str, Any]] = None
 
 
 REQ_CODE_REGEX = re.compile(r"\b(REQ[-_]?[A-Za-z0-9_-]*\d+)\b", re.IGNORECASE)
@@ -117,9 +119,72 @@ def _bm25_retrieve(
                 content=content,
                 score=score,
                 matched_terms=matched,
+                document_profile=c.get("document_profile"),
+                metadata=c.get("metadata"),
             ))
 
-    return candidate_pool
+    candidate_pool.sort(key=lambda item: item.score, reverse=True)
+    return candidate_pool[:top_k]
+
+
+def _chunk_key(item: RetrievedChunk) -> str:
+    """Stable identity for merging the same chunk from multiple queries."""
+    return item.chunk_id or f"{item.document_name}|{item.page_number}|{item.content[:120]}"
+
+
+def _merge_candidate_pools(*pools: list[RetrievedChunk]) -> list[RetrievedChunk]:
+    """Union query-specific pools while retaining their strongest lexical score."""
+    merged: dict[str, RetrievedChunk] = {}
+    for pool in pools:
+        for item in pool:
+            key = _chunk_key(item)
+            existing = merged.get(key)
+            if existing is None:
+                merged[key] = item
+                continue
+            if item.score > existing.score:
+                existing.score = item.score
+            existing.matched_terms = sorted(set(existing.matched_terms) | set(item.matched_terms))
+    return list(merged.values())
+
+
+def _condition_aware_rerank(
+    candidate_pool: list[RetrievedChunk],
+    condition_rankings: list[list[str]],
+    top_k: int,
+) -> list[RetrievedChunk]:
+    """Apply a soft condition-coverage bonus, then rerank by relevance.
+
+    Atomic-condition queries should help a passage, not reserve a top-k slot
+    regardless of its final hybrid relevance.  A bounded rank bonus preserves
+    semantic/BM25 ordering while rewarding passages that serve one or more
+    condition queries.
+    """
+    if not condition_rankings:
+        return _diversified_rerank(list(candidate_pool), top_k)
+
+    best_rank_signal: dict[str, float] = {}
+    condition_hits: dict[str, int] = {}
+    for ranking in condition_rankings:
+        ranking_size = max(len(ranking), 1)
+        for index, key in enumerate(ranking):
+            # Top condition hit=1.0, with a smooth decay through the pool.
+            rank_signal = (ranking_size - index) / ranking_size
+            best_rank_signal[key] = max(best_rank_signal.get(key, 0.0), rank_signal)
+            condition_hits[key] = condition_hits.get(key, 0) + 1
+
+    max_base_score = max((abs(item.score) for item in candidate_pool), default=1.0) or 1.0
+    for item in candidate_pool:
+        key = _chunk_key(item)
+        rank_signal = best_rank_signal.get(key, 0.0)
+        if not rank_signal:
+            continue
+        multi_condition_signal = min(condition_hits.get(key, 1) - 1, 2) / 2
+        # At most a 10% relevance bonus: useful for close candidates, never a
+        # hard reservation that can displace a materially stronger passage.
+        item.score += max_base_score * (0.08 * rank_signal + 0.02 * multi_condition_signal)
+
+    return _diversified_rerank(list(candidate_pool), top_k)
 
 
 def _diversified_rerank(candidate_pool: list[RetrievedChunk], top_k: int) -> list[RetrievedChunk]:
@@ -171,11 +236,19 @@ def retrieve_candidate_evidence(
     top_k: int = 5,
     min_score: float = 0.3,
     exclude_doc_names: Optional[set[str]] = None,
+    condition_queries: Optional[list[str]] = None,
 ) -> list[RetrievedChunk]:
     """Synchronous BM25-only retrieval (backward-compatible API for non-async callers)."""
     chunks = _filter_excluded(chunks, exclude_doc_names)
-    candidate_pool = _bm25_retrieve(requirement_text, chunks, top_k=top_k * 3, min_score=min_score)
-    return _diversified_rerank(candidate_pool, top_k)
+    overall_pool = _bm25_retrieve(requirement_text, chunks, top_k=top_k * 4, min_score=min_score)
+    condition_pools = [
+        _bm25_retrieve(query, chunks, top_k=max(top_k, 3), min_score=min_score * 0.5)
+        for query in (condition_queries or [])
+        if query.strip()
+    ]
+    candidate_pool = _merge_candidate_pools(overall_pool, *condition_pools)
+    rankings = [[_chunk_key(item) for item in pool] for pool in condition_pools]
+    return _condition_aware_rerank(candidate_pool, rankings, top_k)
 
 
 async def retrieve_candidate_evidence_hybrid(
@@ -185,6 +258,7 @@ async def retrieve_candidate_evidence_hybrid(
     top_k: int = 5,
     min_score: float = 0.3,
     exclude_doc_names: Optional[set[str]] = None,
+    condition_queries: Optional[list[str]] = None,
 ) -> list[RetrievedChunk]:
     """Hybrid retrieval: BM25 + Gemini text-embedding-005 semantic similarity.
 
@@ -209,20 +283,32 @@ async def retrieve_candidate_evidence_hybrid(
     chunks = _filter_excluded(chunks, exclude_doc_names)
 
     # Step 1: BM25 retrieval (get a wider candidate pool)
-    bm25_pool = _bm25_retrieve(requirement_text, chunks, top_k=top_k * 3, min_score=min_score * 0.5)
+    overall_pool = _bm25_retrieve(
+        requirement_text,
+        chunks,
+        top_k=top_k * 4,
+        min_score=min_score * 0.5,
+    )
+    condition_pools = [
+        _bm25_retrieve(query, chunks, top_k=max(top_k, 3), min_score=min_score * 0.25)
+        for query in (condition_queries or [])
+        if query.strip()
+    ]
+    bm25_pool = _merge_candidate_pools(overall_pool, *condition_pools)
+    condition_rankings = [[_chunk_key(item) for item in pool] for pool in condition_pools]
 
     if not bm25_pool:
         return []
 
     # Step 2: If no embedding capability, fall back to pure BM25
     if not _has_embedding_key():
-        return _diversified_rerank(bm25_pool, top_k)
+        return _condition_aware_rerank(bm25_pool, condition_rankings, top_k)
 
     # Step 3: Get query embedding
     query_embedding = await embed_single(requirement_text, task_type="RETRIEVAL_QUERY")
     if query_embedding is None:
         logger.info("Embedding unavailable for query; using pure BM25 retrieval")
-        return _diversified_rerank(bm25_pool, top_k)
+        return _condition_aware_rerank(bm25_pool, condition_rankings, top_k)
 
     # Step 4: Lookup chunk embeddings for candidates in the pool
     needs_embedding: list[int] = []
@@ -261,7 +347,7 @@ async def retrieve_candidate_evidence_hybrid(
             candidate.score = HYBRID_ALPHA * bm25_norm
 
     # Step 6: Diversified rerank on hybrid scores
-    return _diversified_rerank(bm25_pool, top_k)
+    return _condition_aware_rerank(bm25_pool, condition_rankings, top_k)
 
 
 async def precompute_chunk_embeddings(
