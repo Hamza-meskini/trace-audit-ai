@@ -20,6 +20,17 @@ class ExtractedParameter(BaseModel):
     max_val: Optional[Union[float, str]] = Field(None, description="Maximum numeric value if applicable")
     unit: Optional[str] = Field(None, description="Unit of measurement, e.g. 'V', '°C', 'kV'")
 
+    @field_validator("value", mode="before")
+    @classmethod
+    def coerce_scalar_value(cls, value: Any) -> Optional[str]:
+        """Accept JSON numeric scalars without rejecting an otherwise valid extraction."""
+        if value is None:
+            return None
+        if isinstance(value, (str, int, float, bool)):
+            cleaned = str(value).strip()
+            return cleaned or None
+        return None
+
     @field_validator("min_val", "max_val", mode="before")
     @classmethod
     def parse_numeric(cls, v: Any) -> Optional[float]:
@@ -37,6 +48,11 @@ class ExtractedCondition(BaseModel):
     """One mandatory, independently verifiable clause in a requirement."""
 
     condition_id: Optional[str] = None
+    condition_role: str = Field(
+        "VERIFICATION",
+        pattern="^(VERIFICATION|APPLICABILITY)$",
+        description="APPLICABILITY only for a trigger/precondition; VERIFICATION for an auditable obligation",
+    )
     description: str
     parameter: Optional[str] = None
     operator: Optional[str] = None
@@ -45,6 +61,10 @@ class ExtractedCondition(BaseModel):
     max_value: Optional[float] = None
     unit: Optional[str] = None
     mandatory: bool = True
+    requires_visual_evidence: bool = Field(
+        False,
+        description="True when the condition can only be established from a figure, image, plot, or diagram",
+    )
 
     @field_validator("min_value", "max_value", mode="before")
     @classmethod
@@ -70,6 +90,15 @@ class ExtractedClauseCoverage(BaseModel):
     )
 
 
+class ExtractedRequirementLogic(BaseModel):
+    """Boolean relationship between the extracted atomic conditions."""
+
+    operator: str = Field("ALL_OF", pattern="^(ALL_OF|ANY_OF|IF_THEN)$")
+    condition_ids: list[str] = Field(default_factory=list)
+    if_condition_id: Optional[str] = None
+    then_condition_ids: list[str] = Field(default_factory=list)
+
+
 
 class ExtractedRequirement(BaseModel):
     req_code: str = Field(description="Requirement identifier, e.g. REQ-001")
@@ -79,6 +108,7 @@ class ExtractedRequirement(BaseModel):
     severity: str = Field("Medium", description="Severity: Critical, High, Medium, Low")
     parameters: list[ExtractedParameter] = Field(default_factory=list)
     conditions: list[ExtractedCondition] = Field(default_factory=list)
+    logic: ExtractedRequirementLogic = Field(default_factory=ExtractedRequirementLogic)
     clause_coverage: list[ExtractedClauseCoverage] = Field(default_factory=list)
     unmapped_obligations: list[str] = Field(default_factory=list)
     contract_complete: bool = Field(
@@ -215,6 +245,7 @@ def fallback_extract_requirements(text_content: str, doc_name: str = "") -> list
         req.conditions = [
             ExtractedCondition(
                 condition_id=c.condition_id,
+                condition_role=c.condition_role,
                 description=c.description or c.condition_id,
                 parameter=c.parameter,
                 operator=c.operator,
@@ -251,10 +282,37 @@ _REQUIREMENT_START_RE = re.compile(
     r"(?mi)^(?=[ \t]*(?:REQ[-_]?[A-Za-z0-9_-]*\d+|R[-_]?[A-Za-z0-9_-]*\d+)[ \t]*[:\-–—]?[ \t]*)"
 )
 
+# Regulatory standards use hierarchical clause identifiers rather than
+# project-style REQ IDs. Match only heading-shaped lines: wrapped prose such as
+# ``S5.3 when it is impacted`` starts with a lowercase continuation and is not
+# a new block, while ``S7.6.6 If V1 ...`` is.
+_REGULATORY_START_RE = re.compile(
+    r"(?mi)^(?=[ \t]*S\d+(?:\.\d+)*(?:\([a-z0-9]+\))*[ \t]+(?:[A-Z§\"“]|$))"
+)
+# Some tagged PDFs expose a lettered subparagraph only in the repeated section
+# path (for example ``SECTION: ... S7.1(c)``) while the body begins with
+# ``(c)``. Restrict this recovery to identifiers containing parentheses so
+# ordinary repeated parent-clause headers do not fragment the document.
+_REGULATORY_SECTION_START_RE = re.compile(
+    r"(?mi)^(?=SECTION:[^\n]*\bS\d+(?:\.\d+)*\(([a-z0-9]+)\)[^\n]*\n"
+    r"(?:(?!SECTION:)[^\n]*\n){0,4}[ \t]*\(\1\))"
+)
+_REGULATORY_CODE_RE = re.compile(
+    r"^[ \t]*(S\d+(?:\.\d+)*(?:\([a-z0-9]+\))*)(?=\s|[.:\-–—]|$)",
+    re.IGNORECASE,
+)
+_REGULATORY_SECTION_CODE_RE = re.compile(
+    r"(?i)^SECTION:[^\n]*\b(S\d+(?:\.\d+)*\([a-z0-9]+\))(?=\s|$)"
+)
+
 
 def _requirement_blocks(text: str) -> list[str]:
     """Return complete requirement blocks when explicit IDs are available."""
-    starts = [match.start() for match in _REQUIREMENT_START_RE.finditer(text)]
+    starts = sorted({
+        *[match.start() for match in _REQUIREMENT_START_RE.finditer(text)],
+        *[match.start() for match in _REGULATORY_START_RE.finditer(text)],
+        *[match.start() for match in _REGULATORY_SECTION_START_RE.finditer(text)],
+    })
     if not starts:
         return []
 
@@ -277,18 +335,88 @@ def _requirement_code_from_block(block: str) -> Optional[str]:
         block,
         re.IGNORECASE,
     )
-    return match.group(1).upper().replace("_", "-") if match else None
+    if match:
+        return match.group(1).upper().replace("_", "-")
+    regulatory = _REGULATORY_CODE_RE.match(block) or _REGULATORY_SECTION_CODE_RE.match(block)
+    if not regulatory:
+        return None
+    code = regulatory.group(1).upper()
+    # Preserve lower-case CFR subparagraph notation for readable, stable IDs.
+    return re.sub(r"\(([A-Z0-9]+)\)", lambda item: f"({item.group(1).lower()})", code)
+
+
+_ATOMIC_OBLIGATION_SIGNALS = (
+    r"\bmeet(?:s|ing)?\b[^.;]*(?:requirements?|limits?)",
+    r"\b(?:impact|impacted|subjected)\b",
+    r"\bconform(?:s|ing|ed)?\b",
+    r"\b(?:speed|velocity)\b[^.;]*(?:up to|not more|less than|including|≤|<=)",
+    r"\b(?:dummy|dummies)\b",
+    r"\b(?:insert|measure|calculate|divide|record|document)\b",
+    r"\b(?:present|located)\b[^.;]*(?:on|near)\b",
+    r"\bvisible\b",
+    r"\b(?:yellow|black border|black arrow)\b",
+    r"\b(?:remain attached|not enter|shall not enter)\b",
+    r"\b(?:no visible|not more than)\b",
+    r"\b(?:throughout|until\s+\d|from the time)\b",
+)
+
+
+def _estimated_atomic_obligations(source: str) -> int:
+    """Conservative lower bound used only to request a second LLM pass.
+
+    It never creates conditions or marks a contract complete. Its sole purpose
+    is to catch obviously compressed clauses such as ``insert, measure,
+    calculate, and divide`` before accepting the first extraction.
+    """
+    normalized = " ".join((source or "").split()).lower()
+    if not normalized:
+        return 0
+    hits = sum(bool(re.search(pattern, normalized, re.IGNORECASE)) for pattern in _ATOMIC_OBLIGATION_SIGNALS)
+    procedural_actions = set(re.findall(
+        r"\b(insert|measure|calculate|divide|record|document)\b",
+        normalized,
+    ))
+    if procedural_actions:
+        hits = max(hits, len(procedural_actions))
+    if re.search(r"\bif\b.+\b(?:shall|must|is|are|insert|measure|prevent)\b", normalized):
+        hits = max(hits, len(procedural_actions) + 1, 2)
+    if re.search(r"\bone of (?:the )?following\b|\beither\b", normalized):
+        hits = max(hits, 2)
+    return max(1, hits)
+
+
+def _needs_completeness_retry(requirement: ExtractedRequirement, source: str) -> bool:
+    return (
+        requirement.contract_complete is False
+        or len(requirement.conditions) < _estimated_atomic_obligations(source)
+        or (
+            requirement.logic.operator == "IF_THEN"
+            and (not requirement.logic.if_condition_id or not requirement.logic.then_condition_ids)
+        )
+    )
 
 
 def _deduplicate_requirements(
     requirements: list[ExtractedRequirement],
 ) -> list[ExtractedRequirement]:
     unique: list[ExtractedRequirement] = []
-    seen: set[str] = set()
+    positions: dict[str, int] = {}
+
+    def quality(item: ExtractedRequirement) -> tuple[int, int, int, int]:
+        return (
+            int(item.contract_complete),
+            len(item.conditions),
+            len(item.clause_coverage),
+            len(item.description or ""),
+        )
+
     for requirement in requirements:
-        if requirement.req_code not in seen:
-            seen.add(requirement.req_code)
+        position = positions.get(requirement.req_code)
+        if position is None:
+            positions[requirement.req_code] = len(unique)
             unique.append(requirement)
+        elif quality(requirement) > quality(unique[position]):
+            unique[position] = requirement
     return unique
 
 
@@ -347,6 +475,34 @@ def _normalize_extracted_requirements(
                 condition.condition_id = f"{req.req_code}-C{index}"
             if not condition.description.strip():
                 condition.description = condition.parameter or req.title
+        known_ids = {condition.condition_id for condition in req.conditions if condition.condition_id}
+        supplied_logic_ids = list(req.logic.condition_ids)
+        supplied_then_ids = list(req.logic.then_condition_ids)
+        supplied_if_id = req.logic.if_condition_id
+        req.logic.condition_ids = [item for item in req.logic.condition_ids if item in known_ids]
+        req.logic.then_condition_ids = [item for item in req.logic.then_condition_ids if item in known_ids]
+        if req.logic.if_condition_id not in known_ids:
+            req.logic.if_condition_id = None
+        if not req.logic.condition_ids:
+            req.logic.condition_ids = [condition.condition_id for condition in req.conditions if condition.condition_id]
+        if req.logic.operator == "IF_THEN" and req.logic.if_condition_id:
+            for condition in req.conditions:
+                if condition.condition_id == req.logic.if_condition_id:
+                    condition.condition_role = "APPLICABILITY"
+        elif supplied_logic_ids:
+            governed = set(req.logic.condition_ids)
+            for condition in req.conditions:
+                if condition.condition_id not in governed:
+                    condition.condition_role = "APPLICABILITY"
+        invalid_logic = (
+            (bool(supplied_logic_ids) and len(req.logic.condition_ids) != len(supplied_logic_ids))
+            or (bool(supplied_then_ids) and len(req.logic.then_condition_ids) != len(supplied_then_ids))
+            or (supplied_if_id is not None and req.logic.if_condition_id is None)
+            or (
+                req.logic.operator == "IF_THEN"
+                and (not req.logic.if_condition_id or not req.logic.then_condition_ids)
+            )
+        )
 
         condition_ids = {
             condition.condition_id
@@ -356,7 +512,11 @@ def _normalize_extracted_requirements(
         mandatory_ids = {
             condition.condition_id
             for condition in req.conditions
-            if condition.mandatory and condition.condition_id
+            if (
+                condition.mandatory
+                and condition.condition_role == "VERIFICATION"
+                and condition.condition_id
+            )
         }
         covered_ids: set[str] = set()
         invalid_mapping = False
@@ -386,6 +546,7 @@ def _normalize_extracted_requirements(
             bool(req.conditions)
             and bool(req.clause_coverage)
             and not invalid_mapping
+            and not invalid_logic
             and not req.unmapped_obligations
             and mandatory_ids.issubset(covered_ids)
         )
@@ -411,18 +572,113 @@ For each requirement, provide:
 - severity (Critical, High, Medium, Low)
 - parameters (numeric values, min/max limits, units like V, °C, kV, IP rating, MTBF hours)
 - conditions (one entry per independently verifiable clause, with a stable condition_id,
-  description, parameter, operator, threshold/min/max, unit, and mandatory flag)
+  condition_role, description, parameter, operator, threshold/min/max, unit, mandatory flag, and
+  requires_visual_evidence=true only when a figure/image/plot must be inspected)
+- logic (operator ALL_OF when every listed condition is required; ANY_OF when satisfying any
+  alternative path is sufficient; IF_THEN with one if_condition_id and all then_condition_ids
+  for a conditional obligation; condition_ids must name every condition governed by the logic)
 - clause_coverage (one entry for every obligation-bearing clause in the description;
   copy the clause and list every condition_id that formalizes it)
 - unmapped_obligations (obligation-bearing clauses that could not be formalized; use [] only when none exist)
 - contract_complete (true only when every obligation-bearing clause is represented by one or more conditions,
   every mandatory condition is referenced by clause_coverage, and unmapped_obligations is empty)
 
-Treat required actions, triggers/preconditions, required outcomes, interfaces, operating modes,
-timing limits, quantities, ranges, tolerances, and verification-method constraints as separate
-conditions whenever each can independently pass or fail. A shared timing limit does not replace
-the actions or outcomes that must occur within that time.
+For standards with hierarchical identifiers, preserve the complete clause/subparagraph ID. For example,
+extract lettered paragraph `(c)` under `S7.1` as `S7.1(c)`, not as `S7.1` and not as a generated REQ number.
+Treat referenced figures/tables/formulas and numbered or lettered subparagraphs as part of the surrounding
+requirement context. Do not discard a condition merely because its details are carried by a figure or table;
+mark it `requires_visual_evidence=true` when visual inspection is necessary.
+
+Treat required actions, required outcomes, interfaces, operating modes, timing limits, quantities,
+ranges, tolerances, and verification-method constraints as separate VERIFICATION conditions whenever
+each can independently pass or fail. Represent a trigger, precondition, or contextual gate as a separate
+APPLICABILITY condition; do not count it as a verification obligation. For IF_THEN, if_condition_id must
+name the APPLICABILITY condition and then_condition_ids must name every VERIFICATION obligation. For
+ANY_OF, condition_ids must contain only alternative VERIFICATION paths; contextual phrases such as
+"after impact" may be APPLICABILITY conditions but must not be included as alternatives. A shared timing
+limit does not replace the actions or outcomes that must occur within that time.
 """
+
+
+async def _retry_incomplete_contracts(
+    source_text: str,
+    requirements: list[ExtractedRequirement],
+    *,
+    doc_name: str,
+    active_model: str,
+    thinking_level: Optional[str],
+    chunk_label: str,
+) -> list[ExtractedRequirement]:
+    """Ask once for corrected contracts when the first pass compressed clauses."""
+    source_by_code = {
+        code: block
+        for block in _requirement_blocks(source_text)
+        if (code := _requirement_code_from_block(block)) is not None
+    }
+    suspect = [
+        requirement
+        for requirement in requirements
+        if _needs_completeness_retry(
+            requirement,
+            source_by_code.get(requirement.req_code, requirement.description or source_text),
+        )
+    ]
+    if not suspect:
+        return requirements
+
+    prior = [item.model_dump(exclude_none=True) for item in suspect]
+    prompt = f"""Correct only the incomplete engineering requirement contracts below.
+
+Document: {doc_name} {chunk_label}
+Source text:
+{source_text}
+
+Previous contracts:
+{prior}
+
+Return one corrected requirement for every previous req_code. Preserve the exact regulatory identifier.
+Decompose every independently pass/fail predicate: trigger or applicability, required action, required
+outcome, referenced equipment/conformance, numeric limit, measurement, calculation, and reporting step.
+Mark triggers and contextual gates APPLICABILITY; mark auditable obligations VERIFICATION. For IF/THEN
+text, create one APPLICABILITY antecedent and every VERIFICATION consequent. For alternatives use ANY_OF
+and list only alternative VERIFICATION paths in condition_ids. For joined ALL_OF clauses do not collapse
+several predicates into a summary condition.
+Build exhaustive clause_coverage and set contract_complete=true only if nothing is omitted. Return JSON only.
+"""
+    try:
+        corrected = await generate_structured(
+            prompt=prompt,
+            response_model=ExtractionResult,
+            model=active_model,
+            system_instruction=(
+                "You are performing a focused contract-completeness audit. Preserve source meaning and IDs; "
+                "split independent predicates without inventing obligations."
+            ),
+            thinking_level=thinking_level or settings.GEMINI_THINKING_LEVEL,
+            max_output_tokens=EXTRACTION_MAX_OUTPUT_TOKENS,
+        )
+    except Exception as exc:
+        import logging
+        logging.getLogger("traceaudit.extraction").warning(
+            "Contract completeness retry failed for %s: %s", chunk_label, exc
+        )
+        return requirements
+    if not corrected or not corrected.requirements:
+        return requirements
+
+    normalized = _normalize_extracted_requirements(corrected.requirements)
+    corrected_by_code = {item.req_code: item for item in normalized}
+    output: list[ExtractedRequirement] = []
+    for original in requirements:
+        candidate = corrected_by_code.get(original.req_code)
+        if candidate and (
+            len(candidate.conditions) > len(original.conditions)
+            or (candidate.contract_complete and not original.contract_complete)
+        ):
+            output.append(candidate)
+        else:
+            output.append(original)
+    return output
 
 
 async def _extract_chunk_with_retry(
@@ -475,7 +731,14 @@ async def _extract_chunk_with_retry(
             block for code, block in expected_by_code.items() if code not in returned_codes
         ]
         if not missing_blocks:
-            return normalized
+            return await _retry_incomplete_contracts(
+                chunk_text,
+                normalized,
+                doc_name=doc_name,
+                active_model=active_model,
+                thinking_level=thinking_level,
+                chunk_label=chunk_label,
+            )
 
         print(
             f"    [Extraction retry] {chunk_label} returned valid but incomplete JSON; "
@@ -495,7 +758,15 @@ async def _extract_chunk_with_retry(
             recovered = _normalize_extracted_requirements(
                 fallback_extract_requirements("\n".join(missing_blocks), doc_name)
             )
-        return _deduplicate_requirements(normalized + recovered)
+        combined = _deduplicate_requirements(normalized + recovered)
+        return await _retry_incomplete_contracts(
+            chunk_text,
+            combined,
+            doc_name=doc_name,
+            active_model=active_model,
+            thinking_level=thinking_level,
+            chunk_label=chunk_label,
+        )
 
     if depth < EXTRACTION_MAX_RETRY_DEPTH and len(blocks) > 1:
         midpoint = (len(blocks) + 1) // 2
@@ -575,15 +846,13 @@ async def extract_requirements_from_text(
     ))
 
     all_requirements: list[ExtractedRequirement] = []
-    seen_codes: set[str] = set()
     for chunk_idx, requirements in sorted(chunk_results, key=lambda item: item[0]):
-        added_count = 0
-        for req in requirements:
-            # Deduplicate by normalized req_code across bounded/retried chunks.
-            if req.req_code not in seen_codes:
-                seen_codes.add(req.req_code)
-                all_requirements.append(req)
-                added_count += 1
+        before = len(all_requirements)
+        # Overlapping sections may return the same clause twice. Keep the
+        # structurally richer contract instead of whichever response arrived
+        # first.
+        all_requirements = _deduplicate_requirements(all_requirements + requirements)
+        added_count = len(all_requirements) - before
         print(f"    [Extraction {chunk_idx + 1:02d}/{len(text_chunks):02d}] Extracted {added_count} new requirements (Total unique: {len(all_requirements)})", flush=True)
 
     if all_requirements:

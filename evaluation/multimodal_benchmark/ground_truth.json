@@ -1,0 +1,812 @@
+{
+  "benchmark_id": "traceaudit-multimodal-diagnostic",
+  "version": "1.0.0",
+  "description": "Synthetic document-understanding benchmark with tables, figures, cross-page calculations, conflicts and explicit missing evidence.",
+  "documents": {
+    "requirements": {
+      "filename": "01_Aquila_BMS_System_Requirements.pdf",
+      "doc_type": "System specification",
+      "expected_role": "SPECIFICATION",
+      "expected_verification_basis": "normative"
+    },
+    "evidence": [
+      {
+        "filename": "02_Aquila_Design_Validation_Test_Report.pdf",
+        "doc_type": "Test report",
+        "expected_role": "TEST_REPORT",
+        "expected_verification_basis": "physical_test"
+      },
+      {
+        "filename": "03_Aquila_Qualification_Inspection_Dossier.pdf",
+        "doc_type": "Quality inspection record",
+        "expected_role": "OTHER_EVIDENCE",
+        "expected_verification_basis": "inspection"
+      }
+    ]
+  },
+  "requirements": [
+    {
+      "requirement_id": "MM-REQ-001",
+      "clause": "MM-REQ-001",
+      "title": "Pack voltage monitoring",
+      "category": "Electrical",
+      "requirement_text": "The BMS shall continuously monitor pack voltage throughout 400 V to 800 V DC.",
+      "requirement_page": 2,
+      "logic": {
+        "operator": "ALL_OF",
+        "condition_ids": [
+          "MM-001-C1",
+          "MM-001-C2"
+        ]
+      },
+      "expected_status": "SUPPORTED",
+      "expected_review_state": "Reviewed",
+      "conditions": [
+        {
+          "condition_id": "MM-001-C1",
+          "description": "Monitoring coverage includes a lower bound at or below 400 V",
+          "mandatory": true,
+          "expected_status": "PROVEN",
+          "evidence": [
+            {
+              "document": "02_Aquila_Design_Validation_Test_Report.pdf",
+              "page": 2,
+              "block_type": "table",
+              "role": "supporting",
+              "quote": "380 V | 380.3 V | Below 400 V lower bound"
+            }
+          ],
+          "parameter": "pack_voltage_lower_bound",
+          "operator": "<=",
+          "threshold": 400,
+          "unit": "V"
+        },
+        {
+          "condition_id": "MM-001-C2",
+          "description": "Monitoring coverage includes an upper bound at or above 800 V",
+          "mandatory": true,
+          "expected_status": "PROVEN",
+          "evidence": [
+            {
+              "document": "02_Aquila_Design_Validation_Test_Report.pdf",
+              "page": 2,
+              "block_type": "table",
+              "role": "supporting",
+              "quote": "820 V | 819.6 V | Above 800 V upper bound"
+            }
+          ],
+          "parameter": "pack_voltage_upper_bound",
+          "operator": ">=",
+          "threshold": 800,
+          "unit": "V"
+        }
+      ]
+    },
+    {
+      "requirement_id": "MM-REQ-002",
+      "clause": "MM-REQ-002",
+      "title": "Cell measurement accuracy",
+      "category": "Electrical",
+      "requirement_text": "Cell-voltage measurement error shall not exceed +/-5 mV from -20 deg C through +60 deg C.",
+      "requirement_page": 2,
+      "logic": {
+        "operator": "ALL_OF",
+        "condition_ids": [
+          "MM-002-C1",
+          "MM-002-C2",
+          "MM-002-C3"
+        ]
+      },
+      "expected_status": "PARTIAL",
+      "expected_review_state": "Needs review",
+      "conditions": [
+        {
+          "condition_id": "MM-002-C1",
+          "description": "Absolute cell-voltage error does not exceed 5 mV",
+          "mandatory": true,
+          "expected_status": "PROVEN",
+          "evidence": [
+            {
+              "document": "02_Aquila_Design_Validation_Test_Report.pdf",
+              "page": 2,
+              "block_type": "table",
+              "role": "supporting",
+              "quote": "+60 deg C | 4.8 mV | <= 5 mV"
+            }
+          ],
+          "parameter": "cell_voltage_error",
+          "operator": "<=",
+          "threshold": 5,
+          "unit": "mV"
+        },
+        {
+          "condition_id": "MM-002-C2",
+          "description": "Accuracy verification includes -20 deg C",
+          "mandatory": true,
+          "expected_status": "UNTESTED",
+          "evidence": [
+            {
+              "document": "02_Aquila_Design_Validation_Test_Report.pdf",
+              "page": 2,
+              "block_type": "table",
+              "role": "missing_marker",
+              "quote": "-20 deg C | Not measured | No result | Cold chamber unavailable"
+            }
+          ],
+          "parameter": "temperature_lower_endpoint",
+          "operator": "<=",
+          "threshold": -20,
+          "unit": "deg C"
+        },
+        {
+          "condition_id": "MM-002-C3",
+          "description": "Accuracy verification includes +60 deg C",
+          "mandatory": true,
+          "expected_status": "PROVEN",
+          "evidence": [
+            {
+              "document": "02_Aquila_Design_Validation_Test_Report.pdf",
+              "page": 2,
+              "block_type": "table",
+              "role": "supporting",
+              "quote": "+60 deg C | 4.8 mV | Tested upper endpoint"
+            }
+          ],
+          "parameter": "temperature_upper_endpoint",
+          "operator": ">=",
+          "threshold": 60,
+          "unit": "deg C"
+        }
+      ]
+    },
+    {
+      "requirement_id": "MM-REQ-003",
+      "clause": "MM-REQ-003",
+      "title": "Crash disconnect response",
+      "category": "Safety",
+      "requirement_text": "On a validated crash input, both main contactors shall open within 20 ms and the DC bus shall fall below 60 V within 5.0 s.",
+      "requirement_page": 3,
+      "logic": {
+        "operator": "ALL_OF",
+        "condition_ids": [
+          "MM-003-C1",
+          "MM-003-C2"
+        ]
+      },
+      "expected_status": "SUPPORTED",
+      "expected_review_state": "Reviewed",
+      "conditions": [
+        {
+          "condition_id": "MM-003-C1",
+          "description": "Both main contactors open within 20 ms",
+          "mandatory": true,
+          "expected_status": "PROVEN",
+          "evidence": [
+            {
+              "document": "02_Aquila_Design_Validation_Test_Report.pdf",
+              "page": 3,
+              "block_type": "table",
+              "role": "supporting",
+              "quote": "Both main contactors open | 14.6 ms | <= 20 ms | PASS"
+            },
+            {
+              "document": "02_Aquila_Design_Validation_Test_Report.pdf",
+              "page": 3,
+              "block_type": "figure",
+              "role": "supporting",
+              "quote": "Contactors open: 14.6 ms"
+            }
+          ],
+          "parameter": "contactor_open_latency",
+          "operator": "<=",
+          "threshold": 20,
+          "unit": "ms",
+          "requires_visual_evidence": false
+        },
+        {
+          "condition_id": "MM-003-C2",
+          "description": "DC bus falls below 60 V within 5.0 s",
+          "mandatory": true,
+          "expected_status": "PROVEN",
+          "evidence": [
+            {
+              "document": "02_Aquila_Design_Validation_Test_Report.pdf",
+              "page": 3,
+              "block_type": "table",
+              "role": "supporting",
+              "quote": "DC bus at 4.20 s | 48 V | < 60 V by 5.0 s | PASS"
+            },
+            {
+              "document": "02_Aquila_Design_Validation_Test_Report.pdf",
+              "page": 3,
+              "block_type": "figure",
+              "role": "supporting",
+              "quote": "48 V at 4.20 s"
+            }
+          ],
+          "parameter": "dc_bus_voltage",
+          "operator": "<",
+          "threshold": 60,
+          "unit": "V"
+        }
+      ]
+    },
+    {
+      "requirement_id": "MM-REQ-004",
+      "clause": "MM-REQ-004",
+      "title": "Post-impact isolation",
+      "category": "Safety",
+      "requirement_text": "At 60 s after impact, measured isolation resistance divided by measured DC-bus voltage shall be at least 500 ohm/V.",
+      "requirement_page": 3,
+      "logic": {
+        "operator": "ALL_OF",
+        "condition_ids": [
+          "MM-004-C1",
+          "MM-004-C2"
+        ]
+      },
+      "expected_status": "SUPPORTED",
+      "expected_review_state": "Reviewed",
+      "conditions": [
+        {
+          "condition_id": "MM-004-C1",
+          "description": "Isolation operands are measured at 60 s after impact",
+          "mandatory": true,
+          "expected_status": "PROVEN",
+          "evidence": [
+            {
+              "document": "02_Aquila_Design_Validation_Test_Report.pdf",
+              "page": 4,
+              "block_type": "table",
+              "role": "supporting",
+              "quote": "Elapsed time after impact | t | 60.0 s | DAQ-14"
+            }
+          ],
+          "parameter": "post_impact_dwell",
+          "operator": ">=",
+          "threshold": 60,
+          "unit": "s"
+        },
+        {
+          "condition_id": "MM-004-C2",
+          "description": "Calculated isolation ratio is at least 500 ohm/V",
+          "mandatory": true,
+          "expected_status": "PROVEN",
+          "evidence": [
+            {
+              "document": "02_Aquila_Design_Validation_Test_Report.pdf",
+              "page": 4,
+              "block_type": "table",
+              "role": "operand",
+              "quote": "DC-bus voltage | Vbus | 402 V"
+            },
+            {
+              "document": "02_Aquila_Design_Validation_Test_Report.pdf",
+              "page": 4,
+              "block_type": "table",
+              "role": "operand",
+              "quote": "Isolation resistance | Riso | 1.26 Mohm"
+            },
+            {
+              "document": "02_Aquila_Design_Validation_Test_Report.pdf",
+              "page": 5,
+              "block_type": "formula",
+              "role": "supporting",
+              "quote": "Riso/Vbus = 1,260,000 ohm / 402 V = 3,134 ohm/V"
+            }
+          ],
+          "parameter": "isolation_ratio",
+          "operator": ">=",
+          "threshold": 500,
+          "unit": "ohm/V"
+        }
+      ]
+    },
+    {
+      "requirement_id": "MM-REQ-005",
+      "clause": "MM-REQ-005",
+      "title": "Coolant circuit integrity",
+      "category": "Mechanical",
+      "requirement_text": "The coolant circuit shall hold 2.0 bar for 30 minutes with no visible leakage.",
+      "requirement_page": 4,
+      "logic": {
+        "operator": "ALL_OF",
+        "condition_ids": [
+          "MM-005-C1",
+          "MM-005-C2"
+        ]
+      },
+      "expected_status": "CONFLICT",
+      "expected_review_state": "Needs review",
+      "conditions": [
+        {
+          "condition_id": "MM-005-C1",
+          "description": "Pressure is at least 2.0 bar for at least 30 minutes",
+          "mandatory": true,
+          "expected_status": "PROVEN",
+          "evidence": [
+            {
+              "document": "02_Aquila_Design_Validation_Test_Report.pdf",
+              "page": 6,
+              "block_type": "table",
+              "role": "supporting",
+              "quote": "Coolant pressure hold | 2.00 bar for 30.0 min | PASS"
+            }
+          ],
+          "parameter": "coolant_pressure_hold",
+          "operator": ">=",
+          "threshold": 2.0,
+          "unit": "bar"
+        },
+        {
+          "condition_id": "MM-005-C2",
+          "description": "No visible coolant leakage occurs",
+          "mandatory": true,
+          "expected_status": "FAILED",
+          "evidence": [
+            {
+              "document": "02_Aquila_Design_Validation_Test_Report.pdf",
+              "page": 6,
+              "block_type": "table",
+              "role": "supporting",
+              "quote": "Visible leakage during hold | 0.00 mL observed through chamber window | PASS in-run observation"
+            },
+            {
+              "document": "03_Aquila_Qualification_Inspection_Dossier.pdf",
+              "page": 3,
+              "block_type": "table",
+              "role": "contradicting",
+              "quote": "Quick disconnect QD-2 | White-cloth wipe | Blue coolant residue; collected volume 0.4 mL | VISIBLE LEAKAGE"
+            }
+          ],
+          "parameter": "visible_coolant_leakage",
+          "operator": "==",
+          "threshold": 0,
+          "unit": "mL"
+        }
+      ]
+    },
+    {
+      "requirement_id": "MM-REQ-006",
+      "clause": "MM-REQ-006",
+      "title": "Service-disconnect hazard marking",
+      "category": "Visual inspection",
+      "requirement_text": "Every service-disconnect cover shall carry a readable yellow triangular warning label with a black lightning symbol before the cover can be accessed.",
+      "requirement_page": 5,
+      "logic": {
+        "operator": "ALL_OF",
+        "condition_ids": [
+          "MM-006-C1",
+          "MM-006-C2"
+        ]
+      },
+      "expected_status": "UNKNOWN",
+      "expected_review_state": "Needs review",
+      "conditions": [
+        {
+          "condition_id": "MM-006-C1",
+          "description": "The mandated marking design is established for the controlled test article",
+          "mandatory": true,
+          "expected_status": "INCONCLUSIVE",
+          "evidence": [
+            {
+              "document": "03_Aquila_Qualification_Inspection_Dossier.pdf",
+              "page": 2,
+              "block_type": "figure",
+              "role": "ambiguous",
+              "quote": "Photograph supplied by the inspection team: orange service-disconnect housing with yellow triangular black-lightning hazard symbol"
+            },
+            {
+              "document": "03_Aquila_Qualification_Inspection_Dossier.pdf",
+              "page": 2,
+              "block_type": "text",
+              "role": "limitation",
+              "quote": "The photograph contains no visible unit serial or station identifier"
+            }
+          ],
+          "requires_visual_evidence": true,
+          "verification_method": "visual"
+        },
+        {
+          "condition_id": "MM-006-C2",
+          "description": "The marking is present and readable on every service-disconnect cover",
+          "mandatory": true,
+          "expected_status": "INCONCLUSIVE",
+          "evidence": [
+            {
+              "document": "03_Aquila_Qualification_Inspection_Dossier.pdf",
+              "page": 2,
+              "block_type": "text",
+              "role": "limitation",
+              "quote": "Only one cover is shown, while the requirement applies to every service-disconnect cover"
+            }
+          ],
+          "requires_visual_evidence": true,
+          "verification_method": "visual"
+        }
+      ]
+    },
+    {
+      "requirement_id": "MM-REQ-007",
+      "clause": "MM-REQ-007",
+      "title": "Thermal shutdown and recovery",
+      "category": "Thermal",
+      "requirement_text": "The BMS shall command shutdown at or above 85 deg C and permit recovery only after temperature is below 70 deg C for 60 s.",
+      "requirement_page": 4,
+      "logic": {
+        "operator": "ALL_OF",
+        "condition_ids": [
+          "MM-007-C1",
+          "MM-007-C2"
+        ]
+      },
+      "expected_status": "PARTIAL",
+      "expected_review_state": "Needs review",
+      "conditions": [
+        {
+          "condition_id": "MM-007-C1",
+          "description": "Shutdown is asserted at temperature at or above 85 deg C",
+          "mandatory": true,
+          "expected_status": "PROVEN",
+          "evidence": [
+            {
+              "document": "02_Aquila_Design_Validation_Test_Report.pdf",
+              "page": 6,
+              "block_type": "table",
+              "role": "supporting",
+              "quote": "Thermal shutdown heating ramp | Shutdown asserted at 87 deg C | PASS for shutdown"
+            },
+            {
+              "document": "02_Aquila_Design_Validation_Test_Report.pdf",
+              "page": 6,
+              "block_type": "figure",
+              "role": "supporting",
+              "quote": "Shutdown asserted at 87 C"
+            }
+          ],
+          "parameter": "shutdown_temperature",
+          "operator": ">=",
+          "threshold": 85,
+          "unit": "deg C"
+        },
+        {
+          "condition_id": "MM-007-C2",
+          "description": "Recovery requires temperature below 70 deg C for 60 s",
+          "mandatory": true,
+          "expected_status": "UNTESTED",
+          "evidence": [
+            {
+              "document": "02_Aquila_Design_Validation_Test_Report.pdf",
+              "page": 6,
+              "block_type": "table",
+              "role": "missing_marker",
+              "quote": "Recovery below 70 deg C for 60 s | Cool-down phase not run | NOT TESTED"
+            },
+            {
+              "document": "02_Aquila_Design_Validation_Test_Report.pdf",
+              "page": 6,
+              "block_type": "figure",
+              "role": "missing_marker",
+              "quote": "No cool-down/recovery phase recorded"
+            }
+          ],
+          "parameter": "recovery_dwell",
+          "operator": ">=",
+          "threshold": 60,
+          "unit": "s"
+        }
+      ]
+    },
+    {
+      "requirement_id": "MM-REQ-008",
+      "clause": "MM-REQ-008",
+      "title": "CAN heartbeat endurance",
+      "category": "Communications",
+      "requirement_text": "The BMS CAN heartbeat interval shall not exceed 100 ms during a continuous 30-minute run, with zero lost heartbeat messages.",
+      "requirement_page": 5,
+      "logic": {
+        "operator": "ALL_OF",
+        "condition_ids": [
+          "MM-008-C1",
+          "MM-008-C2"
+        ]
+      },
+      "expected_status": "SUPPORTED",
+      "expected_review_state": "Reviewed",
+      "conditions": [
+        {
+          "condition_id": "MM-008-C1",
+          "description": "Maximum heartbeat interval does not exceed 100 ms",
+          "mandatory": true,
+          "expected_status": "PROVEN",
+          "evidence": [
+            {
+              "document": "02_Aquila_Design_Validation_Test_Report.pdf",
+              "page": 7,
+              "block_type": "table",
+              "role": "supporting",
+              "quote": "30.0 min | 18,000 | 18,000 | 95.1 ms"
+            },
+            {
+              "document": "02_Aquila_Design_Validation_Test_Report.pdf",
+              "page": 7,
+              "block_type": "figure",
+              "role": "supporting",
+              "quote": "Heartbeat interval remained below 100 ms"
+            }
+          ],
+          "parameter": "heartbeat_interval",
+          "operator": "<=",
+          "threshold": 100,
+          "unit": "ms"
+        },
+        {
+          "condition_id": "MM-008-C2",
+          "description": "Zero heartbeat messages are lost during at least 30 minutes",
+          "mandatory": true,
+          "expected_status": "PROVEN",
+          "evidence": [
+            {
+              "document": "02_Aquila_Design_Validation_Test_Report.pdf",
+              "page": 7,
+              "block_type": "table",
+              "role": "supporting",
+              "quote": "Duration 30.0 min | Messages expected 18,000 | Messages received 18,000"
+            }
+          ],
+          "parameter": "lost_heartbeat_messages",
+          "operator": "==",
+          "threshold": 0,
+          "unit": "count"
+        }
+      ]
+    },
+    {
+      "requirement_id": "MM-REQ-009",
+      "clause": "MM-REQ-009",
+      "title": "Connector J17 ingress protection",
+      "category": "Environmental",
+      "requirement_text": "Connector J17 shall remain IP67 after 1 m water immersion for 30 minutes, with no moisture inside the rear boot.",
+      "requirement_page": 6,
+      "logic": {
+        "operator": "ALL_OF",
+        "condition_ids": [
+          "MM-009-C1",
+          "MM-009-C2"
+        ]
+      },
+      "expected_status": "CONFLICT",
+      "expected_review_state": "Needs review",
+      "conditions": [
+        {
+          "condition_id": "MM-009-C1",
+          "description": "Immersion depth is at least 1 m for at least 30 minutes",
+          "mandatory": true,
+          "expected_status": "PROVEN",
+          "evidence": [
+            {
+              "document": "02_Aquila_Design_Validation_Test_Report.pdf",
+              "page": 8,
+              "block_type": "table",
+              "role": "supporting",
+              "quote": "Water depth | 1.00 m"
+            },
+            {
+              "document": "02_Aquila_Design_Validation_Test_Report.pdf",
+              "page": 8,
+              "block_type": "table",
+              "role": "supporting",
+              "quote": "Immersion duration | 30.0 min"
+            }
+          ],
+          "parameter": "immersion_depth",
+          "operator": ">=",
+          "threshold": 1,
+          "unit": "m"
+        },
+        {
+          "condition_id": "MM-009-C2",
+          "description": "No moisture is present inside the J17 rear boot",
+          "mandatory": true,
+          "expected_status": "FAILED",
+          "evidence": [
+            {
+              "document": "02_Aquila_Design_Validation_Test_Report.pdf",
+              "page": 8,
+              "block_type": "table",
+              "role": "supporting",
+              "quote": "External visual check before disassembly | No moisture visible | PASS"
+            },
+            {
+              "document": "03_Aquila_Qualification_Inspection_Dossier.pdf",
+              "page": 4,
+              "block_type": "table",
+              "role": "contradicting",
+              "quote": "Collected liquid | 0.6 mL, conductivity consistent with immersion bath"
+            },
+            {
+              "document": "03_Aquila_Qualification_Inspection_Dossier.pdf",
+              "page": 4,
+              "block_type": "figure",
+              "role": "contradicting",
+              "quote": "Blue marker indicates collected liquid behind the rear boot"
+            }
+          ],
+          "parameter": "internal_moisture",
+          "operator": "==",
+          "threshold": 0,
+          "unit": "mL",
+          "requires_visual_evidence": false
+        }
+      ]
+    },
+    {
+      "requirement_id": "MM-REQ-010",
+      "clause": "MM-REQ-010",
+      "title": "Instrument traceability",
+      "category": "Quality",
+      "requirement_text": "Every measuring instrument used for acceptance data shall be identified by serial number and have calibration valid within 12 months on the test date.",
+      "requirement_page": 6,
+      "logic": {
+        "operator": "ALL_OF",
+        "condition_ids": [
+          "MM-010-C1",
+          "MM-010-C2"
+        ]
+      },
+      "expected_status": "CONFLICT",
+      "expected_review_state": "Needs review",
+      "conditions": [
+        {
+          "condition_id": "MM-010-C1",
+          "description": "Each acceptance measurement identifies an instrument serial number",
+          "mandatory": true,
+          "expected_status": "PROVEN",
+          "evidence": [
+            {
+              "document": "02_Aquila_Design_Validation_Test_Report.pdf",
+              "page": 8,
+              "block_type": "table",
+              "role": "supporting",
+              "quote": "Acceptance-data instruments | DMM-22 | DAQ-14 | HI-07"
+            }
+          ],
+          "verification_method": "record_review"
+        },
+        {
+          "condition_id": "MM-010-C2",
+          "description": "Each identified instrument has calibration valid within 12 months on the test date",
+          "mandatory": true,
+          "expected_status": "FAILED",
+          "evidence": [
+            {
+              "document": "03_Aquila_Qualification_Inspection_Dossier.pdf",
+              "page": 5,
+              "block_type": "table",
+              "role": "contradicting",
+              "quote": "HI-07 | 2025-05-03 | 2026-05-02 | Expired 77 days before test - INVALID"
+            }
+          ],
+          "parameter": "calibration_age",
+          "operator": "<=",
+          "threshold": 12,
+          "unit": "months"
+        }
+      ]
+    },
+    {
+      "requirement_id": "MM-REQ-011",
+      "clause": "MM-REQ-011",
+      "title": "Drive-away inhibition",
+      "category": "Functional safety",
+      "requirement_text": "If the charge connector is engaged, commanded propulsion torque shall remain zero and vehicle movement shall not exceed 150 mm.",
+      "requirement_page": 7,
+      "logic": {
+        "operator": "IF_THEN",
+        "if_condition_id": "MM-011-C1",
+        "then_condition_ids": [
+          "MM-011-C2"
+        ]
+      },
+      "expected_status": "MISSING",
+      "expected_review_state": "Needs review",
+      "conditions": [
+        {
+          "condition_id": "MM-011-C1",
+          "description": "With charge connector engaged, commanded propulsion torque remains 0 Nm",
+          "mandatory": true,
+          "expected_status": "UNTESTED",
+          "evidence": [
+            {
+              "document": "02_Aquila_Design_Validation_Test_Report.pdf",
+              "page": 7,
+              "block_type": "text",
+              "role": "missing_marker",
+              "quote": "Drive-away inhibition with the charge connector engaged was not executed. No torque or movement measurement is available"
+            }
+          ],
+          "parameter": "propulsion_torque",
+          "operator": "==",
+          "threshold": 0,
+          "unit": "Nm"
+        },
+        {
+          "condition_id": "MM-011-C2",
+          "description": "With charge connector engaged, vehicle movement does not exceed 150 mm",
+          "mandatory": true,
+          "expected_status": "UNTESTED",
+          "evidence": [
+            {
+              "document": "02_Aquila_Design_Validation_Test_Report.pdf",
+              "page": 7,
+              "block_type": "text",
+              "role": "missing_marker",
+              "quote": "No torque or movement measurement is available"
+            }
+          ],
+          "parameter": "vehicle_movement",
+          "operator": "<=",
+          "threshold": 150,
+          "unit": "mm"
+        }
+      ]
+    },
+    {
+      "requirement_id": "MM-REQ-012",
+      "clause": "MM-REQ-012",
+      "title": "Alternative post-impact electrical protection",
+      "category": "Safety logic",
+      "requirement_text": "After frontal impact, electrical protection is acceptable when either the isolation ratio is at least 500 ohm/V or an isolation fault causes the main contactors to open within 100 ms.",
+      "requirement_page": 7,
+      "logic": {
+        "operator": "ANY_OF",
+        "condition_ids": [
+          "MM-012-C1",
+          "MM-012-C2"
+        ]
+      },
+      "expected_status": "SUPPORTED",
+      "expected_review_state": "Reviewed",
+      "conditions": [
+        {
+          "condition_id": "MM-012-C1",
+          "description": "Post-impact isolation ratio is at least 500 ohm/V",
+          "mandatory": true,
+          "expected_status": "PROVEN",
+          "evidence": [
+            {
+              "document": "02_Aquila_Design_Validation_Test_Report.pdf",
+              "page": 5,
+              "block_type": "formula",
+              "role": "supporting",
+              "quote": "Riso/Vbus = 1,260,000 ohm / 402 V = 3,134 ohm/V"
+            }
+          ],
+          "parameter": "isolation_ratio",
+          "operator": ">=",
+          "threshold": 500,
+          "unit": "ohm/V"
+        },
+        {
+          "condition_id": "MM-012-C2",
+          "description": "Isolation-fault contactor opening latency does not exceed 100 ms",
+          "mandatory": true,
+          "expected_status": "UNTESTED",
+          "evidence": [
+            {
+              "document": "02_Aquila_Design_Validation_Test_Report.pdf",
+              "page": 5,
+              "block_type": "table",
+              "role": "missing_marker",
+              "quote": "B - contactor opening <= 100 ms after injected isolation fault | Isolation-fault injection not executed | UNTESTED"
+            }
+          ],
+          "parameter": "isolation_fault_open_latency",
+          "operator": "<=",
+          "threshold": 100,
+          "unit": "ms"
+        }
+      ]
+    }
+  ]
+}

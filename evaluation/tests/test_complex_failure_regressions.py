@@ -78,7 +78,7 @@ class TestObservedComplexBenchmarkFailures(unittest.TestCase):
                     [c["condition_id"] for c in REQUIREMENTS[code]["conditions"]],
                 )
 
-    def test_req_011_ignores_unrelated_five_second_datasheet_rating(self):
+    def test_req_011_keeps_unrelated_passage_but_does_not_use_it_as_proof(self):
         contract = contract_for("REQ-AUT-011")
         candidates = [
             chunk(
@@ -88,11 +88,14 @@ class TestObservedComplexBenchmarkFailures(unittest.TestCase):
             chunk(
                 "06_Traction_Inverter_IGBT_Module_Datasheet.pdf",
                 "Peak pulse output current: 220 A for <= 5 seconds.",
+                "Supplier datasheet",
             ),
         ]
         claims = extract_all_evidence_claims(candidates, contract)
-        self.assertFalse(any(c.unit == "seconds" and c.value == 5.0 for c in claims))
+        # Retrieval/claim extraction is lossless for the semantic reasoner.
+        self.assertTrue(any(c.unit == "seconds" and c.value == 5.0 for c in claims))
         self.assertTrue(any(c.unit in ("ns", "µs") for c in claims))
+        self.assertEqual(rule_based_multi_condition_verification(contract, candidates).status, "SUPPORTED")
 
     def test_req_014_resolver_evidence_uses_inverter_scope(self):
         contract = contract_for("REQ-AUT-014")
@@ -274,7 +277,9 @@ class TestObservedComplexBenchmarkFailures(unittest.TestCase):
             chunk("17_Cybersecurity_HSM_SecOC_Validation_Report.pdf", "AES-128 CMAC generation measured at 28.5 µs. Verdict: PASS."),
         ]
         claims = extract_all_evidence_claims(candidates, contract)
-        self.assertFalse(any(c.value == 28.5 for c in claims))
+        # The unrelated measurement remains visible to the LLM, while the
+        # explicit matrix state owns the safe deterministic decision.
+        self.assertTrue(any(c.value == 28.5 for c in claims))
         _, decided = _deterministic_prechecks(contract, candidates)
         self.assertEqual(decided.coverage_status, "Missing")
 

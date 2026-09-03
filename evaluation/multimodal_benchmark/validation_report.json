@@ -1,0 +1,514 @@
+{
+  "valid": true,
+  "errors": [],
+  "warnings": [],
+  "counts": {
+    "documents": 3,
+    "requirements": 12,
+    "atomic_conditions": 25,
+    "tables_detected": 15,
+    "figures_detected": 6
+  },
+  "final_distribution": {
+    "SUPPORTED": 5,
+    "PARTIAL": 2,
+    "CONFLICT": 3,
+    "UNKNOWN": 1,
+    "MISSING": 1
+  },
+  "atomic_distribution": {
+    "PROVEN": 15,
+    "UNTESTED": 5,
+    "FAILED": 3,
+    "INCONCLUSIVE": 2
+  },
+  "document_diagnostics": {
+    "01_Aquila_BMS_System_Requirements.pdf": {
+      "page_count": 7,
+      "chunk_count": 17,
+      "parser_backend": "pymupdf-layout",
+      "tables_detected": 1,
+      "figures_detected": 1,
+      "table_structure_coverage": 1.0
+    },
+    "02_Aquila_Design_Validation_Test_Report.pdf": {
+      "page_count": 8,
+      "chunk_count": 39,
+      "parser_backend": "pymupdf-layout",
+      "tables_detected": 10,
+      "figures_detected": 3,
+      "table_structure_coverage": 1.0
+    },
+    "03_Aquila_Qualification_Inspection_Dossier.pdf": {
+      "page_count": 5,
+      "chunk_count": 21,
+      "parser_backend": "pymupdf-layout",
+      "tables_detected": 4,
+      "figures_detected": 2,
+      "table_structure_coverage": 1.0
+    }
+  },
+  "quote_checks": [
+    {
+      "requirement_id": "MM-REQ-001",
+      "condition_id": "MM-001-C1",
+      "document": "02_Aquila_Design_Validation_Test_Report.pdf",
+      "page": 2,
+      "annotated_block_type": "table",
+      "parsed_block_types": [
+        "table",
+        "text_section"
+      ],
+      "token_coverage": 1.0
+    },
+    {
+      "requirement_id": "MM-REQ-001",
+      "condition_id": "MM-001-C2",
+      "document": "02_Aquila_Design_Validation_Test_Report.pdf",
+      "page": 2,
+      "annotated_block_type": "table",
+      "parsed_block_types": [
+        "table",
+        "text_section"
+      ],
+      "token_coverage": 1.0
+    },
+    {
+      "requirement_id": "MM-REQ-002",
+      "condition_id": "MM-002-C1",
+      "document": "02_Aquila_Design_Validation_Test_Report.pdf",
+      "page": 2,
+      "annotated_block_type": "table",
+      "parsed_block_types": [
+        "table",
+        "text_section"
+      ],
+      "token_coverage": 1.0
+    },
+    {
+      "requirement_id": "MM-REQ-002",
+      "condition_id": "MM-002-C2",
+      "document": "02_Aquila_Design_Validation_Test_Report.pdf",
+      "page": 2,
+      "annotated_block_type": "table",
+      "parsed_block_types": [
+        "table",
+        "text_section"
+      ],
+      "token_coverage": 1.0
+    },
+    {
+      "requirement_id": "MM-REQ-002",
+      "condition_id": "MM-002-C3",
+      "document": "02_Aquila_Design_Validation_Test_Report.pdf",
+      "page": 2,
+      "annotated_block_type": "table",
+      "parsed_block_types": [
+        "table",
+        "text_section"
+      ],
+      "token_coverage": 1.0
+    },
+    {
+      "requirement_id": "MM-REQ-003",
+      "condition_id": "MM-003-C1",
+      "document": "02_Aquila_Design_Validation_Test_Report.pdf",
+      "page": 3,
+      "annotated_block_type": "table",
+      "parsed_block_types": [
+        "figure",
+        "table",
+        "text_section"
+      ],
+      "token_coverage": 1.0
+    },
+    {
+      "requirement_id": "MM-REQ-003",
+      "condition_id": "MM-003-C1",
+      "document": "02_Aquila_Design_Validation_Test_Report.pdf",
+      "page": 3,
+      "annotated_block_type": "figure",
+      "parsed_block_types": [
+        "figure",
+        "table",
+        "text_section"
+      ],
+      "token_coverage": 1.0
+    },
+    {
+      "requirement_id": "MM-REQ-003",
+      "condition_id": "MM-003-C2",
+      "document": "02_Aquila_Design_Validation_Test_Report.pdf",
+      "page": 3,
+      "annotated_block_type": "table",
+      "parsed_block_types": [
+        "figure",
+        "table",
+        "text_section"
+      ],
+      "token_coverage": 1.0
+    },
+    {
+      "requirement_id": "MM-REQ-003",
+      "condition_id": "MM-003-C2",
+      "document": "02_Aquila_Design_Validation_Test_Report.pdf",
+      "page": 3,
+      "annotated_block_type": "figure",
+      "parsed_block_types": [
+        "figure",
+        "table",
+        "text_section"
+      ],
+      "token_coverage": 1.0
+    },
+    {
+      "requirement_id": "MM-REQ-004",
+      "condition_id": "MM-004-C1",
+      "document": "02_Aquila_Design_Validation_Test_Report.pdf",
+      "page": 4,
+      "annotated_block_type": "table",
+      "parsed_block_types": [
+        "table",
+        "text_section"
+      ],
+      "token_coverage": 1.0
+    },
+    {
+      "requirement_id": "MM-REQ-004",
+      "condition_id": "MM-004-C2",
+      "document": "02_Aquila_Design_Validation_Test_Report.pdf",
+      "page": 4,
+      "annotated_block_type": "table",
+      "parsed_block_types": [
+        "table",
+        "text_section"
+      ],
+      "token_coverage": 1.0
+    },
+    {
+      "requirement_id": "MM-REQ-004",
+      "condition_id": "MM-004-C2",
+      "document": "02_Aquila_Design_Validation_Test_Report.pdf",
+      "page": 4,
+      "annotated_block_type": "table",
+      "parsed_block_types": [
+        "table",
+        "text_section"
+      ],
+      "token_coverage": 1.0
+    },
+    {
+      "requirement_id": "MM-REQ-004",
+      "condition_id": "MM-004-C2",
+      "document": "02_Aquila_Design_Validation_Test_Report.pdf",
+      "page": 5,
+      "annotated_block_type": "formula",
+      "parsed_block_types": [
+        "table",
+        "text_section"
+      ],
+      "token_coverage": 1.0
+    },
+    {
+      "requirement_id": "MM-REQ-005",
+      "condition_id": "MM-005-C1",
+      "document": "02_Aquila_Design_Validation_Test_Report.pdf",
+      "page": 6,
+      "annotated_block_type": "table",
+      "parsed_block_types": [
+        "figure",
+        "table",
+        "text_section"
+      ],
+      "token_coverage": 1.0
+    },
+    {
+      "requirement_id": "MM-REQ-005",
+      "condition_id": "MM-005-C2",
+      "document": "02_Aquila_Design_Validation_Test_Report.pdf",
+      "page": 6,
+      "annotated_block_type": "table",
+      "parsed_block_types": [
+        "figure",
+        "table",
+        "text_section"
+      ],
+      "token_coverage": 1.0
+    },
+    {
+      "requirement_id": "MM-REQ-005",
+      "condition_id": "MM-005-C2",
+      "document": "03_Aquila_Qualification_Inspection_Dossier.pdf",
+      "page": 3,
+      "annotated_block_type": "table",
+      "parsed_block_types": [
+        "table",
+        "text_section"
+      ],
+      "token_coverage": 1.0
+    },
+    {
+      "requirement_id": "MM-REQ-006",
+      "condition_id": "MM-006-C1",
+      "document": "03_Aquila_Qualification_Inspection_Dossier.pdf",
+      "page": 2,
+      "annotated_block_type": "figure",
+      "parsed_block_types": [
+        "figure",
+        "text_section"
+      ],
+      "token_coverage": 1.0
+    },
+    {
+      "requirement_id": "MM-REQ-006",
+      "condition_id": "MM-006-C1",
+      "document": "03_Aquila_Qualification_Inspection_Dossier.pdf",
+      "page": 2,
+      "annotated_block_type": "text",
+      "parsed_block_types": [
+        "figure",
+        "text_section"
+      ],
+      "token_coverage": 1.0
+    },
+    {
+      "requirement_id": "MM-REQ-006",
+      "condition_id": "MM-006-C2",
+      "document": "03_Aquila_Qualification_Inspection_Dossier.pdf",
+      "page": 2,
+      "annotated_block_type": "text",
+      "parsed_block_types": [
+        "figure",
+        "text_section"
+      ],
+      "token_coverage": 1.0
+    },
+    {
+      "requirement_id": "MM-REQ-007",
+      "condition_id": "MM-007-C1",
+      "document": "02_Aquila_Design_Validation_Test_Report.pdf",
+      "page": 6,
+      "annotated_block_type": "table",
+      "parsed_block_types": [
+        "figure",
+        "table",
+        "text_section"
+      ],
+      "token_coverage": 1.0
+    },
+    {
+      "requirement_id": "MM-REQ-007",
+      "condition_id": "MM-007-C1",
+      "document": "02_Aquila_Design_Validation_Test_Report.pdf",
+      "page": 6,
+      "annotated_block_type": "figure",
+      "parsed_block_types": [
+        "figure",
+        "table",
+        "text_section"
+      ],
+      "token_coverage": 1.0
+    },
+    {
+      "requirement_id": "MM-REQ-007",
+      "condition_id": "MM-007-C2",
+      "document": "02_Aquila_Design_Validation_Test_Report.pdf",
+      "page": 6,
+      "annotated_block_type": "table",
+      "parsed_block_types": [
+        "figure",
+        "table",
+        "text_section"
+      ],
+      "token_coverage": 1.0
+    },
+    {
+      "requirement_id": "MM-REQ-007",
+      "condition_id": "MM-007-C2",
+      "document": "02_Aquila_Design_Validation_Test_Report.pdf",
+      "page": 6,
+      "annotated_block_type": "figure",
+      "parsed_block_types": [
+        "figure",
+        "table",
+        "text_section"
+      ],
+      "token_coverage": 1.0
+    },
+    {
+      "requirement_id": "MM-REQ-008",
+      "condition_id": "MM-008-C1",
+      "document": "02_Aquila_Design_Validation_Test_Report.pdf",
+      "page": 7,
+      "annotated_block_type": "table",
+      "parsed_block_types": [
+        "figure",
+        "table",
+        "text_section"
+      ],
+      "token_coverage": 1.0
+    },
+    {
+      "requirement_id": "MM-REQ-008",
+      "condition_id": "MM-008-C1",
+      "document": "02_Aquila_Design_Validation_Test_Report.pdf",
+      "page": 7,
+      "annotated_block_type": "figure",
+      "parsed_block_types": [
+        "figure",
+        "table",
+        "text_section"
+      ],
+      "token_coverage": 1.0
+    },
+    {
+      "requirement_id": "MM-REQ-008",
+      "condition_id": "MM-008-C2",
+      "document": "02_Aquila_Design_Validation_Test_Report.pdf",
+      "page": 7,
+      "annotated_block_type": "table",
+      "parsed_block_types": [
+        "figure",
+        "table",
+        "text_section"
+      ],
+      "token_coverage": 1.0
+    },
+    {
+      "requirement_id": "MM-REQ-009",
+      "condition_id": "MM-009-C1",
+      "document": "02_Aquila_Design_Validation_Test_Report.pdf",
+      "page": 8,
+      "annotated_block_type": "table",
+      "parsed_block_types": [
+        "table",
+        "text_section"
+      ],
+      "token_coverage": 1.0
+    },
+    {
+      "requirement_id": "MM-REQ-009",
+      "condition_id": "MM-009-C1",
+      "document": "02_Aquila_Design_Validation_Test_Report.pdf",
+      "page": 8,
+      "annotated_block_type": "table",
+      "parsed_block_types": [
+        "table",
+        "text_section"
+      ],
+      "token_coverage": 1.0
+    },
+    {
+      "requirement_id": "MM-REQ-009",
+      "condition_id": "MM-009-C2",
+      "document": "02_Aquila_Design_Validation_Test_Report.pdf",
+      "page": 8,
+      "annotated_block_type": "table",
+      "parsed_block_types": [
+        "table",
+        "text_section"
+      ],
+      "token_coverage": 1.0
+    },
+    {
+      "requirement_id": "MM-REQ-009",
+      "condition_id": "MM-009-C2",
+      "document": "03_Aquila_Qualification_Inspection_Dossier.pdf",
+      "page": 4,
+      "annotated_block_type": "table",
+      "parsed_block_types": [
+        "figure",
+        "table",
+        "text_section"
+      ],
+      "token_coverage": 1.0
+    },
+    {
+      "requirement_id": "MM-REQ-009",
+      "condition_id": "MM-009-C2",
+      "document": "03_Aquila_Qualification_Inspection_Dossier.pdf",
+      "page": 4,
+      "annotated_block_type": "figure",
+      "parsed_block_types": [
+        "figure",
+        "table",
+        "text_section"
+      ],
+      "token_coverage": 0.667
+    },
+    {
+      "requirement_id": "MM-REQ-010",
+      "condition_id": "MM-010-C1",
+      "document": "02_Aquila_Design_Validation_Test_Report.pdf",
+      "page": 8,
+      "annotated_block_type": "table",
+      "parsed_block_types": [
+        "table",
+        "text_section"
+      ],
+      "token_coverage": 1.0
+    },
+    {
+      "requirement_id": "MM-REQ-010",
+      "condition_id": "MM-010-C2",
+      "document": "03_Aquila_Qualification_Inspection_Dossier.pdf",
+      "page": 5,
+      "annotated_block_type": "table",
+      "parsed_block_types": [
+        "table",
+        "text_section"
+      ],
+      "token_coverage": 1.0
+    },
+    {
+      "requirement_id": "MM-REQ-011",
+      "condition_id": "MM-011-C1",
+      "document": "02_Aquila_Design_Validation_Test_Report.pdf",
+      "page": 7,
+      "annotated_block_type": "text",
+      "parsed_block_types": [
+        "figure",
+        "table",
+        "text_section"
+      ],
+      "token_coverage": 1.0
+    },
+    {
+      "requirement_id": "MM-REQ-011",
+      "condition_id": "MM-011-C2",
+      "document": "02_Aquila_Design_Validation_Test_Report.pdf",
+      "page": 7,
+      "annotated_block_type": "text",
+      "parsed_block_types": [
+        "figure",
+        "table",
+        "text_section"
+      ],
+      "token_coverage": 1.0
+    },
+    {
+      "requirement_id": "MM-REQ-012",
+      "condition_id": "MM-012-C1",
+      "document": "02_Aquila_Design_Validation_Test_Report.pdf",
+      "page": 5,
+      "annotated_block_type": "formula",
+      "parsed_block_types": [
+        "table",
+        "text_section"
+      ],
+      "token_coverage": 1.0
+    },
+    {
+      "requirement_id": "MM-REQ-012",
+      "condition_id": "MM-012-C2",
+      "document": "02_Aquila_Design_Validation_Test_Report.pdf",
+      "page": 5,
+      "annotated_block_type": "table",
+      "parsed_block_types": [
+        "table",
+        "text_section"
+      ],
+      "token_coverage": 1.0
+    }
+  ]
+}

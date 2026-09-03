@@ -30,6 +30,14 @@ class Settings(BaseSettings):
     GEMINI_API_KEY: str = ""
     GOOGLE_API_KEY: str = ""
     OPENAI_API_KEY: str = ""
+    GROQ_API_KEY: str = ""
+    HF_TOKEN: str = ""
+    HUGGINGFACE_TOKEN: str = ""
+
+    # On-demand technical-figure description cascade. Gemini remains primary;
+    # Groq and Hugging Face are used only when the preceding provider fails.
+    GROQ_VISION_MODEL: str = "qwen/qwen3.6-27b"
+    HF_VISION_MODEL: str = "Qwen/Qwen2.5-VL-3B-Instruct"
 
     LLM_PROVIDER: str = "gemini"  # "gemini" or "openai"
     LLM_MODEL: str = "gemini-3.7-flash"  # Default: gemini-3.7-flash, alternative: gemini-3.1-pro-preview
@@ -44,10 +52,22 @@ class Settings(BaseSettings):
     DATABRICKS_BASE_URL: str = ""  # e.g. "https://<workspace-id>.cloud.databricks.com/ai-gateway/mlflow/v1"
     DATABRICKS_MODEL: str = "system.ai.qwen35-122b-a10b"
     DATABRICKS_FALLBACK_MODELS: list[str] = [
+        "system.ai.llama-4-maverick",
         "system.ai.qwen35-122b-a10b",
         "system.ai.meta-llama-3-3-70b-instruct",
         "system.ai.gpt-oss-120b",
     ]
+
+    # A different model reviews only condition decisions that remain
+    # internally inconsistent after the primary model's focused retry.  It is
+    # not a blanket ensemble and Python never substitutes a semantic label.
+    SECONDARY_ADJUDICATOR_ENABLED: bool = True
+    SECONDARY_ADJUDICATOR_MODEL: str = "system.ai.qwen35-122b-a10b"
+
+    # Extractive citation grounding runs only when an attributed condition's
+    # current quote is not a literal span of its cited evidence excerpt.
+    CITATION_GROUNDING_ENABLED: bool = True
+    CITATION_GROUNDING_MODEL: str = "system.ai.qwen35-122b-a10b"
 
     model_config = {
         "env_file": (
@@ -76,6 +96,21 @@ class Settings(BaseSettings):
         return os.environ.get("OPENAI_API_KEY", "")
 
     @property
+    def effective_groq_api_key(self) -> str:
+        """Return the active Groq API key without exposing it to diagnostics."""
+        return self.GROQ_API_KEY or os.environ.get("GROQ_API_KEY", "")
+
+    @property
+    def effective_hf_token(self) -> str:
+        """Return a Hugging Face Inference Providers token."""
+        return (
+            self.HF_TOKEN
+            or self.HUGGINGFACE_TOKEN
+            or os.environ.get("HF_TOKEN", "")
+            or os.environ.get("HUGGINGFACE_TOKEN", "")
+        )
+
+    @property
     def effective_databricks_token(self) -> str:
         """Return Databricks token from DATABRICKS_TOKEN or environment."""
         return self.DATABRICKS_TOKEN or os.environ.get("DATABRICKS_TOKEN", "")
@@ -93,6 +128,14 @@ SUPPORTED_MODELS = [
         "default_thinking": "HIGH",
         "description": "Recommended. Ultra-fast, highly accurate extraction with High Thinking reasoning enabled.",
         "is_default": True,
+    },
+    {
+        "id": "system.ai.llama-4-maverick",
+        "name": "Databricks Llama 4 Maverick",
+        "provider": "databricks",
+        "thinking_supported": False,
+        "description": "Primary model for the multimodal diagnostic benchmark; supports controlled comparison with the existing Databricks models.",
+        "is_default": False,
     },
     {
         "id": "system.ai.qwen35-122b-a10b",
@@ -120,8 +163,8 @@ SUPPORTED_MODELS = [
         "is_default": False,
     },
     {
-        "id": "gemini-2.5-flash",
-        "name": "Gemini 2.5 Flash",
+        "id": "gemini-3.6-flash",
+        "name": "Gemini 3.6 Flash",
         "provider": "gemini",
         "thinking_supported": True,
         "default_thinking": "MEDIUM",

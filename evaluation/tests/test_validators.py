@@ -68,6 +68,13 @@ class TestDeterministicValidators(unittest.TestCase):
         )
         self.assertEqual(unit_compatibility("kW", "A"), UnitCompatibility.INCOMPATIBLE)
 
+    def test_malformed_pdf_unit_never_crashes_the_parser(self):
+        self.assertEqual(normalize_unit_str("V / ("), "")
+        self.assertEqual(
+            unit_compatibility("V / (", "V"),
+            UnitCompatibility.UNKNOWN,
+        )
+
     def test_range_claim_converts_only_dimensionally_compatible_endpoints(self):
         compatible = extract_claims_from_chunk({
             "chunk_id": "E1",

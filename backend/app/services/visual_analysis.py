@@ -13,7 +13,7 @@ from typing import Any
 
 from app.config import settings
 from app.models.document import Document, EvidenceChunk
-from app.services.llm_client import call_gemini_generate_content
+from app.services.llm_client import call_vision_with_fallback
 
 
 logger = logging.getLogger("traceaudit.visual_analysis")
@@ -47,15 +47,15 @@ def _render_figure_png(
         return page.get_pixmap(matrix=pymupdf.Matrix(2, 2), clip=clip, alpha=False).tobytes("png")
 
 
-async def describe_retrieved_figures(
+async def describe_figure_candidates(
     requirement_items: list[dict[str, Any]],
-    documents_by_id: dict[str, Document],
-    chunk_models: dict[str, EvidenceChunk],
+    document_paths_by_id: dict[str, str],
     *,
     model: str,
-    max_concurrency: int = 3,
-) -> dict[str, int]:
-    """Describe unique retrieved figures once and update all candidate views."""
+    chunk_models: dict[str, EvidenceChunk] | None = None,
+    max_concurrency: int = 1,
+) -> dict[str, Any]:
+    """Describe retrieved figures for both production and offline evaluation."""
 
     candidates_by_id: dict[str, list[dict[str, Any]]] = {}
     for item in requirement_items:
@@ -69,12 +69,14 @@ async def describe_retrieved_figures(
         "vision_cache_hits": 0,
         "vision_analyzed": 0,
         "vision_unavailable": 0,
+        "vision_provider_counts": {},
     }
     if not candidates_by_id:
         return stats
 
     semaphore = asyncio.Semaphore(max_concurrency)
-    active_model = model if "gemini" in model.lower() else "gemini-2.5-flash"
+    active_model = model if "gemini" in model.lower() else "models/gemini-3.6-flash"
+    disabled_providers: set[str] = set()
 
     async def enrich(chunk_id: str, views: list[dict[str, Any]]) -> None:
         first = views[0]
@@ -83,42 +85,63 @@ async def describe_retrieved_figures(
         description = str(visual.get("description") or "").strip()
         if visual.get("status") == "complete" and description:
             stats["vision_cache_hits"] += 1
-        elif not settings.effective_gemini_api_key:
+        elif not any((
+            settings.effective_gemini_api_key,
+            settings.effective_groq_api_key,
+            settings.effective_hf_token,
+        )):
             visual["status"] = "unavailable"
-            visual["reason"] = "No Gemini vision API key configured"
+            visual["reason"] = "No vision provider API key configured"
             stats["vision_unavailable"] += 1
         else:
-            document = documents_by_id.get(first.get("document_id", ""))
+            document_path = document_paths_by_id.get(first.get("document_id", ""))
             page_number = first.get("page_number")
             png = None
-            if document is not None and page_number is not None:
+            if document_path and page_number is not None:
                 png = await asyncio.to_thread(
                     _render_figure_png,
-                    document.storage_path,
+                    document_path,
                     int(page_number),
                     metadata.get("bounding_boxes") or [],
                 )
             if png:
                 prompt = (
-                    "Describe and transcribe this technical-document figure for evidence retrieval. "
-                    "Capture every visible label, number, unit, legend, axis, callout, pass/fail result, "
-                    "and relationship. Do not decide regulatory compliance and do not invent obscured text. "
+                    "This image is one crop from one page of a technical document. Describe and transcribe "
+                    "only what is visibly present for evidence retrieval. Capture every readable label, "
+                    "number, unit, legend, axis, callout, pass/fail result, and relationship. Do not claim "
+                    "there are multiple panels, views, or photographs unless visible separators clearly show "
+                    "them. Do not decide regulatory compliance, infer hidden facts, invent obscured text, or "
+                    "include private reasoning or <think> tags. Return concise observable facts only. "
                     f"Caption/context: {visual.get('caption') or first.get('content', '')}"
                 )
                 async with semaphore:
-                    description = (await call_gemini_generate_content(
+                    vision_result = await call_vision_with_fallback(
                         prompt,
-                        model=active_model,
-                        thinking_level="LOW",
-                        max_output_tokens=1400,
+                        gemini_model=active_model,
+                        max_output_tokens=800,
                         image_bytes=png,
                         image_mime_type="image/png",
-                    ) or "").strip()
+                        skip_providers=disabled_providers,
+                    )
+                    description = str(vision_result.get("text") or "").strip()
+                    visual["attempted_providers"] = vision_result.get("attempted", [])
+                    if description:
+                        visual["provider"] = vision_result.get("provider", "")
+                        visual["model"] = vision_result.get("model", "")
+                        selected_provider = str(vision_result.get("provider") or "")
+                        for attempted in vision_result.get("attempted", []):
+                            provider = str(attempted.get("provider") or "")
+                            if provider and provider != selected_provider:
+                                disabled_providers.add(provider)
             if description:
+                visual.pop("reason", None)
                 visual.update({"status": "complete", "description": description})
                 stats["vision_analyzed"] += 1
+                provider = str(visual.get("provider") or "cache")
+                counts = stats["vision_provider_counts"]
+                counts[provider] = counts.get(provider, 0) + 1
             else:
-                visual.setdefault("status", "unavailable")
+                visual["status"] = "unavailable"
                 visual.setdefault("reason", "Figure could not be rendered or described")
                 stats["vision_unavailable"] += 1
 
@@ -129,7 +152,7 @@ async def describe_retrieved_figures(
             if description and "VISUAL DESCRIPTION:" not in view.get("content", ""):
                 view["content"] = f"{view.get('content', '')}\nVISUAL DESCRIPTION: {description}".strip()
 
-        model_chunk = chunk_models.get(chunk_id)
+        model_chunk = (chunk_models or {}).get(chunk_id)
         if model_chunk is not None:
             persisted = dict(model_chunk.metadata_json or {})
             persisted["visual_analysis"] = visual
@@ -139,3 +162,24 @@ async def describe_retrieved_figures(
 
     await asyncio.gather(*(enrich(chunk_id, views) for chunk_id, views in candidates_by_id.items()))
     return stats
+
+
+async def describe_retrieved_figures(
+    requirement_items: list[dict[str, Any]],
+    documents_by_id: dict[str, Document],
+    chunk_models: dict[str, EvidenceChunk],
+    *,
+    model: str,
+    max_concurrency: int = 1,
+) -> dict[str, int]:
+    """Production adapter that also persists cached visual descriptions."""
+    return await describe_figure_candidates(
+        requirement_items,
+        {
+            document_id: document.storage_path
+            for document_id, document in documents_by_id.items()
+        },
+        model=model,
+        chunk_models=chunk_models,
+        max_concurrency=max_concurrency,
+    )

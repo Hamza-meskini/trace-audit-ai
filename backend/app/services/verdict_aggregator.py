@@ -128,7 +128,12 @@ def _match_condition_results(
     if isinstance(contract, list):
         mand = [c for c in contract if getattr(c, "mandatory", True)]
     elif hasattr(contract, "atomic_conditions"):
-        mand = [c for c in contract.atomic_conditions if c.mandatory]
+        logic = getattr(contract, "logic", None)
+        declared_ids = set(getattr(logic, "condition_ids", []) or [])
+        if declared_ids:
+            mand = [c for c in contract.atomic_conditions if c.condition_id in declared_ids]
+        else:
+            mand = [c for c in contract.atomic_conditions if c.mandatory]
     else:
         mand = []
 
@@ -155,6 +160,26 @@ def _match_condition_results(
             condition_id=cond.condition_id, status="UNTESTED",
         ))
     return aligned
+
+
+def _complete_condition_results_preserving_order(
+    contract: RequirementContract,
+    condition_results: list[ConditionVerificationResult],
+) -> list[ConditionVerificationResult]:
+    """Keep model output order and append explicit placeholders for omissions."""
+    completed = list(condition_results)
+    existing = {(result.condition_id or "").lower() for result in completed}
+    for condition in contract.atomic_conditions:
+        suffix = condition.condition_id.rsplit("-", 1)[-1].lower()
+        if any(item == condition.condition_id.lower() or item == suffix or item.endswith(f"-{suffix}") for item in existing):
+            continue
+        completed.append(ConditionVerificationResult(
+            condition_id=condition.condition_id,
+            description=condition.description or condition.parameter,
+            status="UNTESTED",
+            reason="No condition result was supplied for this declared contract condition.",
+        ))
+    return completed
 
 
 # ── Qualification enforcement on condition results ──────────────────────────
@@ -186,11 +211,56 @@ def _quote_is_traceable(quote: str, contents: list[str]) -> bool:
     return any(needle in _normalized_quote_text(content) for content in contents if content)
 
 
+def _quote_is_exactly_traceable(quote: str, content: str) -> bool:
+    """Use the complete normalized quote when repairing a citation ID.
+
+    The looser leading-clause check remains useful for validating a citation
+    already chosen by the model. Reassigning provenance is a stronger action,
+    so it requires the full normalized quotation to occur in the target item.
+    """
+    normalized_quote = _normalized_quote_text(quote)
+    return bool(normalized_quote) and normalized_quote in _normalized_quote_text(content)
+
+
+def locate_exact_quote_span(quote: str, content: str) -> Optional[tuple[int, int]]:
+    """Locate a literal quote inside the exact excerpt shown to the model.
+
+    Unlike the legacy normalized traceability check, this is intentionally
+    strict: offsets are emitted only when slicing the source excerpt reproduces
+    the quote byte-for-character at the Python string level.
+    """
+    candidate = (quote or "").strip()
+    if not candidate or not content:
+        return None
+    start = content.find(candidate)
+    if start < 0:
+        return None
+    return start, start + len(candidate)
+
+
+def _validated_span_refs(
+    result: ConditionVerificationResult,
+    evidence_contents: dict[str, str],
+) -> set[str]:
+    """Return evidence IDs whose stored offsets reproduce their exact quote."""
+    valid: set[str] = set()
+    for span in result.evidence_spans:
+        evidence_id = next(iter(_resolve_evidence_ids([span.evidence_id])), "")
+        content = evidence_contents.get(evidence_id)
+        if not content or span.end_offset > len(content):
+            continue
+        if content[span.start_offset:span.end_offset] == span.exact_quote:
+            valid.add(evidence_id)
+    return valid
+
+
 def condition_attribution_is_traceable(
     result: ConditionVerificationResult,
     evidence_contents: dict[str, str],
 ) -> bool:
     """Validate that a condition quote occurs in one of its cited evidence IDs."""
+    if result.evidence_spans:
+        return bool(_validated_span_refs(result, evidence_contents))
     refs = _resolve_evidence_ids(result.evidence_ids)
     if not refs or not result.quote:
         return False
@@ -262,6 +332,24 @@ def audit_condition_evidence(
         if cr.status not in ("PROVEN", "FAILED", "PENDING"):
             continue
 
+        if cr.evidence_spans:
+            exact_span_refs = _validated_span_refs(cr, qualified_contents)
+            if not exact_span_refs:
+                _add_validation_note(
+                    cr,
+                    "CONTRADICTED",
+                    "Stored citation offsets do not reproduce an exact span of their evidence excerpt; "
+                    "the LLM status was preserved.",
+                )
+                continue
+            cr.evidence_ids = sorted(
+                exact_span_refs,
+                key=lambda item: int(re.search(r"\d+", item).group()),
+            )
+            # One canonical extractive quote keeps existing API/report fields
+            # backward compatible while the full span list carries provenance.
+            cr.quote = cr.evidence_spans[0].exact_quote
+
         refs = _resolve_evidence_ids(cr.evidence_ids)
         backing = [qual_by_id[r] for r in refs if r in qual_by_id]
         cited_contents = {
@@ -277,12 +365,34 @@ def audit_condition_evidence(
                 if _quote_is_traceable(cr.quote, [content])
             }
             if not matching_refs:
-                _add_validation_note(
-                    cr,
-                    "CONTRADICTED",
-                    "The cited quote could not be traced to the referenced evidence; the LLM status was preserved.",
-                )
-                continue
+                reconciled_refs = {
+                    evidence_id
+                    for evidence_id, content in qualified_contents.items()
+                    if _quote_is_exactly_traceable(cr.quote, content)
+                }
+                if reconciled_refs:
+                    previous_refs = sorted(refs)
+                    cr.evidence_ids = sorted(reconciled_refs, key=lambda item: int(re.search(r"\d+", item).group()))
+                    refs = reconciled_refs
+                    cited_contents = {
+                        ref: qualified_contents[ref]
+                        for ref in refs
+                        if ref in qualified_contents
+                    }
+                    matching_refs = reconciled_refs
+                    _add_validation_note(
+                        cr,
+                        "UNRESOLVED",
+                        "Citation IDs were reconciled by exact quote traceability from "
+                        f"{', '.join(previous_refs) or 'none'} to {', '.join(cr.evidence_ids)}.",
+                    )
+                else:
+                    _add_validation_note(
+                        cr,
+                        "CONTRADICTED",
+                        "The cited quote could not be traced to any retrieved evidence; the LLM status was preserved.",
+                    )
+                    continue
             backing = [qual_by_id[ref] for ref in matching_refs if ref in qual_by_id]
 
         # Diagnostics may locate a quote under another retrieved ID, but do not
@@ -337,6 +447,18 @@ def audit_condition_evidence(
 
         _add_validation_note(cr, "VALID", "Evidence attribution and admissibility checks passed.")
 
+        if (
+            cr.status == "PROVEN"
+            and cond is not None
+            and cond.requires_visual_evidence
+            and not any("VISUAL DESCRIPTION:" in content for content in cited_contents.values())
+        ):
+            _add_validation_note(
+                cr,
+                "UNRESOLVED",
+                "This condition requires visual evidence, but the cited figure was not rendered and described; semantic status was preserved.",
+            )
+
         # Per-condition parameter check on qualified backing.
         if cr.status == "PROVEN" and cond is not None and cond.parameter:
             qualified_backing = [b for b in backing if b.qualification_status == "QUALIFIED"]
@@ -374,6 +496,52 @@ def aggregate_condition_statuses(
         (status, confidence, reason)
     """
     aligned = _match_condition_results(contract, condition_results)
+    logic = getattr(contract, "logic", None)
+    operator = getattr(logic, "operator", "ALL_OF") or "ALL_OF"
+
+    if operator == "IF_THEN":
+        by_id = {result.condition_id: result for result in aligned}
+        antecedent_id = getattr(logic, "if_condition_id", None)
+        consequent_ids = list(getattr(logic, "then_condition_ids", []) or [])
+        antecedent = by_id.get(antecedent_id) if antecedent_id else None
+        if antecedent is None:
+            return (
+                "UNKNOWN", 70.0,
+                "Mechanical IF_THEN aggregation: the antecedent condition is missing.",
+            )
+        antecedent_status = (antecedent.status or "UNTESTED").upper()
+        if antecedent_status == "NOT_APPLICABLE":
+            return (
+                "SUPPORTED", 90.0,
+                "Mechanical IF_THEN aggregation: the antecedent is not applicable, so the conditional obligation is satisfied.",
+            )
+        if antecedent_status == "UNTESTED":
+            return (
+                "MISSING", 90.0,
+                "Mechanical IF_THEN aggregation: the antecedent was not tested.",
+            )
+        if antecedent_status == "INCONCLUSIVE":
+            return (
+                "UNKNOWN", 80.0,
+                "Mechanical IF_THEN aggregation: applicability of the antecedent is inconclusive.",
+            )
+        if antecedent_status == "PENDING":
+            return (
+                "PARTIAL", 85.0,
+                "Mechanical IF_THEN aggregation: applicability of the antecedent remains pending.",
+            )
+        if antecedent_status == "FAILED":
+            return (
+                "CONFLICT", 95.0,
+                "Mechanical IF_THEN aggregation: the antecedent condition was reported as FAILED rather than not applicable.",
+            )
+        aligned = [by_id[condition_id] for condition_id in consequent_ids if condition_id in by_id]
+        if len(aligned) != len(consequent_ids) or not aligned:
+            return (
+                "UNKNOWN", 70.0,
+                "Mechanical IF_THEN aggregation: one or more consequent conditions are missing.",
+            )
+
     n = len(aligned)
     counts = {"PROVEN": 0, "FAILED": 0, "PENDING": 0, "UNTESTED": 0, "INCONCLUSIVE": 0, "NOT_APPLICABLE": 0}
     for cr in aligned:
@@ -385,6 +553,37 @@ def aggregate_condition_statuses(
         return (
             "UNKNOWN", 75.0,
             "Mechanical aggregation: no applicable mandatory condition was available.",
+        )
+
+    if operator == "ANY_OF":
+        if counts["PROVEN"] > 0:
+            return (
+                "SUPPORTED", 95.0,
+                f"Mechanical ANY_OF aggregation: {counts['PROVEN']} alternative path(s) are PROVEN.",
+            )
+        if counts["PENDING"] > 0:
+            return (
+                "PARTIAL", 88.0,
+                f"Mechanical ANY_OF aggregation: {counts['PENDING']} alternative path(s) remain PENDING.",
+            )
+        if counts["INCONCLUSIVE"] > 0:
+            return (
+                "UNKNOWN", 80.0,
+                f"Mechanical ANY_OF aggregation: {counts['INCONCLUSIVE']} alternative path(s) are INCONCLUSIVE.",
+            )
+        if counts["UNTESTED"] > 0:
+            return (
+                "MISSING", 92.0,
+                "Mechanical ANY_OF aggregation: no alternative compliance path was tested.",
+            )
+        if counts["FAILED"] > 0:
+            return (
+                "CONFLICT", 95.0,
+                "Mechanical ANY_OF aggregation: every applicable alternative path FAILED.",
+            )
+        return (
+            "UNKNOWN", 75.0,
+            "Mechanical ANY_OF aggregation: no applicable alternative path was available.",
         )
 
     # 1. Any mandatory failure -> CONFLICT
@@ -457,7 +656,10 @@ def finalize_verdict(
     provisional_conditions = _condition_snapshot(list(analysis.condition_results or []))
     # Audit a deep copy so validation metadata is available without changing
     # the reasoner's original objects or their semantic statuses.
-    crs = [result.model_copy(deep=True) for result in (analysis.condition_results or [])]
+    crs = _complete_condition_results_preserving_order(
+        contract,
+        [result.model_copy(deep=True) for result in (analysis.condition_results or [])],
+    )
     crs = audit_condition_evidence(contract, crs, qualifications, qualified_contents)
     if not crs:
         crs = [ConditionVerificationResult(condition_id=c.condition_id, status="UNTESTED")
@@ -537,6 +739,18 @@ def _numeric_condition_status(
               reach the required bound (narrower range: partially verified)
     None    — the claim says nothing usable about this condition
     """
+    # Explicit categorical observations (notably IP ratings) can be compared
+    # without inventing numeric semantics.
+    if (
+        claim.claim_type == "boolean"
+        and isinstance(claim.value, str)
+        and isinstance(cond.threshold, str)
+        and (cond.operator or "").strip() in ("==", "=")
+    ):
+        observed = re.sub(r"[^a-z0-9]", "", claim.value.lower())
+        required = re.sub(r"[^a-z0-9]", "", cond.threshold.lower())
+        return "PROVEN" if observed == required else "FAILED"
+
     if claim.claim_type not in ("threshold", "numeric_range", "discrete_sweep"):
         return None
     if not are_units_compatible(claim.unit, cond.unit):
@@ -686,6 +900,15 @@ def condition_results_from_claims(
 
     results: list[ConditionVerificationResult] = []
 
+    # This function is the conservative no-LLM fallback. These phrases do not
+    # make a passage irrelevant, but they do mean that a locally parsed number
+    # or PASS token is not sufficient for automatic proof. The semantic LLM
+    # still receives the complete passage and may resolve the qualification.
+    inconclusive_observation_markers = (
+        "preliminary", "uncalibrated", "calibration remains", "remains unproven",
+        "not representative", "open air", "engineering only", "draft result",
+    )
+
     for cond in mand:
         status: str = "UNTESTED"
         reason = "No qualified evidence addresses this condition."
@@ -728,6 +951,11 @@ def condition_results_from_claims(
                 has_qualified = bool(linked_qualified)
             any_contradiction_relevant = any(_is_contradiction_relevant(q) for q in claim_quals)
 
+            claim_text_lower = (claim.quote or "").lower()
+            locally_inconclusive = any(
+                marker in claim_text_lower for marker in inconclusive_observation_markers
+            )
+
             # Parameter gate: skip claims whose evidence discusses a
             # demonstrably different quantity than this condition.
             claim_parameter_match = parameters_compatible(cond.parameter, claim.parameter, claim.quote)
@@ -743,6 +971,12 @@ def condition_results_from_claims(
             if claim.parameter and claim_parameter_match is False and not is_tolerance_from_nominal:
                 continue
             if not claim.parameter and all(condition_evidence_compatible(cond, q) is False for q in claim_quals):
+                continue
+
+            if locally_inconclusive:
+                # Preserve the fact that evidence addresses the condition, but
+                # never let the deterministic fallback auto-close it.
+                inconclusive_found = True
                 continue
 
             st = _numeric_condition_status(contract, cond, claim)
@@ -788,8 +1022,14 @@ def condition_results_from_claims(
             # Formal verdict mapping: only onto conditions the verdict
             # addresses. Failure dominates proof for safety-critical results.
             if claim.claim_type == "test_verdict" and has_qualified:
-                addresses = any(condition_evidence_compatible(cond, q) is True for q in claim_quals) \
-                    or len(mand) == 1
+                compatibility = [condition_evidence_compatible(cond, q) for q in claim_quals]
+                # A bare PASS cannot prove an unnamed condition. Require an
+                # affirmative parameter match or an explicit requirement ID;
+                # ambiguous cases belong to the semantic LLM.
+                addresses = any(item is True for item in compatibility) or (
+                    contract.req_code.lower() in claim_text_lower
+                    and all(q.parameter_compatible is not False for q in claim_quals)
+                )
                 verdict = (claim.test_result or "").upper()
                 if addresses and verdict == "FAIL":
                     violation = True

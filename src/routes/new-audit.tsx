@@ -71,8 +71,8 @@ function WizardPage() {
       default_thinking: "HIGH",
     },
     {
-      id: "gemini-2.5-flash",
-      name: "Gemini 2.5 Flash",
+      id: "gemini-3.6-flash",
+      name: "Gemini 3.6 Flash",
       description: "Fast production model for high-throughput batch extraction.",
       thinking_supported: true,
       default_thinking: "MEDIUM",

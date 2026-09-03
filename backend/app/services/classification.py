@@ -66,6 +66,51 @@ RECOMMENDATIONS = {
 SUPPORTED_AUTO_CLOSE_MIN_CONFIDENCE = 90.0
 
 
+def _supporting_results_for_review(
+    contract: Optional[RequirementContract],
+    condition_results: list[ConditionVerificationResult],
+) -> tuple[list[ConditionVerificationResult], list[str]]:
+    """Return the proof path and unresolved IDs relevant to a SUPPORTED verdict."""
+    if contract is None:
+        unresolved = [
+            result.condition_id for result in condition_results
+            if result.status not in ("PROVEN", "NOT_APPLICABLE")
+        ]
+        return condition_results, unresolved
+
+    by_id = {result.condition_id: result for result in condition_results}
+    logic = contract.logic
+    if logic.operator == "ANY_OF":
+        governed = [by_id[item] for item in logic.condition_ids if item in by_id]
+        proven = [result for result in governed if result.status == "PROVEN"]
+        return proven, [] if proven else list(logic.condition_ids)
+
+    if logic.operator == "IF_THEN":
+        antecedent = by_id.get(logic.if_condition_id or "")
+        if antecedent is not None and antecedent.status == "NOT_APPLICABLE":
+            return [antecedent], []
+        consequents = [by_id[item] for item in logic.then_condition_ids if item in by_id]
+        unresolved = [
+            item for item in logic.then_condition_ids
+            if item not in by_id or by_id[item].status != "PROVEN"
+        ]
+        proof = ([antecedent] if antecedent is not None else []) + consequents
+        if antecedent is None or antecedent.status != "PROVEN":
+            unresolved.insert(0, logic.if_condition_id or "antecedent")
+        return proof, unresolved
+
+    governed_ids = list(logic.condition_ids) or [
+        condition.condition_id for condition in contract.verification_conditions
+        if condition.mandatory
+    ]
+    governed = [by_id[item] for item in governed_ids if item in by_id]
+    unresolved = [
+        item for item in governed_ids
+        if item not in by_id or by_id[item].status not in ("PROVEN", "NOT_APPLICABLE")
+    ]
+    return governed, unresolved
+
+
 def _supported_review_gate(
     outcome: ValidationOutcome,
     pipeline_diagnostics: Optional[dict[str, Any]] = None,
@@ -116,21 +161,10 @@ def _supported_review_gate(
     if not condition_results:
         reasons.append("No auditable atomic-condition results were supplied.")
     else:
-        non_proven = [
-            result.condition_id
-            for result in condition_results
-            if result.status not in ("PROVEN", "NOT_APPLICABLE")
-        ]
-        if non_proven:
-            reasons.append(
-                "Not every applicable atomic condition is PROVEN: "
-                + ", ".join(non_proven)
-                + "."
-            )
-
+        proof_results, non_proven = _supporting_results_for_review(contract, condition_results)
         contradicted = [
             result.condition_id
-            for result in condition_results
+            for result in proof_results
             if result.status == "PROVEN" and result.validation_state == "CONTRADICTED"
         ]
         if contradicted:
@@ -142,7 +176,7 @@ def _supported_review_gate(
 
         unresolved = [
             result.condition_id
-            for result in condition_results
+            for result in proof_results
             if result.status == "PROVEN" and result.validation_state != "VALID"
             and result.condition_id not in contradicted
         ]
@@ -167,6 +201,13 @@ def _supported_review_gate(
         reasons.append(
             f"{confidence_source} confidence {review_confidence:.1f}% is below the "
             f"{SUPPORTED_AUTO_CLOSE_MIN_CONFIDENCE:.0f}% automatic-closure threshold."
+        )
+
+    if condition_results and non_proven:
+        reasons.append(
+            "Not every applicable atomic condition is PROVEN: "
+            + ", ".join(non_proven)
+            + "."
         )
 
     return reasons
@@ -537,6 +578,7 @@ def assess_requirement_coverage(
     clause_coverage: Optional[list[dict[str, Any]]] = None,
     unmapped_obligations: Optional[list[str]] = None,
     contract_complete: Optional[bool] = None,
+    logic: Optional[dict[str, Any]] = None,
 ) -> RequirementAssessment:
     """Assess a requirement using the deterministic validation engine only (no LLM calls)."""
     contract = parse_requirement_contract(
@@ -548,6 +590,7 @@ def assess_requirement_coverage(
         clause_coverage=clause_coverage,
         unmapped_obligations=unmapped_obligations,
         contract_complete=contract_complete,
+        logic=logic,
     )
 
     context, decided = _deterministic_prechecks(
@@ -596,6 +639,7 @@ async def assess_requirement_coverage_async(
     clause_coverage: Optional[list[dict[str, Any]]] = None,
     unmapped_obligations: Optional[list[str]] = None,
     contract_complete: Optional[bool] = None,
+    logic: Optional[dict[str, Any]] = None,
 ) -> RequirementAssessment:
     """Async assessment that escalates inconclusive cases to the LLM verification reasoner."""
     contract = parse_requirement_contract(
@@ -607,6 +651,7 @@ async def assess_requirement_coverage_async(
         clause_coverage=clause_coverage,
         unmapped_obligations=unmapped_obligations,
         contract_complete=contract_complete,
+        logic=logic,
     )
 
     context, decided = _deterministic_prechecks(
@@ -652,7 +697,7 @@ async def batch_assess_requirements(
     req_items: list[dict[str, Any]],
     model: Optional[str] = None,
     thinking_level: Optional[str] = None,
-    batch_size: int = 5,
+    batch_size: int = 3,
     spec_doc_names: Optional[set[str]] = None,
 ) -> dict[str, RequirementAssessment]:
     """Assess a batch of requirements: deterministic checks first, batched LLM reasoning for the rest.
@@ -677,6 +722,7 @@ async def batch_assess_requirements(
             clause_coverage=item.get("clause_coverage"),
             unmapped_obligations=item.get("unmapped_obligations"),
             contract_complete=item.get("contract_complete"),
+            logic=item.get("logic"),
         )
         candidate_chunks = item.get("candidate_chunks", [])
 
@@ -701,6 +747,7 @@ async def batch_assess_requirements(
             "contract": contract,
             "candidate_chunks": candidate_chunks,
             "non_spec_items": non_spec_items,
+            "spec_doc_names": spec_doc_names,
         })
 
 

@@ -11,6 +11,9 @@ VerificationTopLevelStatus = Literal["SUPPORTED", "PARTIAL", "MISSING", "UNKNOWN
 ConditionValidationState = Literal["VALID", "UNRESOLVED", "CONTRADICTED"]
 EvidenceRelationship = Literal["SATISFIES", "VIOLATES", "PARTIAL_COVERAGE", "NOT_ADDRESSED", "UNCLEAR"]
 EvidenceValueRole = Literal["OBSERVED", "REQUIRED_OR_PLANNED", "STATUS_ONLY", "NOT_ADDRESSED", "UNCLEAR"]
+TestExecutionState = Literal["EXECUTED", "NOT_EXECUTED", "NOT_ADDRESSED", "UNKNOWN"]
+SubjectIdentityState = Literal["CONFIRMED", "UNCONFIRMED", "NOT_REQUIRED", "UNKNOWN"]
+CoverageScopeState = Literal["ALL_REQUIRED", "SAMPLE", "SINGLE_ITEM", "NOT_APPLICABLE", "UNKNOWN"]
 
 
 # Canonical synonym mapping dictionaries for real-world enterprise engineering vocabularies
@@ -128,6 +131,22 @@ class RequirementCondition(BaseModel):
     is_mandatory: bool = True
 
 
+class EvidenceSpanReference(BaseModel):
+    """Pipeline-verified extractive provenance for one condition citation.
+
+    Offsets are zero-based and end-exclusive within the exact evidence excerpt
+    identified by ``evidence_id``.  These fields are produced and checked by
+    the pipeline, rather than trusted directly from the reasoning response.
+    """
+
+    evidence_id: str
+    exact_quote: str
+    start_offset: int = Field(ge=0)
+    end_offset: int = Field(gt=0)
+    document_name: Optional[str] = None
+    page_number: Optional[int] = None
+
+
 class ConditionVerificationResult(BaseModel):
     """Evaluation result for an individual atomic condition."""
     condition_id: str
@@ -145,8 +164,12 @@ class ConditionVerificationResult(BaseModel):
     observed_unit: Optional[str] = None
     evidence_value_role: EvidenceValueRole = "UNCLEAR"
     relationship: EvidenceRelationship = "UNCLEAR"
+    execution_state: TestExecutionState = "UNKNOWN"
+    subject_identity: SubjectIdentityState = "UNKNOWN"
+    coverage_scope: CoverageScopeState = "UNKNOWN"
     evidence_ids: list[str] = Field(default_factory=list)
     quote: Optional[str] = None
+    evidence_spans: SkipJsonSchema[list[EvidenceSpanReference]] = Field(default_factory=list)
     reason: Optional[str] = None
 
     @field_validator("status", mode="before")
@@ -245,3 +268,24 @@ class BatchVerificationItemResult(BaseModel):
 class BatchVerificationResult(BaseModel):
     """Batch verification payload from Gemini LLM."""
     batch_results: list[BatchVerificationItemResult] = Field(default_factory=list)
+
+
+class SemanticAdjudicationResult(BaseModel):
+    """Focused second-model decision for only the inconsistent conditions."""
+
+    condition_results: list[ConditionVerificationResult] = Field(default_factory=list)
+    reason: Optional[str] = None
+
+
+class CitationSpanCandidate(BaseModel):
+    """An extractive quote proposed by the citation-grounding model."""
+
+    condition_id: str
+    evidence_id: str
+    exact_quote: str
+
+
+class CitationGroundingResult(BaseModel):
+    """Focused model response containing extractive citations only."""
+
+    citations: list[CitationSpanCandidate] = Field(default_factory=list)

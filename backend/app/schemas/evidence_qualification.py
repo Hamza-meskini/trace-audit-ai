@@ -106,6 +106,13 @@ def methods_compatible(
 
 _SCOPE_PATTERNS: list[tuple[str, tuple[str, ...]]] = [
     ("ASIC", ("asic", "cell supervisory")),
+    # Keep supplier power-module limits distinct from complete inverter test
+    # results. A module rating is useful context, but is not automatically a
+    # limit for the assembled inverter at a different electrical boundary.
+    ("PowerModule", (
+        "igbt module", "igbt_module", "sic module", "sic_module",
+        "power module", "power_module",
+    )),
     ("SafetyController", ("safety microcontroller", "watchdog", "brownout", "pmic", "core voltage", "lockstep")),
     ("SecuritySystem", ("cybersecurity", "secure logging", "security event", "secevent", "hsm", "secoc")),
     ("ECU", ("ecu", "electronic control unit")),
@@ -127,6 +134,7 @@ _SCOPE_FAMILY = {
     "BMS": "battery_system",
     "PACK": "battery_system",
     "ASIC": "asic",
+    "POWERMODULE": "power_module",
     "INVERTER": "inverter",
     "HVIL": "hvil",
     "DC-DC": "dcdc",

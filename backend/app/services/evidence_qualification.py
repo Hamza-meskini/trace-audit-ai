@@ -42,16 +42,6 @@ AUTHORITATIVE_AUTHORITIES = (
 )
 
 
-def _contract_parameter(contract: RequirementContract) -> Optional[str]:
-    """Primary parameter named by the contract (or its first atomic condition)."""
-    if contract.parameter:
-        return contract.parameter
-    for cond in contract.atomic_conditions:
-        if cond.parameter:
-            return cond.parameter
-    return None
-
-
 def _contract_parameters(contract: RequirementContract) -> list[str]:
     params: list[str] = []
     for value in [contract.parameter, *[c.parameter for c in contract.atomic_conditions]]:
@@ -85,9 +75,10 @@ def qualify_evidence(
     evidence_parameter: Optional[str] = None,
     source_chunk_id: Optional[str] = None,
     document_profile: Optional[dict[str, Any]] = None,
+    metadata: Optional[dict[str, Any]] = None,
 ) -> EvidenceQualification:
     """Qualify one evidence unit against one requirement contract."""
-    local_content = _isolate_relevant_passage(content, contract)
+    local_content = _isolate_relevant_passage(content, contract, metadata)
     document_role = _profile_field(document_profile, "primary_role")
     profile_confidence = _profile_field(document_profile, "confidence")
     profile_requires_review = bool(_profile_field(document_profile, "requires_review", False))
@@ -201,11 +192,6 @@ def qualify_evidence(
         reasons.append(
             f"entity scope mismatch: evidence is about '{scope}' while requirement targets '{contract.scope or 'System'}'"
         )
-    elif param_ok is False:
-        status = "NOT_QUALIFIED"
-        reasons.append(
-            f"parameter mismatch: evidence discusses '{primary_param}' while requirement concerns '{_contract_parameter(contract)}'"
-        )
     elif not is_authoritative:
         status = "PARTIALLY_QUALIFIED"
         if not profile_trusted:
@@ -220,6 +206,10 @@ def qualify_evidence(
         reasons.append(
             f"authoritative '{authority}' record at matching scope with compatible verification method"
         )
+    if param_ok is False:
+        reasons.append(
+            "lexical parameter alignment is uncertain; the condition reasoner must decide semantic relevance"
+        )
 
     return EvidenceQualification(
         evidence_id=evidence_id,
@@ -229,7 +219,11 @@ def qualify_evidence(
         document_profile_confidence=profile_confidence,
         source_authority=authority,
         passage_modality=passage_modality,
-        relevance_status="RELEVANT",
+        relevance_status=(
+            "UNCERTAIN"
+            if param_ok is False
+            else "RELEVANT"
+        ),
         entity_scope=scope,
         parameter=primary_param,
         parameters_found=params_found,
@@ -263,6 +257,7 @@ def qualify_evidence_chunks(
             doc_type=chunk.get("doc_type"),
             source_chunk_id=chunk.get("chunk_id") or chunk.get("id"),
             document_profile=chunk.get("document_profile"),
+            metadata=chunk.get("metadata"),
         ))
     return quals
 

@@ -11,7 +11,10 @@ from app.schemas.claim import (
     SourceAuthority,
 )
 from app.schemas.verification_result import (
+    CitationGroundingResult,
     ConditionVerificationResult,
+    EvidenceSpanReference,
+    SemanticAdjudicationResult,
     VerificationAnalysisResult,
     BatchVerificationResult,
 )
@@ -30,9 +33,642 @@ from app.services.verdict_aggregator import (
     aggregate_condition_statuses,
     finalize_verdict,
     condition_results_from_claims,
+    locate_exact_quote_span,
 )
 
 logger = logging.getLogger("traceaudit.verifier")
+
+
+def _condition_line(condition: AtomicConditionContract) -> str:
+    target = condition.threshold
+    if target is None:
+        if condition.min_value is not None and condition.max_value is not None:
+            target = f"{condition.min_value}..{condition.max_value}"
+        elif condition.max_value is not None:
+            target = condition.max_value
+        elif condition.min_value is not None:
+            target = condition.min_value
+        else:
+            target = ""
+    visual = "; VISUAL EVIDENCE REQUIRED" if condition.requires_visual_evidence else ""
+    return (
+        f"  - Condition [{condition.condition_id}]: {condition.description or condition.parameter} "
+        f"({condition.operator or ''} {target} {condition.unit or ''}; "
+        f"role={condition.condition_role}; mandatory={condition.mandatory}{visual})"
+    )
+
+
+def _logic_line(contract: RequirementContract) -> str:
+    logic = contract.logic
+    if logic.operator == "IF_THEN":
+        return (
+            f"IF_THEN: if={logic.if_condition_id}; "
+            f"then={','.join(logic.then_condition_ids)}"
+        )
+    return f"{logic.operator}: {','.join(logic.condition_ids)}"
+
+
+def _canonical_condition_results(
+    contract: RequirementContract,
+    results: list[ConditionVerificationResult],
+) -> tuple[list[ConditionVerificationResult], list[str]]:
+    """Return at most one result for every declared atomic condition."""
+    expected_conditions = list(contract.atomic_conditions)
+    expected = [condition.condition_id for condition in expected_conditions]
+    descriptions = {
+        condition.condition_id: condition.description
+        for condition in expected_conditions
+    }
+    remaining = list(results or [])
+    canonical: list[ConditionVerificationResult] = []
+    missing: list[str] = []
+    for condition_id in expected:
+        suffix = condition_id.rsplit("-", 1)[-1].lower()
+        match_index = next((
+            index for index, result in enumerate(remaining)
+            if result.condition_id == condition_id
+            or (result.condition_id or "").lower() == suffix
+            or (result.condition_id or "").lower().endswith(f"-{suffix}")
+        ), None)
+        if match_index is None:
+            missing.append(condition_id)
+            continue
+        result = remaining.pop(match_index)
+        result.condition_id = condition_id
+        if not result.description:
+            result.description = descriptions.get(condition_id)
+        canonical.append(result)
+    return canonical, missing
+
+
+def _fill_missing_conditions(
+    contract: RequirementContract,
+    results: list[ConditionVerificationResult],
+) -> list[ConditionVerificationResult]:
+    canonical, missing = _canonical_condition_results(contract, results)
+    descriptions = {condition.condition_id: condition.description for condition in contract.atomic_conditions}
+    canonical.extend(
+        ConditionVerificationResult(
+            condition_id=condition_id,
+            description=descriptions.get(condition_id),
+            status="INCONCLUSIVE",
+            evidence_value_role="UNCLEAR",
+            relationship="UNCLEAR",
+            reason="The LLM omitted this declared condition after a focused retry.",
+        )
+        for condition_id in missing
+    )
+    order = {condition.condition_id: index for index, condition in enumerate(contract.atomic_conditions)}
+    canonical.sort(key=lambda result: order.get(result.condition_id, len(order)))
+    return canonical
+
+
+def _logic_retry_condition_ids(
+    contract: RequirementContract,
+    results: list[ConditionVerificationResult],
+) -> list[str]:
+    """Identify unresolved Boolean gates that deserve one focused LLM pass."""
+    by_id = {result.condition_id: result for result in results}
+    unresolved = {"PENDING", "UNTESTED", "INCONCLUSIVE"}
+    if contract.logic.operator == "ANY_OF":
+        governed = list(contract.logic.condition_ids)
+        statuses = {(by_id.get(item).status if by_id.get(item) else "UNTESTED") for item in governed}
+        if statuses & unresolved:
+            # Revisit the whole alternative set so the model can select a
+            # proven path and mark genuinely unused branches NOT_APPLICABLE.
+            return governed
+    if contract.logic.operator == "IF_THEN":
+        targets: list[str] = []
+        antecedent_id = contract.logic.if_condition_id
+        antecedent = by_id.get(antecedent_id) if antecedent_id else None
+        if antecedent_id and (antecedent is None or antecedent.status in unresolved):
+            targets.append(antecedent_id)
+        elif antecedent is not None and antecedent.status == "PROVEN":
+            targets.extend(
+                condition_id
+                for condition_id in contract.logic.then_condition_ids
+                if by_id.get(condition_id) is None or by_id[condition_id].status in unresolved
+            )
+        return targets
+    return []
+
+
+def _focused_logic_retry_prompt(
+    base_prompt: str,
+    contract: RequirementContract,
+    results: list[ConditionVerificationResult],
+    target_ids: list[str],
+) -> str:
+    previous = [
+        result.model_dump(exclude_none=True)
+        for result in results
+        if result.condition_id in set(target_ids)
+    ]
+    return (
+        base_prompt
+        + "\n\nFOCUSED REGULATORY-LOGIC REVIEW REQUIRED:\n"
+        + f"- Logic: {_logic_line(contract)}\n"
+        + f"- Recheck condition IDs: {', '.join(target_ids)}\n"
+        + f"- Previous findings: {previous}\n"
+        + "Compare operands and measurements directly. A table need not contain an explicit prose conclusion: "
+          "for example, observed A=3.4 and B=2.7 proves A>=B. PDF extraction may render subscripts "
+          "as spaced labels such as 'V = 1' for V1 and primes as 'V ’ = 1' for V1-prime. "
+          "For ANY_OF, identify the demonstrated path and mark genuinely unused alternatives NOT_APPLICABLE. "
+          "Return every declared condition exactly once with exact citations."
+    )
+
+
+_NO_EVIDENCE_REASON_MARKERS = (
+    "no evidence", "no direct evidence", "not documented", "not provided",
+    "does not address", "not addressed", "no test result", "no measurement",
+)
+_ASSUMPTION_REASON_MARKERS = (
+    "implies", "implying", "assume", "assumed", "likely", "suggests",
+    "although not explicit", "not explicitly", "presumably", "can be inferred",
+)
+_NOT_EXECUTED_MARKERS = (
+    "not tested", "not measured", "not executed", "not performed",
+    "test was not", "measurement is unavailable", "no measurement",
+)
+_HARD_VIOLATION_MARKERS = (
+    "visible leakage", "result: fail", "verdict: fail", "nonconform",
+    "non-conform", "violation", "exceeded", "breach", "failed inspection",
+)
+
+
+def _semantic_retry_condition_ids(
+    contract: RequirementContract,
+    results: list[ConditionVerificationResult],
+    evidence_chunks: list[dict[str, Any]],
+) -> list[str]:
+    """Locate ambiguous first-pass semantics that deserve one LLM recheck.
+
+    This function never changes a status. It catches self-described assumptions,
+    UNTESTED/INCONCLUSIVE taxonomy drift, and structurally split forms that show
+    both a checklist failure label and an explicit measured/result value.
+    """
+    targets: set[str] = set()
+    evidence_text = "\n".join(
+        str(chunk.get("content") or chunk.get("quote") or "")
+        for chunk in evidence_chunks
+    ).lower()
+    visual_interpreted = "visual description:" in evidence_text
+    conditions = {
+        condition.condition_id: condition
+        for condition in contract.atomic_conditions
+    }
+    for result in results:
+        reason = f"{result.reason or ''} {result.quote or ''}".lower()
+        condition = conditions.get(result.condition_id)
+        if result.status == "INCONCLUSIVE" and any(marker in reason for marker in _NO_EVIDENCE_REASON_MARKERS):
+            targets.add(result.condition_id)
+        if result.status == "PROVEN" and any(marker in reason for marker in _ASSUMPTION_REASON_MARKERS):
+            targets.add(result.condition_id)
+        if result.status == "FAILED" and (
+            result.execution_state == "NOT_EXECUTED"
+            or any(marker in reason for marker in _NOT_EXECUTED_MARKERS)
+        ):
+            targets.add(result.condition_id)
+        if (
+            result.status == "INCONCLUSIVE"
+            and any(marker in evidence_text for marker in _HARD_VIOLATION_MARKERS)
+        ):
+            targets.add(result.condition_id)
+        if condition and condition.requires_visual_evidence and visual_interpreted:
+            if result.status == "UNTESTED":
+                targets.add(result.condition_id)
+            if result.status == "PROVEN" and result.subject_identity != "CONFIRMED":
+                targets.add(result.condition_id)
+            universal = bool(re.search(
+                r"\b(?:all|every|each|any)\b",
+                f"{contract.raw_text} {condition.description or ''}",
+                re.IGNORECASE,
+            ))
+            if (
+                result.status == "PROVEN"
+                and universal
+                and result.coverage_scope != "ALL_REQUIRED"
+            ):
+                targets.add(result.condition_id)
+
+    same_page: dict[tuple[str, Any], list[str]] = {}
+    for chunk in evidence_chunks:
+        key = (str(chunk.get("document_id") or chunk.get("document_name") or ""), chunk.get("page_number"))
+        same_page.setdefault(key, []).append(str(chunk.get("content") or chunk.get("quote") or ""))
+    for passages in same_page.values():
+        combined = "\n".join(passages).lower()
+        checklist_failure = bool(re.search(r"(?:yes|no)\s*\(\s*fail\s*\)|question[^\n]*(?:fail|pass)", combined))
+        explicit_result = bool(re.search(r"(?:result|measured|measurement|total|value)\s*[:=]?\s*-?\d", combined))
+        if checklist_failure and explicit_result:
+            targets.update(
+                result.condition_id
+                for result in results
+                if result.status in {"PROVEN", "FAILED", "PENDING", "INCONCLUSIVE"}
+            )
+
+    declared = {condition.condition_id for condition in contract.atomic_conditions}
+    return [
+        condition.condition_id
+        for condition in contract.atomic_conditions
+        if condition.condition_id in targets & declared
+    ]
+
+
+def _focused_semantic_retry_prompt(
+    base_prompt: str,
+    results: list[ConditionVerificationResult],
+    target_ids: list[str],
+) -> str:
+    previous = [
+        result.model_dump(exclude_none=True)
+        for result in results
+        if result.condition_id in set(target_ids)
+    ]
+    return (
+        base_prompt
+        + "\n\nFOCUSED EVIDENCE-SEMANTICS REVIEW REQUIRED:\n"
+        + f"- Recheck condition IDs: {', '.join(target_ids)}\n"
+        + f"- Previous findings: {previous}\n"
+        + "Reconcile excerpts from the same document and page as one structured form/table before deciding. "
+          "A printed checklist question or its Pass/Fail option labels are not an observed answer unless the "
+          "selected state is unambiguous; prefer the explicit measured/result field. If no supplied passage "
+          "addresses a condition, use UNTESTED. Use INCONCLUSIVE only when relevant evidence addresses that "
+          "condition but remains ambiguous, incomplete, method-incompatible, or inadmissible. A test explicitly "
+          "recorded as not executed/not measured is UNTESTED, never FAILED. A qualified observed violation is "
+          "FAILED, not INCONCLUSIVE, even when another excerpt reports an earlier PASS; use INCONCLUSIVE only "
+          "when subject identity or applicability of that violation is genuinely uncertain. For visual evidence, "
+          "set subject_identity and coverage_scope explicitly: one unidentified photograph cannot prove the "
+          "controlled article or an every/all population claim. Never use implication, likelihood, or an unstated "
+          "installation assumption as proof. Return every declared condition exactly once with exact evidence "
+          "IDs and quotes. HARD OUTPUT CONSISTENCY CONSTRAINTS: execution_state=NOT_EXECUTED requires "
+          "status=UNTESTED, evidence_value_role=NOT_ADDRESSED or REQUIRED_OR_PLANNED, and relationship="
+          "NOT_ADDRESSED. It is invalid to return FAILED, VIOLATES, or OBSERVED for an unexecuted test or "
+          "unmeasured endpoint. status=FAILED requires execution_state=EXECUTED plus an observed violating "
+          "result. Apply these constraints even when the requirement expected the omitted endpoint."
+    )
+
+
+def _independent_secondary_model(primary_model: str) -> Optional[str]:
+    """Choose a configured adjudicator that differs from the primary model."""
+    configured = (settings.SECONDARY_ADJUDICATOR_MODEL or "").strip()
+    if configured and configured.lower() != primary_model.lower():
+        return configured
+    return next((
+        candidate
+        for candidate in settings.DATABRICKS_FALLBACK_MODELS
+        if candidate and candidate.lower() != primary_model.lower()
+    ), None)
+
+
+def _focused_evidence_catalog(
+    contract: RequirementContract,
+    evidence_chunks: list[dict[str, Any]],
+) -> str:
+    """Render the same isolated evidence excerpts with stable E identifiers."""
+    blocks: list[str] = []
+    for index, chunk in enumerate(evidence_chunks, 1):
+        content = _isolate_relevant_passage(
+            str(chunk.get("content") or chunk.get("quote") or "").strip(),
+            contract,
+            chunk.get("metadata"),
+        )
+        blocks.append(
+            f"[E{index}] {chunk.get('document_name', 'Document')}"
+            f" page={chunk.get('page_number') or 'unknown'}\n{content}"
+        )
+    return "\n\n".join(blocks) if blocks else "[No evidence supplied]"
+
+
+def _secondary_adjudication_prompt(
+    contract: RequirementContract,
+    evidence_chunks: list[dict[str, Any]],
+    results: list[ConditionVerificationResult],
+    target_ids: list[str],
+) -> str:
+    conditions = {
+        condition.condition_id: condition
+        for condition in contract.atomic_conditions
+    }
+    target_set = set(target_ids)
+    condition_block = "\n".join(
+        _condition_line(conditions[condition_id])
+        for condition_id in target_ids
+        if condition_id in conditions
+    )
+    previous = [
+        result.model_dump(exclude_none=True)
+        for result in results
+        if result.condition_id in target_set
+    ]
+    return f"""You are the independent second reviewer for a safety-critical evidence audit.
+The primary model already reviewed this requirement, then performed a focused retry, but the
+conditions listed below remain internally inconsistent. Re-adjudicate ONLY those condition IDs.
+Do not return results for any other condition and do not produce a requirement-level verdict.
+
+Requirement ID: {contract.req_code}
+Requirement clause: {contract.raw_text}
+Logic: {_logic_line(contract)}
+Conditions requiring independent adjudication:
+{condition_block}
+
+Primary model's unresolved findings:
+{previous}
+
+Evidence excerpts:
+{_focused_evidence_catalog(contract, evidence_chunks)}
+
+Binding label rules:
+- FAILED requires execution_state=EXECUTED, evidence_value_role=OBSERVED, relationship=VIOLATES,
+  and an explicit observed violating outcome.
+- A test or endpoint explicitly not executed/not measured is UNTESTED with
+  execution_state=NOT_EXECUTED and relationship=NOT_ADDRESSED. Missing execution is never FAILED.
+- UNTESTED means no supplied evidence establishes an execution or outcome for that condition.
+- INCONCLUSIVE means evidence directly addresses the condition but result, authority, identity,
+  scope, method, or detail is insufficient to decide it.
+- A rendered visual description is relevant evidence. If the controlled subject identity or a
+  universal all/every scope is not established, use INCONCLUSIVE rather than UNTESTED or PROVEN.
+- PROVEN/FAILED/PENDING must cite E identifiers and copy a literal supporting quote.
+- Do not preserve the first model's label merely for agreement. Decide from the supplied evidence.
+Return a SemanticAdjudicationResult containing exactly one result for each requested condition.
+"""
+
+
+async def _apply_secondary_adjudication(
+    contract: RequirementContract,
+    evidence_chunks: list[dict[str, Any]],
+    results: list[ConditionVerificationResult],
+    primary_model: str,
+) -> tuple[list[ConditionVerificationResult], dict[str, Any]]:
+    """Ask a different LLM to resolve only still-inconsistent conditions.
+
+    Python detects contradictions and validates the shape of the response, but
+    never invents or rewrites a semantic condition label itself.
+    """
+    target_ids = _semantic_retry_condition_ids(contract, results, evidence_chunks)
+    diagnostics: dict[str, Any] = {
+        "secondary_adjudication_condition_ids": target_ids,
+        "secondary_adjudication_resolved_ids": [],
+        "secondary_adjudication_unresolved_ids": list(target_ids),
+    }
+    if not target_ids or not settings.SECONDARY_ADJUDICATOR_ENABLED:
+        return results, diagnostics
+
+    secondary_model = _independent_secondary_model(primary_model)
+    diagnostics["secondary_adjudicator_model"] = secondary_model
+    if not secondary_model:
+        logger.warning(
+            "No independent secondary adjudicator is configured for %s.",
+            contract.req_code,
+        )
+        return results, diagnostics
+
+    try:
+        adjudication = await generate_structured(
+            prompt=_secondary_adjudication_prompt(
+                contract,
+                evidence_chunks,
+                results,
+                target_ids,
+            ),
+            response_model=SemanticAdjudicationResult,
+            model=secondary_model,
+            system_instruction=(
+                "You are an independent compliance adjudicator. Resolve only the requested "
+                "condition semantics from explicit evidence and obey the status taxonomy exactly."
+            ),
+            thinking_level=settings.GEMINI_THINKING_LEVEL,
+            max_output_tokens=4096,
+            allow_model_fallback=False,
+        )
+    except Exception as error:
+        logger.warning(
+            "Secondary semantic adjudication failed for %s: %s",
+            contract.req_code,
+            error,
+        )
+        return results, diagnostics
+
+    if not adjudication:
+        return results, diagnostics
+
+    canonical, _ = _canonical_condition_results(contract, adjudication.condition_results)
+    candidates = {
+        item.condition_id: item
+        for item in canonical
+        if item.condition_id in set(target_ids)
+    }
+    replacements: dict[str, ConditionVerificationResult] = {}
+    resolved: list[str] = []
+    for condition_id in target_ids:
+        candidate = candidates.get(condition_id)
+        if candidate is None:
+            continue
+        remains_inconsistent = condition_id in _semantic_retry_condition_ids(
+            contract,
+            [candidate],
+            evidence_chunks,
+        )
+        if remains_inconsistent:
+            continue
+        replacements[condition_id] = candidate
+        resolved.append(condition_id)
+
+    diagnostics["secondary_adjudication_resolved_ids"] = resolved
+    diagnostics["secondary_adjudication_unresolved_ids"] = [
+        condition_id for condition_id in target_ids if condition_id not in set(resolved)
+    ]
+    if not replacements:
+        return results, diagnostics
+    return [
+        replacements.get(item.condition_id, item)
+        for item in results
+    ], diagnostics
+
+
+def _evidence_provenance(
+    evidence_chunks: list[dict[str, Any]],
+) -> dict[str, dict[str, Any]]:
+    return {
+        f"E{index}": {
+            "document_name": chunk.get("document_name"),
+            "page_number": chunk.get("page_number"),
+        }
+        for index, chunk in enumerate(evidence_chunks, 1)
+    }
+
+
+def _attach_literal_citation_spans(
+    result: ConditionVerificationResult,
+    evidence_contents: dict[str, str],
+    provenance: dict[str, dict[str, Any]],
+) -> bool:
+    """Attach offsets when the current quote is already a literal source span."""
+    if not result.quote:
+        return False
+    normalized_refs = []
+    for evidence_id in result.evidence_ids:
+        match = re.search(r"(\d+)", str(evidence_id))
+        if match:
+            normalized_refs.append(f"E{match.group(1)}")
+    search_order = list(dict.fromkeys(normalized_refs + list(evidence_contents)))
+    for evidence_id in search_order:
+        content = evidence_contents.get(evidence_id, "")
+        offsets = locate_exact_quote_span(result.quote, content)
+        if not offsets:
+            continue
+        start, end = offsets
+        source = provenance.get(evidence_id, {})
+        result.evidence_ids = [evidence_id]
+        result.quote = content[start:end]
+        result.evidence_spans = [EvidenceSpanReference(
+            evidence_id=evidence_id,
+            exact_quote=result.quote,
+            start_offset=start,
+            end_offset=end,
+            document_name=source.get("document_name"),
+            page_number=source.get("page_number"),
+        )]
+        return True
+    return False
+
+
+def _citation_grounding_prompt(
+    contract: RequirementContract,
+    results: list[ConditionVerificationResult],
+    target_ids: list[str],
+    evidence_contents: dict[str, str],
+    provenance: dict[str, dict[str, Any]],
+) -> str:
+    conditions = {item.condition_id: item for item in contract.atomic_conditions}
+    targets = []
+    for result in results:
+        if result.condition_id not in set(target_ids):
+            continue
+        targets.append({
+            "condition_id": result.condition_id,
+            "condition": conditions.get(result.condition_id).description
+            if conditions.get(result.condition_id) else result.description,
+            "status": result.status,
+            "reason": result.reason,
+            "current_evidence_ids": result.evidence_ids,
+            "current_quote": result.quote,
+        })
+    evidence = "\n\n".join(
+        f"[{evidence_id}] {provenance.get(evidence_id, {}).get('document_name') or 'Document'} "
+        f"page={provenance.get(evidence_id, {}).get('page_number') or 'unknown'}\n{content}"
+        for evidence_id, content in evidence_contents.items()
+    )
+    return f"""Ground citations for an existing compliance decision. You MUST NOT change, reassess,
+or comment on any condition status. For each target, locate the smallest complete source passage
+that directly supports the existing status and copy it literally from exactly one supplied evidence
+excerpt. Preserve every character, symbol, capitalization, and line break. Do not paraphrase,
+summarize, repair OCR, combine non-contiguous text, or invent a quote. Prefer enough surrounding
+header/row context to make a table value meaningful. If no literal passage directly supports the
+existing status, omit that condition from `citations`.
+
+Requirement: {contract.req_code} — {contract.raw_text}
+Targets: {targets}
+
+Evidence excerpts:
+{evidence}
+"""
+
+
+async def _ground_condition_citations(
+    contract: RequirementContract,
+    evidence_chunks: list[dict[str, Any]],
+    evidence_contents: dict[str, str],
+    results: list[ConditionVerificationResult],
+    primary_model: str,
+) -> tuple[list[ConditionVerificationResult], dict[str, Any]]:
+    """Produce verified extractive spans without altering semantic statuses."""
+    provenance = _evidence_provenance(evidence_chunks)
+    attributed = {"PROVEN", "FAILED", "PENDING"}
+    targets: list[str] = []
+    grounded: list[str] = []
+    for result in results:
+        if result.status not in attributed:
+            continue
+        if _attach_literal_citation_spans(result, evidence_contents, provenance):
+            grounded.append(result.condition_id)
+        else:
+            targets.append(result.condition_id)
+
+    diagnostics: dict[str, Any] = {
+        "citation_grounding_requested_ids": targets,
+        "citation_grounded_ids": list(grounded),
+        "citation_grounding_failed_ids": list(targets),
+    }
+    if not targets or not settings.CITATION_GROUNDING_ENABLED:
+        return results, diagnostics
+
+    grounding_model = (settings.CITATION_GROUNDING_MODEL or "").strip()
+    if not grounding_model:
+        grounding_model = _independent_secondary_model(primary_model) or primary_model
+    diagnostics["citation_grounding_model"] = grounding_model
+    try:
+        response = await generate_structured(
+            prompt=_citation_grounding_prompt(
+                contract,
+                results,
+                targets,
+                evidence_contents,
+                provenance,
+            ),
+            response_model=CitationGroundingResult,
+            model=grounding_model,
+            system_instruction=(
+                "You are an extractive citation locator. Copy literal contiguous source spans only; "
+                "never change the supplied semantic decisions."
+            ),
+            thinking_level=settings.GEMINI_THINKING_LEVEL,
+            max_output_tokens=3072,
+        )
+    except Exception as error:
+        logger.warning("Citation grounding failed for %s: %s", contract.req_code, error)
+        response = None
+
+    by_id = {item.condition_id: item for item in results}
+    accepted: set[str] = set()
+    if response:
+        for candidate in response.citations:
+            if candidate.condition_id not in set(targets) or candidate.condition_id in accepted:
+                continue
+            evidence_match = re.search(r"(\d+)", candidate.evidence_id or "")
+            if not evidence_match:
+                continue
+            evidence_id = f"E{evidence_match.group(1)}"
+            content = evidence_contents.get(evidence_id, "")
+            offsets = locate_exact_quote_span(candidate.exact_quote, content)
+            # Reject token-sized labels such as a bare "PASS"; grounding must
+            # retain enough source context to be independently auditable.
+            if not offsets or len(_normalized_grounding_tokens(candidate.exact_quote)) < 4:
+                continue
+            result = by_id[candidate.condition_id]
+            start, end = offsets
+            source = provenance.get(evidence_id, {})
+            result.evidence_ids = [evidence_id]
+            result.quote = content[start:end]
+            result.evidence_spans = [EvidenceSpanReference(
+                evidence_id=evidence_id,
+                exact_quote=result.quote,
+                start_offset=start,
+                end_offset=end,
+                document_name=source.get("document_name"),
+                page_number=source.get("page_number"),
+            )]
+            accepted.add(candidate.condition_id)
+
+    grounded.extend(condition_id for condition_id in targets if condition_id in accepted)
+    diagnostics["citation_grounded_ids"] = list(dict.fromkeys(grounded))
+    diagnostics["citation_grounding_failed_ids"] = [
+        condition_id for condition_id in targets if condition_id not in accepted
+    ]
+    return results, diagnostics
+
+
+def _normalized_grounding_tokens(value: str) -> list[str]:
+    return re.findall(r"[a-z0-9µ%]+", (value or "").lower().replace("μ", "µ"))
 
 
 def _structured_numeric_status(
@@ -238,6 +874,42 @@ def _audit_llm_condition_metadata(
                 "semantic status was preserved."
             )
 
+        if result.status == "FAILED" and (
+            result.execution_state != "EXECUTED"
+            or result.evidence_value_role != "OBSERVED"
+            or result.relationship != "VIOLATES"
+        ):
+            result.validation_state = "CONTRADICTED"
+            result.validation_notes.append(
+                "FAILED lacks a consistent executed, observed, violating result after LLM adjudication; "
+                "the semantic status was preserved and must remain under review."
+            )
+
+        if (
+            result.status == "PROVEN"
+            and condition.requires_visual_evidence
+            and result.subject_identity != "CONFIRMED"
+        ):
+            result.validation_state = "CONTRADICTED"
+            result.validation_notes.append(
+                "Visual proof does not confirm the controlled subject identity; the semantic status was preserved."
+            )
+        if (
+            result.status == "PROVEN"
+            and condition.requires_visual_evidence
+            and re.search(
+                r"\b(?:all|every|each|any)\b",
+                f"{contract.raw_text} {condition.description or ''}",
+                re.IGNORECASE,
+            )
+            and result.coverage_scope != "ALL_REQUIRED"
+        ):
+            result.validation_state = "CONTRADICTED"
+            result.validation_notes.append(
+                "Visual proof does not establish the complete required population scope; "
+                "the semantic status was preserved."
+            )
+
     return analysis
 
 # Filenames that identify specification documents (self-referential, not independent evidence)
@@ -312,11 +984,17 @@ def build_verification_prompt(
         page = c.get("page_number")
         page_str = f", Page {page}" if page else ""
         content = _isolate_relevant_passage(
-            (c.get("content") or c.get("quote") or "").strip(), contract
+            (c.get("content") or c.get("quote") or "").strip(),
+            contract,
+            c.get("metadata"),
         )
         anno = format_qualification_annotation(q)
+        metadata = c.get("metadata") or {}
+        structure = str(metadata.get("block_type") or "text")
+        context_note = "; structural context" if metadata.get("context_only") else ""
         formatted_evidence.append(
-            f"--- [Evidence Excerpt #{i} ({q.evidence_id}): {doc_name}{page_str}] ---\n{anno}\n{content}\n"
+            f"--- [Evidence Excerpt #{i} ({q.evidence_id}): {doc_name}{page_str}; "
+            f"block={structure}{context_note}] ---\n{anno}\n{content}\n"
         )
 
     evidence_block = "\n".join(formatted_evidence) if formatted_evidence else "[No evidence retrieved]"
@@ -324,7 +1002,7 @@ def build_verification_prompt(
     cond_descriptions = []
     if contract.atomic_conditions:
         for c in contract.atomic_conditions:
-            cond_descriptions.append(f"  - Condition [{c.condition_id}]: {c.description or c.parameter} ({c.operator or ''} {c.threshold or c.max_value or c.min_value or ''} {c.unit or ''})")
+            cond_descriptions.append(_condition_line(c))
     else:
         cond_descriptions.append(f"  - Primary Clause: {contract.title}")
 
@@ -335,6 +1013,7 @@ def build_verification_prompt(
 - Scope / Entity: {contract.scope or 'System'}
 - Required Verification Method: {contract.verification_method or 'physical_test'}
 - Specification Clause: {contract.raw_text}
+- Regulatory Logic: {_logic_line(contract)}
 - Atomic Conditions:
 {chr(10).join(cond_descriptions)}
 
@@ -345,6 +1024,8 @@ Auditing Protocol & Verification Rules:
 
 STEP 1: EVIDENCE ATTRIBUTION & RELEVANCE CHECK (Filter Similarity Noise)
 - For each retrieved excerpt, evaluate whether it provides DIRECT verification evidence for the target requirement and its specified entity/subsystem, or if it was fetched merely due to keyword/vector similarity.
+- Excerpts from the same document and page are parts of one structural evidence group. Reconcile table headers, rows, checkboxes, captions, footnotes, and neighboring text together before interpreting a value or verdict.
+- A printed checklist question and its possible Pass/Fail choices are not an observed result unless the selected state is unambiguous. Prefer an explicit measured value or completed result field; if the structure remains ambiguous, return INCONCLUSIVE instead of choosing an option.
 - HIERARCHICAL SCOPE vs COMPONENT CONTEXT:
   * If an excerpt describes an internal component/sub-circuit rating from a component datasheet, while a primary System-Level Physical Test Report proves that the fully integrated system successfully operated across the entire required operational envelope, the internal component rating represents implementation detail and does NOT restrict or invalidate the verified integrated system capability.
   * If an excerpt describes an intentional fault-injection or safety stress test (e.g., injecting an out-of-range stimulus or simulated fault to verify that protective shutdown/reaction mechanisms execute within required latency), this proves functional safety protective compliance, NOT a specification breach or contradiction.
@@ -361,15 +1042,24 @@ STEP 2: CONDITION EVALUATION & COMPLIANCE RULES
 3. COMPLIANCE MATRIX STATUS:
    - If an official compliance tracking matrix explicitly records 'NOT STARTED', 'MISSING', or 'TEST PENDING' for this requirement, the status is 'MISSING' (condition status: 'UNTESTED').
 4. COMPOUND CONDITIONS:
-   - For multi-condition requirements, evaluate each condition in `condition_results` using exactly one state: PROVEN (qualified evidence establishes it), FAILED (qualified/relevant hard evidence contradicts it), PENDING (qualified empirical work directly covers only part of it), UNTESTED (no relevant verification evidence exists), or INCONCLUSIVE (relevant evidence exists but has insufficient authority, method, scope, parameter alignment, or detail).
+   - Return every declared condition exactly once in `condition_results`, using its exact condition ID. Never omit a condition.
+   - Use exactly one state: PROVEN (qualified evidence establishes it), FAILED (qualified/relevant hard evidence contradicts it), PENDING (qualified empirical work directly covers only part of it), UNTESTED (no relevant verification evidence exists), NOT_APPLICABLE (an alternative path or conditional branch is genuinely inapplicable), or INCONCLUSIVE (relevant evidence exists but has insufficient authority, method, scope, parameter alignment, or detail).
    - JUDGE EVERY CONDITION INDEPENDENTLY. A sibling condition's missing range, pending test, or failure changes the final requirement status but must never downgrade an independently satisfied condition.
    - PENDING describes partial empirical coverage of THIS condition only. Never use PENDING merely because the overall requirement is PARTIAL. If this condition is fully satisfied by qualified evidence, return PROVEN even when another condition remains incomplete.
    - For every condition, also return the exact observed parameter/value/unit, `evidence_value_role` (OBSERVED, REQUIRED_OR_PLANNED, STATUS_ONLY, NOT_ADDRESSED, or UNCLEAR), and `relationship` (SATISFIES, VIOLATES, PARTIAL_COVERAGE, NOT_ADDRESSED, or UNCLEAR).
+   - Also return `execution_state` (EXECUTED, NOT_EXECUTED, NOT_ADDRESSED, UNKNOWN), `subject_identity` (CONFIRMED, UNCONFIRMED, NOT_REQUIRED, UNKNOWN), and `coverage_scope` (ALL_REQUIRED, SAMPLE, SINGLE_ITEM, NOT_APPLICABLE, UNKNOWN) for every condition.
    - A required, target, planned, scheduled, pending, or not-yet-tested value is NOT an observation. Never use it as measured proof. Set `evidence_value_role` to REQUIRED_OR_PLANNED.
+   - FAILED requires an executed observation that violates the condition. If the report says the test, endpoint, or measurement was not executed, set execution_state=NOT_EXECUTED and status=UNTESTED; absence of a test is not a failed test.
    - Use `observed_min_value` and `observed_max_value` for an observed range. Use `observed_value` for a scalar, boolean, or categorical observation. Copy the observed unit exactly.
-   - Final status: 'SUPPORTED' only if ALL conditions PROVEN; 'PARTIAL' if some PROVEN and some PENDING/UNTESTED; 'CONFLICT' if any condition FAILED; 'MISSING' if no evidence / NOT STARTED; 'UNKNOWN' if only simulation / non-authoritative.
+   - Apply the stated Regulatory Logic. ALL_OF requires every applicable condition. ANY_OF is satisfied when at least one alternative path is PROVEN; mark genuinely unused alternatives NOT_APPLICABLE. For IF_THEN, first decide the antecedent and evaluate every consequent when it applies.
+   - A figure caption or image placeholder without an actual visual description cannot prove a visual condition. Return INCONCLUSIVE, not UNTESTED, because relevant visual evidence exists but has not been interpreted.
+   - A close-up/example image of a label can establish only the visible appearance shown. It cannot prove that the marking is installed on every required device, barrier, or location unless the image or accompanying text explicitly establishes that scope.
+   - Visual proof is PROVEN only when the depicted subject is linked to the controlled/tested article (subject_identity=CONFIRMED). If identity is missing, use INCONCLUSIVE. For words such as every/all/each, PROVEN additionally requires coverage_scope=ALL_REQUIRED; a single image or sample is INCONCLUSIVE.
+   - UNTESTED means no supplied evidence addresses execution or outcome for THIS condition, even when the same report proves sibling conditions. INCONCLUSIVE means an excerpt directly addresses THIS condition but its result, authority, method, scope, or detail cannot establish a conclusion.
+   - Never mark PROVEN because evidence merely implies, suggests, likely satisfies, or is assumed to satisfy a condition. If the required fact is not explicit or directly observable, use UNTESTED or INCONCLUSIVE as defined above.
+   - Derive relational conditions from observed table operands. If a table gives A and B, compare them directly; do not require a separate sentence spelling out A >= B. PDF labels may separate subscripts or primes (for example `V = 1` means V1 and `V ’ = 1` means V1-prime).
    - Every PROVEN, FAILED, or PENDING condition MUST include at least one evidence ID (E1, E2, ...) and a verbatim quote from that evidence. Never return an attributed condition status without both fields.
-   - A local failure, violation, leakage, exceeded limit, or lower achieved rating dominates an earlier PASS word from a different sub-test in the same excerpt.
+   - A qualified local failure, violation, leakage, exceeded limit, or lower achieved rating dominates an earlier PASS word across the supplied evidence set when both concern the same subject and condition. Do not average a demonstrated violation into INCONCLUSIVE.
 
 Return your evaluation strictly as a valid JSON object matching the VerificationAnalysisResult schema.
 """
@@ -499,18 +1189,24 @@ def build_batch_verification_prompt(
             page = c.get("page_number")
             page_str = f", Page {page}" if page else ""
             content = _isolate_relevant_passage(
-                (c.get("content") or c.get("quote") or "").strip(), contract
+                (c.get("content") or c.get("quote") or "").strip(),
+                contract,
+                c.get("metadata"),
             )
             anno = format_qualification_annotation(q)
+            metadata = c.get("metadata") or {}
+            structure = str(metadata.get("block_type") or "text")
+            context_note = "; structural context" if metadata.get("context_only") else ""
             formatted_evidence.append(
-                f"  [Excerpt #{j} ({q.evidence_id}): {doc_name}{page_str}]\n  {anno}\n  {content}"
+                f"  [Excerpt #{j} ({q.evidence_id}): {doc_name}{page_str}; "
+                f"block={structure}{context_note}]\n  {anno}\n  {content}"
             )
         evidence_str = "\n".join(formatted_evidence) if formatted_evidence else "  [No independent evidence retrieved]"
 
         cond_lines = []
         if contract.atomic_conditions:
             for c in contract.atomic_conditions:
-                cond_lines.append(f"  - Condition {c.condition_id}: {c.description or c.parameter} ({c.operator or ''} {c.threshold or c.max_value or c.min_value or ''} {c.unit or ''})")
+                cond_lines.append(_condition_line(c))
         else:
             cond_lines.append(f"  - Primary Clause: {contract.title}")
 
@@ -522,6 +1218,7 @@ def build_batch_verification_prompt(
             f"- Scope / Entity: {contract.scope or 'System'}\n"
             f"- Required Verification Method: {contract.verification_method or 'physical_test'}\n"
             f"- Specification Clause: {contract.raw_text}\n"
+            f"- Regulatory Logic: {_logic_line(contract)}\n"
             f"- Atomic Conditions to Verify:\n{chr(10).join(cond_lines)}\n"
             f"- Retrieved Technical Evidence:\n{evidence_str}\n"
         )
@@ -534,6 +1231,8 @@ Auditing Protocol & Verification Rules for each requirement:
 
 STEP 1: EVIDENCE ATTRIBUTION & RELEVANCE CHECK (Filter Similarity Noise)
 - For each requirement, evaluate whether retrieved excerpts provide DIRECT verification evidence for the target requirement and its specified entity/subsystem, or if fetched merely due to keyword/vector similarity.
+- Treat excerpts from the same document and page as one structural evidence group. Reconcile headers, rows, checkboxes, captions, footnotes, and neighboring text before deciding.
+- Printed checklist questions and their possible Pass/Fail option labels are not observed answers unless selection is unambiguous. Prefer explicit measured/result fields; unresolved structure is INCONCLUSIVE.
 - HIERARCHICAL SCOPE vs COMPONENT CONTEXT:
   * If an excerpt describes an internal component/sub-circuit rating from a component datasheet, while a primary System-Level Physical Test Report proves that the fully integrated system successfully operated across the entire required operational envelope, the internal component rating represents implementation detail and does NOT restrict or invalidate the verified integrated system capability.
   * If an excerpt describes an intentional fault-injection or safety stress test (e.g., injecting an out-of-range stimulus or simulated fault to verify that protective shutdown/reaction mechanisms execute within required latency), this proves functional safety protective compliance, NOT a specification breach or contradiction.
@@ -550,15 +1249,23 @@ STEP 2: CONDITION EVALUATION & COMPLIANCE RULES
 3. COMPLIANCE MATRIX STATUS:
    - If an official compliance tracking matrix explicitly records 'NOT STARTED', 'MISSING', or 'TEST PENDING' for this requirement, the status is 'MISSING' (condition status: 'UNTESTED').
 4. COMPOUND CONDITIONS:
-   - For each requirement item, return `condition_results: list[ConditionVerificationResult]` for every defined condition using exactly one state: PROVEN (qualified evidence establishes it), FAILED (qualified/relevant hard evidence contradicts it), PENDING (qualified empirical work directly covers only part of it), UNTESTED (no relevant verification evidence exists), or INCONCLUSIVE (relevant evidence exists but has insufficient authority, method, scope, parameter alignment, or detail).
+   - For each requirement item, return every defined condition exactly once using its exact ID and one state: PROVEN, FAILED, PENDING, UNTESTED, NOT_APPLICABLE, or INCONCLUSIVE.
    - JUDGE EVERY CONDITION INDEPENDENTLY. A sibling condition's missing range, pending test, or failure changes the final requirement status but must never downgrade an independently satisfied condition.
    - PENDING describes partial empirical coverage of THIS condition only. Never use PENDING merely because the overall requirement is PARTIAL. If this condition is fully satisfied by qualified evidence, return PROVEN even when another condition remains incomplete.
    - For every condition, also return the exact observed parameter/value/unit, `evidence_value_role` (OBSERVED, REQUIRED_OR_PLANNED, STATUS_ONLY, NOT_ADDRESSED, or UNCLEAR), and `relationship` (SATISFIES, VIOLATES, PARTIAL_COVERAGE, NOT_ADDRESSED, or UNCLEAR).
+   - Also return `execution_state` (EXECUTED, NOT_EXECUTED, NOT_ADDRESSED, UNKNOWN), `subject_identity` (CONFIRMED, UNCONFIRMED, NOT_REQUIRED, UNKNOWN), and `coverage_scope` (ALL_REQUIRED, SAMPLE, SINGLE_ITEM, NOT_APPLICABLE, UNKNOWN) for every condition.
    - A required, target, planned, scheduled, pending, or not-yet-tested value is NOT an observation. Never use it as measured proof. Set `evidence_value_role` to REQUIRED_OR_PLANNED.
+   - FAILED requires an executed observation that violates the condition. If a test, endpoint, or measurement was not executed, set execution_state=NOT_EXECUTED and status=UNTESTED; absence of a test is not a failed test.
    - Use `observed_min_value` and `observed_max_value` for an observed range. Use `observed_value` for a scalar, boolean, or categorical observation. Copy the observed unit exactly.
-   - Final status: 'SUPPORTED' if all conditions PROVEN; 'PARTIAL' if some PROVEN and some PENDING/UNTESTED; 'CONFLICT' if any condition FAILED or violated; 'MISSING' if no evidence / NOT STARTED; 'UNKNOWN' if only simulation / non-authoritative.
+   - Apply each item's explicit Regulatory Logic: ALL_OF, ANY_OF, or IF_THEN. Do not treat alternative branches as mandatory siblings.
+   - A figure caption or image placeholder without an actual visual description makes a visual condition INCONCLUSIVE, not UNTESTED or PROVEN.
+   - A close-up/example label image proves only the appearance shown, not installation on every required device, barrier, or location unless that scope is explicit.
+   - Visual proof requires subject_identity=CONFIRMED. Missing controlled-article identity is INCONCLUSIVE. Universal every/all/each claims additionally require coverage_scope=ALL_REQUIRED; one image or a sample is INCONCLUSIVE.
+   - UNTESTED means no supplied evidence addresses THIS condition. Do not call a condition INCONCLUSIVE merely because the report addresses a sibling condition. Use INCONCLUSIVE only when evidence directly addresses this condition but remains ambiguous or inadmissible.
+   - Never mark PROVEN from implication, likelihood, or an unstated installation assumption. Use UNTESTED or INCONCLUSIVE according to the preceding definitions.
+   - Derive comparisons from observed table operands even when no prose conclusion is printed. PDF extraction may separate subscripts and primes, such as `V = 1` for V1 and `V ’ = 1` for V1-prime.
    - Every PROVEN, FAILED, or PENDING condition MUST include at least one evidence ID (E1, E2, ...) and a verbatim quote from that evidence. Never return an attributed condition status without both fields.
-   - A local failure, violation, leakage, exceeded limit, or lower achieved rating dominates an earlier PASS word from a different sub-test in the same excerpt.
+   - A qualified local failure, violation, leakage, exceeded limit, or lower achieved rating dominates an earlier PASS across the supplied evidence set when both concern the same subject and condition. Do not average a demonstrated violation into INCONCLUSIVE.
 
 Respond with a JSON object containing `batch_results: list[BatchVerificationItemResult]` with an item for each requirement.
 """
@@ -591,6 +1298,7 @@ async def evaluate_batch_verification(
             model=active_model,
             system_instruction=system_instruction,
             thinking_level=thinking_level or settings.GEMINI_THINKING_LEVEL,
+            max_output_tokens=8192,
         )
         if batch_resp and batch_resp.batch_results:
             item_by_code = {it["contract"].req_code: it for it in batch_items}
@@ -598,11 +1306,38 @@ async def evaluate_batch_verification(
                 it = item_by_code.get(item_res.req_code)
                 if it:
                     contract: RequirementContract = it["contract"]
+                    canonical, missing = _canonical_condition_results(contract, item_res.condition_results)
+                    if missing:
+                        logger.warning(
+                            "Batch result for %s omitted condition(s) %s; retrying individually.",
+                            contract.req_code,
+                            ", ".join(missing),
+                        )
+                        continue
+                    item_res.condition_results = canonical
+                    logic_retry_ids = _logic_retry_condition_ids(contract, canonical)
+                    if logic_retry_ids:
+                        logger.info(
+                            "Batch result for %s has unresolved logic gate(s) %s; retrying individually.",
+                            contract.req_code,
+                            ", ".join(logic_retry_ids),
+                        )
+                        continue
                     cand_chunks: list[dict] = it.get("candidate_chunks", [])
+                    semantic_retry_ids = _semantic_retry_condition_ids(contract, canonical, cand_chunks)
+                    if semantic_retry_ids:
+                        logger.info(
+                            "Batch result for %s needs focused semantic review of %s; retrying individually.",
+                            contract.req_code,
+                            ", ".join(semantic_retry_ids),
+                        )
+                        continue
                     quals = qualify_evidence_chunks(contract, cand_chunks)
                     qual_contents = {
                         q.evidence_id: _isolate_relevant_passage(
-                            (c.get("content") or c.get("quote") or ""), contract
+                            (c.get("content") or c.get("quote") or ""),
+                            contract,
+                            c.get("metadata"),
                         )
                         for q, c in zip(quals, cand_chunks)
                     }
@@ -613,12 +1348,22 @@ async def evaluate_batch_verification(
                         reason=item_res.reason,
                         highlight=item_res.highlight,
                     )
-                    original_conditions = _snapshot_condition_results(provisional.condition_results)
                     provisional._diagnostics = {
                         "decision_source": "llm",
                         "llm_provisional_status": provisional.status,
                         "llm_provisional_confidence": provisional.confidence,
                     }
+                    provisional.condition_results, citation_diagnostics = (
+                        await _ground_condition_citations(
+                            contract,
+                            cand_chunks,
+                            qual_contents,
+                            provisional.condition_results,
+                            active_model,
+                        )
+                    )
+                    provisional._diagnostics.update(citation_diagnostics)
+                    original_conditions = _snapshot_condition_results(provisional.condition_results)
                     provisional = _audit_llm_condition_metadata(contract, provisional)
                     _record_reconciliation_diagnostics(provisional, original_conditions)
                     # Always recompute final verdict in Python
@@ -642,6 +1387,7 @@ async def evaluate_batch_verification(
                 evidence_chunks=item["candidate_chunks"],
                 model=model,
                 thinking_level=thinking_level,
+                spec_doc_names=item.get("spec_doc_names"),
                 allow_deterministic_fallback=False,
             )
 
@@ -673,21 +1419,168 @@ async def evaluate_requirement_verification(
             model=active_model,
             system_instruction=system_instruction,
             thinking_level=thinking_level or settings.GEMINI_THINKING_LEVEL,
+            max_output_tokens=8192,
         )
         if result and result.status in ("SUPPORTED", "PARTIAL", "MISSING", "UNKNOWN", "CONFLICT"):
-            original_conditions = _snapshot_condition_results(result.condition_results)
+            logic_retry_ids: list[str] = []
+            semantic_retry_ids: list[str] = []
+            canonical, missing = _canonical_condition_results(contract, result.condition_results)
+            result.condition_results = canonical
+            if missing:
+                retry_prompt = (
+                    prompt
+                    + "\n\nCORRECTION REQUIRED: The previous response omitted these condition IDs: "
+                    + ", ".join(missing)
+                    + ". Re-evaluate the requirement and return EVERY declared condition exactly once."
+                )
+                try:
+                    retry = await generate_structured(
+                        prompt=retry_prompt,
+                        response_model=VerificationAnalysisResult,
+                        model=active_model,
+                        system_instruction=system_instruction,
+                        thinking_level=thinking_level or settings.GEMINI_THINKING_LEVEL,
+                        max_output_tokens=8192,
+                    )
+                except Exception as retry_error:
+                    logger.warning(
+                        "Focused condition retry failed for %s: %s",
+                        contract.req_code,
+                        retry_error,
+                    )
+                    retry = None
+                if retry:
+                    retry_canonical, _ = _canonical_condition_results(contract, retry.condition_results)
+                    by_id = {item.condition_id: item for item in canonical}
+                    by_id.update({item.condition_id: item for item in retry_canonical})
+                    result.condition_results = list(by_id.values())
+                    result.status = retry.status
+                    result.confidence = retry.confidence
+                    result.reason = retry.reason
+                    result.highlight = retry.highlight
+            logic_retry_ids = _logic_retry_condition_ids(contract, result.condition_results)
+            if logic_retry_ids:
+                logic_prompt = _focused_logic_retry_prompt(
+                    prompt,
+                    contract,
+                    result.condition_results,
+                    logic_retry_ids,
+                )
+                try:
+                    logic_retry = await generate_structured(
+                        prompt=logic_prompt,
+                        response_model=VerificationAnalysisResult,
+                        model=active_model,
+                        system_instruction=system_instruction,
+                        thinking_level=thinking_level or settings.GEMINI_THINKING_LEVEL,
+                        max_output_tokens=8192,
+                    )
+                except Exception as retry_error:
+                    logger.warning(
+                        "Focused logic retry failed for %s: %s",
+                        contract.req_code,
+                        retry_error,
+                    )
+                    logic_retry = None
+                if logic_retry:
+                    retry_canonical, _ = _canonical_condition_results(
+                        contract,
+                        logic_retry.condition_results,
+                    )
+                    replacement = {
+                        item.condition_id: item
+                        for item in retry_canonical
+                        if item.condition_id in set(logic_retry_ids)
+                    }
+                    result.condition_results = [
+                        replacement.get(item.condition_id, item)
+                        for item in result.condition_results
+                    ]
+                    result.status = logic_retry.status
+                    result.confidence = logic_retry.confidence
+                    result.reason = logic_retry.reason
+                    result.highlight = logic_retry.highlight
+            semantic_retry_ids = _semantic_retry_condition_ids(
+                contract,
+                result.condition_results,
+                evidence_chunks,
+            )
+            if semantic_retry_ids:
+                semantic_prompt = _focused_semantic_retry_prompt(
+                    prompt,
+                    result.condition_results,
+                    semantic_retry_ids,
+                )
+                try:
+                    semantic_retry = await generate_structured(
+                        prompt=semantic_prompt,
+                        response_model=VerificationAnalysisResult,
+                        model=active_model,
+                        system_instruction=system_instruction,
+                        thinking_level=thinking_level or settings.GEMINI_THINKING_LEVEL,
+                        max_output_tokens=8192,
+                    )
+                except Exception as retry_error:
+                    logger.warning(
+                        "Focused evidence-semantics retry failed for %s: %s",
+                        contract.req_code,
+                        retry_error,
+                    )
+                    semantic_retry = None
+                if semantic_retry:
+                    retry_canonical, _ = _canonical_condition_results(
+                        contract,
+                        semantic_retry.condition_results,
+                    )
+                    replacement = {
+                        item.condition_id: item
+                        for item in retry_canonical
+                        if item.condition_id in set(semantic_retry_ids)
+                    }
+                    result.condition_results = [
+                        replacement.get(item.condition_id, item)
+                        for item in result.condition_results
+                    ]
+                    result.status = semantic_retry.status
+                    result.confidence = semantic_retry.confidence
+                    result.reason = semantic_retry.reason
+                    result.highlight = semantic_retry.highlight
+
+            primary_conditions_after_retry = _snapshot_condition_results(result.condition_results)
+            result.condition_results, secondary_diagnostics = await _apply_secondary_adjudication(
+                contract,
+                evidence_chunks,
+                result.condition_results,
+                active_model,
+            )
+            result.condition_results = _fill_missing_conditions(contract, result.condition_results)
             result._diagnostics = {
                 "decision_source": "llm",
                 "llm_provisional_status": result.status,
                 "llm_provisional_confidence": result.confidence,
+                "logic_retry_condition_ids": logic_retry_ids,
+                "semantic_retry_condition_ids": semantic_retry_ids,
+                "primary_condition_results_after_retry": primary_conditions_after_retry,
+                **secondary_diagnostics,
             }
             quals = qualify_evidence_chunks(contract, evidence_chunks, spec_doc_names=spec_doc_names)
             qual_contents = {
                 q.evidence_id: _isolate_relevant_passage(
-                    (c.get("content") or c.get("quote") or ""), contract
+                    (c.get("content") or c.get("quote") or ""),
+                    contract,
+                    c.get("metadata"),
                 )
                 for q, c in zip(quals, evidence_chunks)
             }
+            result.condition_results, citation_diagnostics = await _ground_condition_citations(
+                contract,
+                evidence_chunks,
+                qual_contents,
+                result.condition_results,
+                active_model,
+            )
+            result._diagnostics.update(citation_diagnostics)
+            original_conditions = _snapshot_condition_results(result.condition_results)
             result = _audit_llm_condition_metadata(contract, result)
             _record_reconciliation_diagnostics(result, original_conditions)
             # Python owns only the mechanical condition-to-requirement mapping.

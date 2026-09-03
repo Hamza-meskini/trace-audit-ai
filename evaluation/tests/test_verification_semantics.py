@@ -27,14 +27,126 @@ from app.schemas.verification_result import ConditionVerificationResult
 from app.services.verification_reasoner import (
     rule_based_multi_condition_verification,
     aggregate_condition_statuses,
+    _semantic_retry_condition_ids,
 )
 from app.services.validators.numeric_range import validate_numeric_range
 from app.services.validators.threshold import validate_threshold
 from app.services.contradiction import detect_contract_contradiction
-from app.services.retrieval import retrieve_candidate_evidence
+from app.services.retrieval import (
+    RetrievedChunk,
+    _condition_aware_rerank,
+    _expand_structural_context,
+    retrieve_candidate_evidence,
+)
+
+
+def retrieved(chunk_id: str, score: float, *, page: int = 1, block_type: str = "text") -> RetrievedChunk:
+    return RetrievedChunk(
+        chunk_id=chunk_id,
+        document_id="DOC",
+        document_name="report.pdf",
+        doc_type="Test report",
+        page_number=page,
+        content=chunk_id,
+        score=score,
+        matched_terms=[],
+        metadata={"block_type": block_type},
+    )
 
 
 class TestVerificationSemantics(unittest.TestCase):
+
+    def test_condition_rerank_reserves_bounded_atomic_coverage(self):
+        pool = [retrieved("global", 10.0), retrieved("c1", 5.0), retrieved("c2", 4.0)]
+
+        selected = _condition_aware_rerank(pool, [["DOC:c1"], ["DOC:c2"]], top_k=3)
+
+        self.assertEqual([item.chunk_id for item in selected], ["global", "c1", "c2"])
+
+    def test_structural_context_attaches_same_page_neighbors_only(self):
+        selected = [retrieved("table", 5.0, page=2, block_type="table")]
+        chunks = [
+            {"id": "header", "document_id": "DOC", "document_name": "report.pdf", "doc_type": "Test report", "page_number": 2, "content": "header", "metadata": {"block_type": "text"}},
+            {"id": "table", "document_id": "DOC", "document_name": "report.pdf", "doc_type": "Test report", "page_number": 2, "content": "table", "metadata": {"block_type": "table"}},
+            {"id": "result", "document_id": "DOC", "document_name": "report.pdf", "doc_type": "Test report", "page_number": 2, "content": "result", "metadata": {"block_type": "text"}},
+            {"id": "other-page", "document_id": "DOC", "document_name": "report.pdf", "doc_type": "Test report", "page_number": 3, "content": "other", "metadata": {"block_type": "text"}},
+        ]
+
+        expanded = _expand_structural_context(selected, chunks)
+
+        self.assertEqual([item.chunk_id for item in expanded], ["table", "header", "result"])
+        self.assertTrue(all(item.metadata.get("context_only") for item in expanded[1:]))
+
+    def test_semantic_retry_detects_assumption_and_taxonomy_drift(self):
+        contract = RequirementContract(
+            requirement_id="S6.3",
+            req_code="S6.3",
+            title="Barrier impact",
+            raw_text="The vehicle shall be impacted by a conforming barrier.",
+            atomic_conditions=[
+                AtomicConditionContract(condition_id="S6.3-C1", description="barrier conformity"),
+                AtomicConditionContract(condition_id="S6.3-C2", description="dummy installation"),
+            ],
+        )
+        results = [
+            ConditionVerificationResult(condition_id="S6.3-C1", status="PROVEN", reason="The test setup implies conformity."),
+            ConditionVerificationResult(condition_id="S6.3-C2", status="INCONCLUSIVE", reason="No evidence was provided."),
+        ]
+
+        self.assertEqual(
+            _semantic_retry_condition_ids(contract, results, []),
+            ["S6.3-C1", "S6.3-C2"],
+        )
+
+    def test_semantic_retry_detects_not_executed_failure_and_visual_scope(self):
+        contract = RequirementContract(
+            requirement_id="REQ-SCOPE",
+            req_code="REQ-SCOPE",
+            title="Universal visual marking",
+            raw_text="Every cover shall carry the warning marking.",
+            atomic_conditions=[
+                AtomicConditionContract(
+                    condition_id="C1",
+                    description="cold endpoint verification",
+                ),
+                AtomicConditionContract(
+                    condition_id="C2",
+                    description="marking is present on every cover",
+                    requires_visual_evidence=True,
+                ),
+            ],
+        )
+        results = [
+            ConditionVerificationResult(
+                condition_id="C1",
+                status="FAILED",
+                quote="The cold endpoint was not measured.",
+            ),
+            ConditionVerificationResult(
+                condition_id="C2",
+                status="PROVEN",
+                subject_identity="UNCONFIRMED",
+                coverage_scope="SINGLE_ITEM",
+            ),
+        ]
+        evidence = [{"content": "VISUAL DESCRIPTION: one cover is shown without a serial identifier"}]
+
+        self.assertEqual(
+            _semantic_retry_condition_ids(contract, results, evidence),
+            ["C1", "C2"],
+        )
+
+    def test_semantic_retry_rechecks_inconclusive_hard_violation(self):
+        contract = RequirementContract(
+            requirement_id="REQ-LEAK",
+            req_code="REQ-LEAK",
+            title="No leakage",
+            atomic_conditions=[AtomicConditionContract(condition_id="C1", description="no leakage")],
+        )
+        results = [ConditionVerificationResult(condition_id="C1", status="INCONCLUSIVE")]
+        evidence = [{"content": "Inspection result: VISIBLE LEAKAGE at the quick disconnect."}]
+
+        self.assertEqual(_semantic_retry_condition_ids(contract, results, evidence), ["C1"])
 
     # Case 1: Simulation evidence -> UNKNOWN for physical requirement
     def test_simulation_evidence_returns_unknown_for_physical_requirement(self):

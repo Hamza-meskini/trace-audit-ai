@@ -245,6 +245,7 @@ async def run_audit_pipeline(
                             ],
                             "unmapped_obligations": list(er.unmapped_obligations),
                             "contract_complete": er.contract_complete,
+                            "logic": er.logic.model_dump(),
                         },
                     )
                     db.add(req)
@@ -291,6 +292,8 @@ async def run_audit_pipeline(
                 condition.get("min_value", ""),
                 condition.get("max_value", ""),
                 condition.get("unit", ""),
+                "figure image visual marking label photograph diagram"
+                if condition.get("requires_visual_evidence") else "",
             ) if value not in (None, ""))
             for condition in structured_conditions
         ]
@@ -328,7 +331,9 @@ async def run_audit_pipeline(
             # None means a legacy database record that pre-dates completeness
             # reporting. It is not silently treated as an explicit failure.
             "contract_complete": extraction_data.get("contract_complete"),
+            "logic": extraction_data.get("logic"),
             "candidate_chunks": candidate_chunks,
+            "spec_doc_names": spec_doc_names,
         })
 
     stage_timings["retrieval_seconds"] = round(time.perf_counter() - retrieval_started, 3)

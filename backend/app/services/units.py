@@ -76,7 +76,7 @@ def _canonical_unit(unit_text: str) -> str | None:
             # objects owned by different registries.
             _STRICT_REGISTRY.parse_units(canonical)
             return canonical
-        except (PintError, ValueError, TypeError):
+        except (PintError, ValueError, TypeError, AssertionError):
             continue
     return None
 
@@ -88,7 +88,7 @@ def normalize_unit_str(unit_str: Optional[str]) -> str:
         return ""
     try:
         compact = format(_STRICT_REGISTRY.parse_units(canonical), "~")
-    except (PintError, ValueError, TypeError):
+    except (PintError, ValueError, TypeError, AssertionError):
         return ""
     normalized = (
         compact.replace("µ", "u")
@@ -117,7 +117,7 @@ def unit_compatibility(
         if _dimensionality(canonical_a) == _dimensionality(canonical_b):
             return UnitCompatibility.COMPATIBLE
         return UnitCompatibility.INCOMPATIBLE
-    except (PintError, ValueError, TypeError):
+    except (PintError, ValueError, TypeError, AssertionError):
         return UnitCompatibility.UNKNOWN
 
 
@@ -142,5 +142,5 @@ def convert_value(
         source = _STRICT_REGISTRY.Quantity(float(value), canonical_from)
         converted = source.to(canonical_to)
         return float(converted.magnitude)
-    except (DimensionalityError, OffsetUnitCalculusError, PintError, ValueError, TypeError):
+    except (DimensionalityError, OffsetUnitCalculusError, PintError, ValueError, TypeError, AssertionError):
         return None

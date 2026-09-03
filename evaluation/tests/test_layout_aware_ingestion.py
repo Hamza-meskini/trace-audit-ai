@@ -9,6 +9,8 @@ if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
 from app.services.document_ir import DocumentElement
+from app.schemas.claim import _isolate_relevant_passage
+from app.schemas.contract import parse_requirement_contract
 from app.services.ingestion import (
     INGESTION_SCHEMA_VERSION,
     build_structure_aware_chunks,
@@ -95,3 +97,28 @@ def test_long_tables_repeat_headers_in_every_chunk() -> None:
     assert all("| Parameter | Result | Limit |" in chunk.content for chunk in chunks)
     assert all(chunk.metadata["block_type"] == "table" for chunk in chunks)
     assert chunks[-1].metadata["table"]["row_end"] == 40
+
+
+def test_relevance_isolation_preserves_complete_table_rows_and_headers() -> None:
+    content = (
+        "TABLE\n| Parameter | Result | Requirement |\n"
+        "| Isolation | 1200 Ohm/V | >= 500 Ohm/V |\n"
+        "| Voltage | 350 V | <= 400 V |"
+    )
+    contract = parse_requirement_contract(
+        req_code="R-ISO",
+        title="Electrical isolation",
+        description="Electrical isolation shall be at least 500 Ohm/V.",
+        structured_conditions=[{
+            "condition_id": "C1",
+            "description": "Isolation is at least 500 Ohm/V",
+            "parameter": "isolation",
+            "operator": ">=",
+            "threshold": 500,
+            "unit": "Ohm/V",
+        }],
+    )
+    isolated = _isolate_relevant_passage(content, contract, {"block_type": "table"})
+    assert isolated == content
+    assert "| Parameter |" in isolated
+    assert "| Voltage |" in isolated

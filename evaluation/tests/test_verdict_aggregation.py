@@ -12,7 +12,11 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "backend"))
 
-from app.schemas.contract import RequirementContract, AtomicConditionContract
+from app.schemas.contract import (
+    RequirementContract,
+    AtomicConditionContract,
+    RequirementLogicContract,
+)
 from app.schemas.claim import EvidenceClaim
 from app.schemas.verification_result import (
     ConditionVerificationResult,
@@ -140,6 +144,31 @@ class TestAggregationPrecedence(unittest.TestCase):
         status, _, _ = aggregate_condition_statuses(
             self.contract, [cr("C1", "PROVEN"), cr("C2", "FAILED"), cr("C3", "PROVEN")])
         self.assertEqual(status, "CONFLICT")
+
+    def test_any_of_accepts_one_proven_alternative(self):
+        contract = make_contract(conditions=[cond("A"), cond("B"), cond("C")])
+        contract.logic = RequirementLogicContract(
+            operator="ANY_OF", condition_ids=["A", "B", "C"]
+        )
+        status, _, _ = aggregate_condition_statuses(
+            contract,
+            [cr("A", "PROVEN"), cr("B", "NOT_APPLICABLE"), cr("C", "NOT_APPLICABLE")],
+        )
+        self.assertEqual(status, "SUPPORTED")
+
+    def test_if_then_aggregates_only_consequents_after_proven_antecedent(self):
+        contract = make_contract(conditions=[cond("IF"), cond("THEN-1"), cond("THEN-2")])
+        contract.logic = RequirementLogicContract(
+            operator="IF_THEN",
+            condition_ids=["IF", "THEN-1", "THEN-2"],
+            if_condition_id="IF",
+            then_condition_ids=["THEN-1", "THEN-2"],
+        )
+        status, _, _ = aggregate_condition_statuses(
+            contract,
+            [cr("IF", "PROVEN"), cr("THEN-1", "PROVEN"), cr("THEN-2", "INCONCLUSIVE")],
+        )
+        self.assertEqual(status, "PARTIAL")
 
 
 class TestLLMFinalVerdictOverride(unittest.TestCase):
@@ -334,8 +363,8 @@ class TestEntityScopeQualification(unittest.TestCase):
         ds_content = "ASIC absolute maximum standoff voltage 750 V DC."
         q = qualify_evidence(contract, "E1", ds_doc, ds_content)
 
-        # Scope normalization is advisory after semantic reasoning. The status
-        # survives, but is explicitly marked unresolved for audit/review.
+        # Scope mismatch prevents this source from becoming admissible proof,
+        # while the semantic status survives and is flagged for review.
         llm = VerificationAnalysisResult(
             status="CONFLICT", confidence=90,
             condition_results=[cr("C2", "FAILED", ["E1"], quote=ds_content[:60])],
@@ -391,7 +420,8 @@ class TestParameterQualification(unittest.TestCase):
         lab_doc = "lab_test_report.pdf"
         content = "Contactor transition latency = 4 ms measured on the bench."
         q = qualify_evidence(contract, "E1", lab_doc, content)
-        self.assertEqual(q.qualification_status, "NOT_QUALIFIED")
+        self.assertEqual(q.qualification_status, "QUALIFIED")
+        self.assertEqual(q.relevance_status, "UNCERTAIN")
         self.assertFalse(q.parameter_compatible)
 
         # Qualification records the parameter problem but does not replace the
@@ -492,6 +522,46 @@ class TestConditionEvidenceAudit(unittest.TestCase):
         merged = audit_condition_evidence(contract, crs, qualifications,
                                                      {"E1": "We measured quiescent current 142 uA on the bench"})
         self.assertEqual(merged[0].status, "PROVEN")
+
+    def test_wrong_citation_id_is_reconciled_only_by_complete_quote(self):
+        contract = make_contract(conditions=[cond("C1")])
+        qualifications = [
+            qual("E1", "other.pdf", "QUALIFIED", True, True),
+            qual("E2", "lab.pdf", "QUALIFIED", True, True),
+        ]
+        quote = "Measured isolation was 1200 ohms per volt after rollover."
+        crs = [cr("C1", "PROVEN", evidence_ids=["E1"], quote=quote)]
+        merged = audit_condition_evidence(
+            contract,
+            crs,
+            qualifications,
+            {
+                "E1": "A different qualified measurement appears here.",
+                "E2": f"Test result: {quote} Verdict: Passed.",
+            },
+        )
+        self.assertEqual(merged[0].evidence_ids, ["E2"])
+        self.assertEqual(merged[0].validation_state, "VALID")
+
+    def test_partial_quote_match_does_not_reassign_provenance(self):
+        contract = make_contract(conditions=[cond("C1")])
+        qualifications = [
+            qual("E1", "other.pdf", "QUALIFIED", True, True),
+            qual("E2", "lab.pdf", "QUALIFIED", True, True),
+        ]
+        quote = "Measured isolation was 1200 ohms per volt after rollover with all instrumentation calibrated."
+        crs = [cr("C1", "PROVEN", evidence_ids=["E1"], quote=quote)]
+        merged = audit_condition_evidence(
+            contract,
+            crs,
+            qualifications,
+            {
+                "E1": "A different qualified measurement appears here.",
+                "E2": "Measured isolation was 1200 ohms per volt after rollover.",
+            },
+        )
+        self.assertEqual(merged[0].evidence_ids, ["E1"])
+        self.assertEqual(merged[0].validation_state, "CONTRADICTED")
 
     def test_evidence_id_normalization(self):
         contract = make_contract(conditions=[cond("C1")])
@@ -890,6 +960,44 @@ class TestFullPipelineToApiResponse(unittest.TestCase):
             "Boot the golden image successfully",
             assessment.pipeline_diagnostics["review_gate"]["reasons"][0],
         )
+
+    def test_any_of_review_gate_accepts_one_valid_proven_branch(self):
+        from app.services.classification import _finalize_assessment
+        from app.services.validators import ValidationOutcome
+
+        contract = RequirementContract(
+            requirement_id="REQ-ALT",
+            req_code="REQ-ALT",
+            title="Alternative protection",
+            contract_complete=True,
+            atomic_conditions=[
+                AtomicConditionContract(condition_id="C1", description="isolation path"),
+                AtomicConditionContract(condition_id="C2", description="disconnect path"),
+            ],
+            logic=RequirementLogicContract(operator="ANY_OF", condition_ids=["C1", "C2"]),
+        )
+        assessment = _finalize_assessment(
+            contract=contract,
+            non_spec_items=[],
+            outcome=ValidationOutcome(
+                status="SUPPORTED",
+                confidence=95.0,
+                reason="One alternative is proven.",
+                condition_results=[
+                    ConditionVerificationResult(
+                        condition_id="C1", status="PROVEN", validation_state="VALID"
+                    ),
+                    ConditionVerificationResult(condition_id="C2", status="UNTESTED"),
+                ],
+            ),
+            pipeline_diagnostics={
+                "llm_provisional_status": "SUPPORTED",
+                "llm_provisional_confidence": 95.0,
+            },
+        )
+
+        self.assertEqual(assessment.review_state, "Reviewed")
+        self.assertTrue(assessment.pipeline_diagnostics["review_gate"]["auto_close_eligible"])
 
 class TestSchemaStatusNormalization(unittest.TestCase):
     """Test suite proving robust lenient status normalization across global supplier vocabularies."""

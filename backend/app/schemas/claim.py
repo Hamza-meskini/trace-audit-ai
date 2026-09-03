@@ -290,97 +290,19 @@ def _dominant_test_verdict(text: str) -> Optional[str]:
         return "PASS"
     return None
 
-_PASSAGE_STOPWORDS = {
-    "requirement", "system", "shall", "must", "with", "within", "from", "that",
-    "this", "every", "hardware", "test", "testing", "verification", "maximum",
-    "minimum", "provide", "support", "operation", "operating", "complete", "peak",
-    "current", "voltage", "temperature", "frequency", "resistance", "power", "range",
-    "latency", "duration", "time", "threshold", "margin", "error", "value", "condition",
-}
+def _isolate_relevant_passage(
+    text: str,
+    contract: Optional[RequirementContract],
+    metadata: Optional[dict[str, Any]] = None,
+) -> str:
+    """Return the retrieved structure without making a semantic relevance decision.
 
-
-def _isolate_relevant_passage(text: str, contract: Optional[RequirementContract]) -> str:
-    """Return only lines that locally address the target requirement.
-
-    Parsed PDF pages often contain several unrelated test cases. Keeping the
-    whole page lets a PASS or numeric value from one case contaminate another.
+    Retrieval already supplies a bounded top-k set. Lexical filtering here
+    previously hid short regulatory answers, formulas, and table rows before
+    the reasoner could inspect them. Python now preserves the complete chunk;
+    condition-level relevance belongs to the LLM.
     """
-    if not contract or not text.strip():
-        return text
-
-    code = contract.req_code.upper()
-    codes_in_text = [match.upper() for match in REQ_CODE_REGEX.findall(text)]
-    if codes_in_text:
-        if code not in codes_in_text:
-            return ""
-        pos = text.upper().find(code)
-        # Never carry the tail of the preceding matrix row into this
-        # requirement's claims (it may contain another row's PASS/FAIL).
-        start_pos = pos
-        next_req = REQ_CODE_REGEX.search(text[pos + len(code):])
-        end_pos = (pos + len(code) + next_req.start()) if next_req else min(len(text), pos + 900)
-        return text[start_pos:end_pos]
-
-    suffix_match = re.search(r"(\d+)$", code)
-    suffix = suffix_match.group(1) if suffix_match else ""
-    direct_id = re.compile(rf"\b(?:TC|TEST(?:\s+CASE)?)[-_][A-Z0-9_-]*[-_]{re.escape(suffix)}\b", re.IGNORECASE) if suffix else None
-    if direct_id:
-        direct_match = direct_id.search(text)
-        if direct_match:
-            # PDF test cases often wrap onto following lines. Keep the full
-            # case until the next TC marker instead of just the first line.
-            next_case = re.search(
-                r"\b(?:TC|TEST(?:\s+CASE)?)[-_][A-Z0-9_-]*[-_]\d+\b",
-                text[direct_match.end():],
-                re.IGNORECASE,
-            )
-            end_pos = direct_match.end() + next_case.start() if next_case else min(len(text), direct_match.start() + 1000)
-            start_pos = max(0, text.rfind("\n", 0, direct_match.start()) + 1)
-            return text[start_pos:end_pos].strip()
-    term_source = " ".join(
-        [contract.title, contract.raw_text]
-        + [c.description or "" for c in contract.atomic_conditions]
-        + [c.parameter or "" for c in contract.atomic_conditions]
-    ).replace("_", " ").replace("-", " ")
-    terms = {
-        word.lower()
-        for word in re.findall(r"[A-Za-z][A-Za-z0-9_-]{3,}", term_source)
-        if word.lower() not in _PASSAGE_STOPWORDS
-    }
-    if "range" in term_source.lower():
-        terms.add("envelope")
-
-    selected: list[str] = []
-    required_overlap = min(3 if len(terms) >= 6 else 2, len(terms))
-    for line in text.splitlines():
-        line_lower = line.lower()
-        overlap = sum(1 for term in terms if term in line_lower)
-        if required_overlap and overlap >= required_overlap:
-            selected.append(line.strip())
-
-    # PDF tables frequently extract one cell per line. Score compact sliding
-    # windows so a parameter, rollover stage, value, unit, and verdict can be
-    # kept together instead of each isolated cell failing the line threshold.
-    if not selected and terms:
-        lines = [line.strip() for line in text.splitlines() if line.strip()]
-        best_window: list[str] = []
-        best_overlap = 0
-        window_size = min(18, max(8, len(lines)))
-        for start in range(len(lines)):
-            window = lines[start:start + window_size]
-            joined = " ".join(window).lower()
-            overlap = sum(1 for term in terms if term in joined)
-            if overlap > best_overlap:
-                best_overlap = overlap
-                best_window = window
-        if best_overlap >= required_overlap:
-            selected = best_window
-
-    if not selected and not terms and len(text) <= 300 and re.search(r"\d", text) and any(
-        marker in text.lower() for marker in ("tested", "measured", "verified", "verdict", "evaluated")
-    ):
-        return text
-    return "\n".join(selected)
+    return (text or "").strip()
 
 
 def _infer_claim_parameter(snippet: str, unit: Optional[str]) -> Optional[str]:
@@ -466,7 +388,7 @@ def extract_claims_from_chunk(
     page_num = chunk.get("page_number")
     chunk_id = chunk.get("chunk_id") or chunk.get("id")
     claims: list[EvidenceClaim] = []
-    target_text = _isolate_relevant_passage(text, contract)
+    target_text = _isolate_relevant_passage(text, contract, chunk.get("metadata"))
     if not target_text.strip():
         return []
 

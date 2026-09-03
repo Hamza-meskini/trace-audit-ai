@@ -12,8 +12,12 @@ from app.services.extraction import (
     ExtractedClauseCoverage,
     ExtractedCondition,
     ExtractedRequirement,
+    ExtractedRequirementLogic,
     _extract_chunk_with_retry,
+    _estimated_atomic_obligations,
     _normalize_extracted_requirements,
+    _requirement_blocks,
+    _requirement_code_from_block,
     _split_text_into_chunks,
 )
 from evaluation.run_complex_benchmark import (
@@ -77,6 +81,49 @@ class TestRequirementBoundaryChunking(unittest.TestCase):
         self.assertIsNone(condition.min_value)
         self.assertEqual(condition.max_value, 50.0)
 
+    def test_numeric_parameter_value_is_coerced_without_rejecting_extraction(self):
+        from app.services.extraction import ExtractedParameter
+
+        parameter = ExtractedParameter(name="duration", value=30, unit="min")
+
+        self.assertEqual(parameter.value, "30")
+
+    def test_regulatory_clause_headings_are_preserved_as_blocks(self):
+        text = (
+            "S5.1 Electrolyte spillage shall not exceed 5.0 liters.\n"
+            "Continuation text for the same clause.\n"
+            "S6.3 Side moving deformable barrier impact shall meet S5.1, S5.2, and S5.3.\n"
+            "S7.6.6 If V1 is greater than V2, insert Ro, measure V1 prime, and calculate Ri."
+        )
+
+        blocks = _requirement_blocks(text)
+
+        self.assertEqual([_requirement_code_from_block(block) for block in blocks], [
+            "S5.1", "S6.3", "S7.6.6",
+        ])
+        self.assertIn("Continuation text", blocks[0])
+
+    def test_atomic_obligation_estimate_catches_compressed_procedures(self):
+        clause = (
+            "S7.6.6 If V1 is greater than or equal to V2, insert resistance Ro, "
+            "measure V1 prime, calculate total isolation resistance, and divide by working voltage."
+        )
+
+        self.assertGreaterEqual(_estimated_atomic_obligations(clause), 4)
+
+    def test_lettered_clause_is_recovered_from_pdf_section_path(self):
+        text = (
+            "S7.1 Electric energy storage shall be measured.\n"
+            "SECTION: 49 CFR 571.305 > S7.1(c) (enhanced display)\n"
+            "(c) If the voltage is at least 60 V, the indicator shall display."
+        )
+
+        blocks = _requirement_blocks(text)
+
+        self.assertEqual([_requirement_code_from_block(block) for block in blocks], [
+            "S7.1", "S7.1(c)",
+        ])
+
     def test_complete_contract_requires_consistent_clause_coverage(self):
         extracted = requirement(
             "REQ-AUT-001",
@@ -101,6 +148,65 @@ class TestRequirementBoundaryChunking(unittest.TestCase):
 
         self.assertFalse(normalized.contract_complete)
         self.assertEqual(normalized.unmapped_obligations, ["Detect corruption"])
+
+    def test_if_then_antecedent_is_normalized_as_applicability(self):
+        extracted = ExtractedRequirement(
+            req_code="REQ-GATE-001",
+            title="Drive-away inhibition",
+            description="If charging is connected, torque shall remain zero.",
+            conditions=[
+                ExtractedCondition(condition_id="C0", description="charging is connected"),
+                ExtractedCondition(condition_id="C1", description="torque remains zero"),
+            ],
+            logic=ExtractedRequirementLogic(
+                operator="IF_THEN",
+                condition_ids=["C0", "C1"],
+                if_condition_id="C0",
+                then_condition_ids=["C1"],
+            ),
+            clause_coverage=[
+                ExtractedClauseCoverage(
+                    clause="If charging is connected, torque shall remain zero.",
+                    condition_ids=["C0", "C1"],
+                )
+            ],
+            contract_complete=True,
+        )
+
+        normalized = _normalize_extracted_requirements([extracted])[0]
+
+        self.assertEqual(normalized.conditions[0].condition_role, "APPLICABILITY")
+        self.assertEqual(normalized.conditions[1].condition_role, "VERIFICATION")
+
+    def test_applicability_context_does_not_invalidate_obligation_coverage(self):
+        extracted = ExtractedRequirement(
+            req_code="REQ-CONTEXT-001",
+            title="Post-impact isolation",
+            description="After impact, isolation shall be at least 500 ohm/V.",
+            conditions=[
+                ExtractedCondition(
+                    condition_id="C0",
+                    condition_role="APPLICABILITY",
+                    description="after impact",
+                ),
+                ExtractedCondition(
+                    condition_id="C1",
+                    description="isolation is at least 500 ohm/V",
+                ),
+            ],
+            logic=ExtractedRequirementLogic(operator="ALL_OF", condition_ids=["C1"]),
+            clause_coverage=[
+                ExtractedClauseCoverage(
+                    clause="isolation shall be at least 500 ohm/V",
+                    condition_ids=["C1"],
+                )
+            ],
+            contract_complete=True,
+        )
+
+        normalized = _normalize_extracted_requirements([extracted])[0]
+
+        self.assertTrue(normalized.contract_complete)
 
 
 class TestAdaptiveExtractionRetry(unittest.IsolatedAsyncioTestCase):

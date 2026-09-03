@@ -17,12 +17,18 @@ from evaluation.run_fmvss305_benchmark import (
     _clean_condition,
     _atomic_metrics,
     _match_extracted_requirement,
+    _oracle_evidence,
+    _retrieval_metrics,
     validate_dataset,
 )
 from app.schemas.contract import parse_requirement_contract
 from app.schemas.verification_result import ConditionVerificationResult
 from app.services.document_classifier import _heuristic_profile
 from app.services.evidence_qualification import qualify_evidence
+from app.services.verification_reasoner import (
+    _focused_logic_retry_prompt,
+    _logic_retry_condition_ids,
+)
 
 
 class Fmvss305BenchmarkTests(unittest.TestCase):
@@ -74,6 +80,88 @@ class Fmvss305BenchmarkTests(unittest.TestCase):
         for requirement in conditional:
             self.assertIn("if_condition_id", requirement["logic"])
             self.assertTrue(requirement["logic"]["then_condition_ids"])
+
+    def test_any_of_unresolved_branch_requests_focused_retry(self) -> None:
+        requirement = next(
+            item for item in self.requirements if item["requirement_id"] == "FMVSS-305-S5.3"
+        )
+        contract = parse_requirement_contract(
+            req_code=requirement["requirement_id"],
+            title=requirement["title"],
+            description=requirement["requirement_text"],
+            structured_conditions=[_clean_condition(item) for item in requirement["conditions"]],
+            logic=requirement["logic"],
+        )
+        results = [
+            ConditionVerificationResult(condition_id=condition.condition_id, status="INCONCLUSIVE")
+            for condition in contract.atomic_conditions
+        ]
+        targets = _logic_retry_condition_ids(contract, results)
+        self.assertEqual(targets, contract.logic.condition_ids)
+        prompt = _focused_logic_retry_prompt("BASE", contract, results, targets)
+        self.assertIn("mark genuinely unused alternatives NOT_APPLICABLE", prompt)
+
+    def test_if_then_retry_targets_unresolved_consequent(self) -> None:
+        requirement = next(
+            item for item in self.requirements
+            if item["logic"]["operator"] == "IF_THEN"
+        )
+        contract = parse_requirement_contract(
+            req_code=requirement["requirement_id"],
+            title=requirement["title"],
+            description=requirement["requirement_text"],
+            structured_conditions=[_clean_condition(item) for item in requirement["conditions"]],
+            logic=requirement["logic"],
+        )
+        results = []
+        for condition in contract.atomic_conditions:
+            status = "PROVEN"
+            if condition.condition_id == contract.logic.then_condition_ids[-1]:
+                status = "INCONCLUSIVE"
+            results.append(ConditionVerificationResult(condition_id=condition.condition_id, status=status))
+        self.assertEqual(
+            _logic_retry_condition_ids(contract, results),
+            [contract.logic.then_condition_ids[-1]],
+        )
+
+    def test_oracle_contract_preserves_regulatory_logic(self) -> None:
+        requirement = next(
+            item for item in self.requirements if item["requirement_id"] == "FMVSS-305-S5.3"
+        )
+        contract = parse_requirement_contract(
+            req_code=requirement["requirement_id"],
+            title=requirement["title"],
+            description=requirement["requirement_text"],
+            structured_conditions=[_clean_condition(item) for item in requirement["conditions"]],
+            logic=requirement["logic"],
+        )
+        self.assertEqual(contract.logic.operator, "ANY_OF")
+        self.assertEqual(contract.logic.condition_ids, requirement["logic"]["condition_ids"])
+
+    def test_oracle_evidence_selects_best_passage_not_every_page_chunk(self) -> None:
+        requirement = {
+            "conditions": [{"evidence": [{"page": 4, "quote": "measured isolation 1200 ohms per volt"}]}],
+        }
+        chunks = [
+            {"id": "noise", "page_number": 4, "content": "unrelated footer", "metadata": {}},
+            {"id": "match", "page_number": 4, "content": "Measured isolation 1200 Ohms per Volt", "metadata": {}},
+        ]
+        selected = _oracle_evidence(requirement, chunks)
+        self.assertEqual([item["id"] for item in selected], ["match"])
+
+    def test_retrieval_recall_measures_all_expected_pages(self) -> None:
+        requirement = {
+            "requirement_id": "R1",
+            "conditions": [{"evidence": [{"page": 1}, {"page": 2}]}],
+        }
+        metrics = _retrieval_metrics([requirement], {"R1": [
+            {"page_number": 1},
+            {"page_number": 9},
+            {"page_number": 8},
+        ]})
+        self.assertEqual(metrics["requirement_any_hit_at_3"], 100.0)
+        self.assertEqual(metrics["requirement_full_coverage_at_3"], 0.0)
+        self.assertEqual(metrics["recall_at_3"], 50.0)
 
     def test_visual_only_case_requires_human_review(self) -> None:
         requirement = next(

@@ -42,6 +42,7 @@ from app.services.evidence_qualification import qualify_evidence
 from app.services.document_classifier import profile_documents
 from app.services.extraction import extract_requirements_from_text
 from app.services.ingestion import parse_document
+from app.services.visual_analysis import describe_figure_candidates
 from app.services.retrieval import (
     precompute_chunk_embeddings,
     retrieve_candidate_evidence_hybrid,
@@ -65,6 +66,7 @@ MODES = {
 }
 CONDITION_INPUT_FIELDS = {
     "condition_id",
+    "condition_role",
     "description",
     "parameter",
     "operator",
@@ -74,6 +76,7 @@ CONDITION_INPUT_FIELDS = {
     "unit",
     "scope",
     "mandatory",
+    "requires_visual_evidence",
     "verification_method",
 }
 
@@ -153,6 +156,12 @@ def _normalize_condition_id(value: str) -> str:
     normalized = re.sub(r"[^a-z0-9]", "", str(value or "").lower())
     # Extractors alternate between `...-C1` and `...-1` for ordinal IDs.
     return re.sub(r"c(?=\d+$)", "", normalized)
+
+
+def _condition_ordinal(value: str) -> Optional[int]:
+    """Return the terminal C-number without depending on requirement prefixes."""
+    match = re.search(r"(?:^|[-_])c?(\d+)$", str(value or ""), re.IGNORECASE)
+    return int(match.group(1)) if match else None
 
 
 def _clean_condition(condition: dict[str, Any]) -> dict[str, Any]:
@@ -302,6 +311,7 @@ def _oracle_contracts(requirements: list[dict[str, Any]]) -> tuple[list[dict[str
             }],
             "unmapped_obligations": [],
             "contract_complete": True,
+            "logic": requirement["logic"],
         })
     return items, {
         "selected_clause_recall": 100.0,
@@ -350,6 +360,11 @@ def _extracted_contracts(
             if any(
                 _normalize_condition_id(expected.get("condition_id", ""))
                 == _normalize_condition_id(actual.get("condition_id", ""))
+                or (
+                    _condition_ordinal(expected.get("condition_id", "")) is not None
+                    and _condition_ordinal(expected.get("condition_id", ""))
+                    == _condition_ordinal(actual.get("condition_id", ""))
+                )
                 or _token_f1(expected.get("description", ""), actual.get("description", "")) >= 0.50
                 for actual in candidate_conditions
             ):
@@ -366,6 +381,7 @@ def _extracted_contracts(
             "clause_coverage": [item.model_dump(exclude_none=True) for item in candidate.clause_coverage],
             "unmapped_obligations": list(candidate.unmapped_obligations),
             "contract_complete": candidate.contract_complete,
+            "logic": candidate.logic.model_dump(),
         })
 
     return items, {
@@ -394,7 +410,7 @@ def _extracted_contracts(
 
 
 def _condition_query(requirement_id: str, condition: dict[str, Any]) -> str:
-    return " ".join(
+    query = " ".join(
         str(value)
         for value in (
             requirement_id,
@@ -408,22 +424,56 @@ def _condition_query(requirement_id: str, condition: dict[str, Any]) -> str:
         )
         if value not in (None, "")
     )
+    if condition.get("requires_visual_evidence"):
+        query = f"{query} figure image visual marking label photograph diagram"
+    return query
 
 
 def _oracle_evidence(requirement: dict[str, Any], chunks: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    pages = {
-        evidence["page"]
-        for condition in requirement.get("conditions", [])
-        for evidence in condition.get("evidence", [])
-    }
-    return [dict(chunk, score=1.0) for chunk in chunks if chunk.get("page_number") in pages]
+    """Select the labelled passages, not every unrelated block on a labelled page."""
+    selected_ids: set[str] = set()
+    selected: list[dict[str, Any]] = []
+    index_by_id = {chunk["id"]: index for index, chunk in enumerate(chunks)}
+
+    def add(chunk: dict[str, Any]) -> None:
+        if chunk["id"] not in selected_ids:
+            selected_ids.add(chunk["id"])
+            selected.append(dict(chunk, score=1.0))
+
+    for condition in requirement.get("conditions", []):
+        for annotation in condition.get("evidence", []):
+            page_chunks = [
+                chunk for chunk in chunks
+                if chunk.get("page_number") == annotation["page"]
+            ]
+            if not page_chunks:
+                continue
+            best = max(
+                page_chunks,
+                key=lambda chunk: _quote_coverage(annotation.get("quote", ""), chunk.get("content", "")),
+            )
+            add(best)
+            # Keep an immediately adjacent heading/caption with a structured
+            # table or figure so its identity is not lost at a chunk boundary.
+            block_type = str((best.get("metadata") or {}).get("block_type") or "").lower()
+            if block_type in {"table", "figure", "formula", "checkbox"}:
+                position = index_by_id[best["id"]]
+                for neighbor_position in (position - 1, position + 1):
+                    if 0 <= neighbor_position < len(chunks):
+                        neighbor = chunks[neighbor_position]
+                        if neighbor.get("page_number") == best.get("page_number"):
+                            add(neighbor)
+    return selected
 
 
 def _retrieval_metrics(
     requirements: list[dict[str, Any]],
     retrieved: dict[str, list[dict[str, Any]]],
 ) -> dict[str, Any]:
-    hit_counts = {1: 0, 3: 0, 5: 0}
+    any_hit_counts = {1: 0, 3: 0, 5: 0}
+    full_coverage_counts = {1: 0, 3: 0, 5: 0}
+    page_hit_counts = {1: 0, 3: 0, 5: 0}
+    expected_page_total = 0
     reciprocal_ranks: list[float] = []
     evaluated = 0
     details: dict[str, Any] = {}
@@ -436,25 +486,39 @@ def _retrieval_metrics(
         if not expected_pages:
             continue
         evaluated += 1
+        expected_page_total += len(expected_pages)
         ranked_pages = [item.get("page_number") for item in retrieved.get(requirement["requirement_id"], [])]
         hit_rank = next(
             (index for index, page in enumerate(ranked_pages[:5], 1) if page in expected_pages),
             None,
         )
-        for k in hit_counts:
-            if hit_rank is not None and hit_rank <= k:
-                hit_counts[k] += 1
+        for k in any_hit_counts:
+            retrieved_at_k = set(ranked_pages[:k])
+            hits = expected_pages & retrieved_at_k
+            page_hit_counts[k] += len(hits)
+            if hits:
+                any_hit_counts[k] += 1
+            if expected_pages.issubset(retrieved_at_k):
+                full_coverage_counts[k] += 1
         reciprocal_ranks.append(1.0 / hit_rank if hit_rank else 0.0)
         details[requirement["requirement_id"]] = {
             "expected_pages": sorted(expected_pages),
             "retrieved_pages": ranked_pages,
             "first_hit_rank": hit_rank,
+            "page_coverage_at_3": _percent(len(expected_pages & set(ranked_pages[:3])), len(expected_pages)),
         }
     return {
         "evaluated_requirements": evaluated,
-        "recall_at_1": _percent(hit_counts[1], evaluated),
-        "recall_at_3": _percent(hit_counts[3], evaluated),
-        "recall_at_5": _percent(hit_counts[5], evaluated),
+        "expected_pages": expected_page_total,
+        "recall_at_1": _percent(page_hit_counts[1], expected_page_total),
+        "recall_at_3": _percent(page_hit_counts[3], expected_page_total),
+        "recall_at_5": _percent(page_hit_counts[5], expected_page_total),
+        "requirement_any_hit_at_1": _percent(any_hit_counts[1], evaluated),
+        "requirement_any_hit_at_3": _percent(any_hit_counts[3], evaluated),
+        "requirement_any_hit_at_5": _percent(any_hit_counts[5], evaluated),
+        "requirement_full_coverage_at_1": _percent(full_coverage_counts[1], evaluated),
+        "requirement_full_coverage_at_3": _percent(full_coverage_counts[3], evaluated),
+        "requirement_full_coverage_at_5": _percent(full_coverage_counts[5], evaluated),
         "mrr": round(sum(reciprocal_ranks) / evaluated, 4) if evaluated else 0.0,
         "details": details,
     }
@@ -489,7 +553,20 @@ def _prediction_for_condition(
     if not scored:
         return None, None
     score, item = max(scored, key=lambda pair: pair[0])
-    return (item, "semantic_description") if score >= 0.50 else (None, None)
+    if score >= 0.50:
+        return item, "semantic_description"
+    expected_ordinal = _condition_ordinal(expected_id)
+    if expected_ordinal is not None:
+        ordinal = next(
+            (
+                item for item in predictions
+                if _condition_ordinal(_field(item, "condition_id", "")) == expected_ordinal
+            ),
+            None,
+        )
+        if ordinal is not None:
+            return ordinal, "condition_ordinal"
+    return None, None
 
 
 def _atomic_metrics(
@@ -576,7 +653,6 @@ def _authority_metrics(
     requirements: list[dict[str, Any]],
     evidence_chunks: list[dict[str, Any]],
 ) -> dict[str, Any]:
-    by_page = {item.get("page_number"): item for item in evidence_chunks}
     checks: list[dict[str, Any]] = []
     for requirement in requirements:
         conditions = [_clean_condition(item) for item in requirement.get("conditions", [])]
@@ -592,17 +668,21 @@ def _authority_metrics(
             }],
             unmapped_obligations=[],
             contract_complete=True,
+            logic=requirement["logic"],
         )
-        seen: set[tuple[int, str]] = set()
         for condition in requirement.get("conditions", []):
             for evidence in condition.get("evidence", []):
-                key = (evidence["page"], evidence.get("expected_source_authority", ""))
-                if key in seen:
+                page_chunks = [
+                    item for item in evidence_chunks
+                    if item.get("page_number") == evidence["page"]
+                ]
+                if not page_chunks:
                     continue
-                seen.add(key)
-                chunk = by_page.get(evidence["page"])
-                if not chunk:
-                    continue
+                chunk = max(
+                    page_chunks,
+                    key=lambda item: _quote_coverage(evidence.get("quote", ""), item.get("content", "")),
+                )
+                quote_coverage = _quote_coverage(evidence.get("quote", ""), chunk.get("content", ""))
                 qualification = qualify_evidence(
                     contract=contract,
                     evidence_id=chunk["id"],
@@ -611,11 +691,15 @@ def _authority_metrics(
                     doc_type=chunk["doc_type"],
                     source_chunk_id=chunk["id"],
                     document_profile=chunk.get("document_profile"),
+                    metadata=chunk.get("metadata"),
                 )
                 expected_authority = evidence.get("expected_source_authority", "EMPIRICAL_TEST")
                 checks.append({
                     "requirement_id": requirement["requirement_id"],
+                    "condition_id": condition["condition_id"],
                     "page": evidence["page"],
+                    "selected_chunk_id": chunk["id"],
+                    "quote_coverage": round(quote_coverage, 4),
                     "expected_authority": expected_authority,
                     "actual_authority": qualification.source_authority,
                     "authority_correct": qualification.source_authority == expected_authority,
@@ -640,6 +724,7 @@ def _report_markdown(results: dict[str, Any]) -> str:
     extraction = results["metrics"]["extraction"]
     retrieval = results["metrics"]["retrieval"]
     authority = results["metrics"]["source_authority"]
+    visual = results["metrics"].get("visual_evidence", {})
     raw_atomic = results["metrics"]["raw_llm_atomic"]
     final_atomic = results["metrics"]["final_atomic"]
     safety = results["metrics"]["review_gate"]
@@ -659,8 +744,12 @@ def _report_markdown(results: dict[str, Any]) -> str:
         f"| Extraction | Selected-clause recall | {extraction['selected_clause_recall']:.2f}% |",
         f"| Extraction | Atomic-condition recall | {extraction['atomic_condition_recall']:.2f}% |",
         f"| Retrieval | Evidence page Recall@3 | {retrieval['recall_at_3']:.2f}% |",
+        f"| Retrieval | Requirement any-hit@3 | {retrieval['requirement_any_hit_at_3']:.2f}% |",
+        f"| Retrieval | Requirement full-page-coverage@3 | {retrieval['requirement_full_coverage_at_3']:.2f}% |",
         f"| Source qualification | Authority accuracy | {authority['authority_accuracy']:.2f}% |",
         f"| Source qualification | Authoritative qualification rate | {authority['authoritative_qualification_rate']:.2f}% |",
+        f"| Visual evidence | Retrieved figures analyzed | {visual.get('vision_analyzed', 0)} |",
+        f"| Visual evidence | Retrieved figures unavailable | {visual.get('vision_unavailable', 0)} |",
         f"| LLM reasoning | Raw atomic aligned accuracy | {raw_atomic['aligned_accuracy']:.2f}% |",
         f"| LLM reasoning | Raw condition alignment coverage | {raw_atomic['alignment_coverage']:.2f}% |",
         f"| LLM reasoning | Raw atomic end-to-end accuracy | {raw_atomic['end_to_end_accuracy']:.2f}% |",
@@ -689,7 +778,7 @@ def _report_markdown(results: dict[str, Any]) -> str:
         "## Interpretation",
         "",
         "The oracle-contract modes isolate retrieval and verification from requirement extraction. "
-        "The oracle-evidence modes additionally inject only the manually annotated test-report pages, "
+        "The oracle-evidence modes additionally inject the manually annotated test-report passages plus only their immediate structural context, "
         "isolating source qualification, condition reasoning, regulatory logic, and aggregation. "
         "Use `end-to-end` for the product-level result and compare it with the other modes to locate regressions.",
         "",
@@ -726,7 +815,12 @@ async def run_benchmark(
     print("[1/5] Ingesting the regulation and laboratory report...")
     requirement_chunks = _ingest_document(requirements_path, "Regulatory specification")
     evidence_chunks = _ingest_document(evidence_path, "Test report")
-    print(f"  Indexed {len(requirement_chunks)} regulation pages and {len(evidence_chunks)} report pages.")
+    requirement_pages = len({item.get('page_number') for item in requirement_chunks if item.get('page_number')})
+    evidence_pages = len({item.get('page_number') for item in evidence_chunks if item.get('page_number')})
+    print(
+        f"  Indexed {len(requirement_chunks)} regulation chunks across {requirement_pages} pages and "
+        f"{len(evidence_chunks)} report chunks across {evidence_pages} pages."
+    )
 
     profiles = await profile_documents(
         documents=[
@@ -794,6 +888,7 @@ async def run_benchmark(
             "content": value.content,
             "score": value.score,
             "document_profile": value.document_profile,
+            "metadata": value.metadata,
         } for value in retrieved]
     retrieval_metrics = _retrieval_metrics(requirements, retrieved_by_id)
     print(f"  Evidence page Recall@3: {retrieval_metrics['recall_at_3']:.2f}%.")
@@ -808,6 +903,17 @@ async def run_benchmark(
             else retrieved_by_id.get(item["req_code"], [])
         )
         req_items.append({**item, "candidate_chunks": candidate_chunks})
+    visual_metrics = await describe_figure_candidates(
+        req_items,
+        {evidence_path.stem: str(evidence_path)},
+        model=active_model,
+    )
+    print(
+        "  Visual evidence: "
+        f"{visual_metrics['vision_analyzed']} analyzed, "
+        f"{visual_metrics['vision_cache_hits']} cached, "
+        f"{visual_metrics['vision_unavailable']} unavailable."
+    )
     assessments = await batch_assess_requirements(
         req_items=req_items,
         model=active_model,
@@ -885,6 +991,7 @@ async def run_benchmark(
         "extraction": extraction_metrics,
         "retrieval": retrieval_metrics,
         "source_authority": authority_metrics,
+        "visual_evidence": visual_metrics,
         "raw_llm_atomic": _atomic_metrics(requirements, raw_condition_results),
         "final_atomic": _atomic_metrics(requirements, final_condition_results),
         "regulatory_logic": {
@@ -937,7 +1044,7 @@ def main() -> None:
     parser.add_argument("--mode", choices=sorted(MODES), default="oracle-contracts")
     parser.add_argument("--model", default=None, help="LLM model override; defaults to backend settings.")
     parser.add_argument("--thinking-level", default=None, help="Reasoning/thinking override.")
-    parser.add_argument("--batch-size", type=int, default=5)
+    parser.add_argument("--batch-size", type=int, default=3)
     parser.add_argument(
         "--validate-only",
         action="store_true",

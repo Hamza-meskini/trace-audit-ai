@@ -1,0 +1,29 @@
+{
+  "benchmark_id": "traceaudit-multimodal-diagnostic",
+  "version": "1.0.0",
+  "document_count": 3,
+  "requirement_count": 12,
+  "atomic_condition_count": 25,
+  "expected_distribution": {
+    "SUPPORTED": 5,
+    "PARTIAL": 2,
+    "CONFLICT": 3,
+    "MISSING": 1,
+    "UNKNOWN": 1
+  },
+  "visual_assets": [
+    "system_architecture.png",
+    "crash_timing_plot.png",
+    "thermal_shutdown_plot.png",
+    "can_heartbeat_plot.png",
+    "service_disconnect_inspection.png",
+    "connector_ingress_diagram.png"
+  ],
+  "design_principles": [
+    "Ground truth is evaluator-only",
+    "Every condition has document/page/block provenance",
+    "Cross-page and cross-document evidence are intentional",
+    "Figure-only scope claims remain inconclusive",
+    "Later direct inspections can contradict in-run observations"
+  ]
+}

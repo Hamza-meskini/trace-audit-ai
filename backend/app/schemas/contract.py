@@ -1,7 +1,7 @@
 """Structured Requirement Contract schema for formal auditing and validation."""
 
 from typing import Any, Optional, Union, Literal
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 import re
 
 from app.schemas.evidence_qualification import normalize_entity_scope
@@ -18,11 +18,24 @@ RequirementType = Literal[
     "other",
 ]
 
+RequirementLogicOperator = Literal["ALL_OF", "ANY_OF", "IF_THEN"]
+ConditionRole = Literal["VERIFICATION", "APPLICABILITY"]
+
+
+class RequirementLogicContract(BaseModel):
+    """Boolean structure connecting a requirement's atomic conditions."""
+
+    operator: RequirementLogicOperator = "ALL_OF"
+    condition_ids: list[str] = Field(default_factory=list)
+    if_condition_id: Optional[str] = None
+    then_condition_ids: list[str] = Field(default_factory=list)
+
 
 class AtomicConditionContract(BaseModel):
     """Structured atomic condition within a requirement contract."""
 
     condition_id: str
+    condition_role: ConditionRole = "VERIFICATION"
     description: Optional[str] = None
     parameter: Optional[str] = None
     operator: Optional[str] = None  # ">=", "<=", "==", "between", ">", "<", "in"
@@ -33,6 +46,7 @@ class AtomicConditionContract(BaseModel):
     scope: Optional[str] = None  # e.g. "BCU", "ASIC", "Inverter", "System"
     mandatory: bool = True
     verification_method: Optional[str] = None  # "physical_test", "simulation", "calculation", "inspection"
+    requires_visual_evidence: bool = False
 
 
 class ClauseCoverageContract(BaseModel):
@@ -61,6 +75,7 @@ class RequirementContract(BaseModel):
     unit: Optional[str] = None
     conditions: list[str] = Field(default_factory=list)
     atomic_conditions: list[AtomicConditionContract] = Field(default_factory=list)
+    logic: RequirementLogicContract = Field(default_factory=RequirementLogicContract)
     clause_coverage: list[ClauseCoverageContract] = Field(default_factory=list)
     unmapped_obligations: list[str] = Field(default_factory=list)
     # None preserves compatibility for legacy/manually-created contracts that
@@ -71,6 +86,53 @@ class RequirementContract(BaseModel):
     scope: Optional[str] = None  # "BCU", "ASIC", "Pack", "Inverter", "System"
     mandatory: bool = True
     raw_text: str = ""
+
+    @property
+    def verification_conditions(self) -> list[AtomicConditionContract]:
+        """Obligations whose outcomes determine compliance."""
+        return [
+            condition for condition in self.atomic_conditions
+            if condition.condition_role == "VERIFICATION"
+        ]
+
+    @property
+    def applicability_conditions(self) -> list[AtomicConditionContract]:
+        """Triggers or contextual gates that decide whether obligations apply."""
+        return [
+            condition for condition in self.atomic_conditions
+            if condition.condition_role == "APPLICABILITY"
+        ]
+
+    @model_validator(mode="after")
+    def normalize_logic_references(self) -> "RequirementContract":
+        """Populate omitted ALL_OF references and discard dangling IDs."""
+        available = [condition.condition_id for condition in self.atomic_conditions]
+        mandatory = [condition.condition_id for condition in self.atomic_conditions if condition.mandatory]
+        # parse_requirement_contract builds the contract before appending its
+        # conditions. Preserve explicit references during that construction
+        # phase; they are validated when the populated contract is revalidated.
+        if not available:
+            return self
+        available_set = set(available)
+        self.logic.condition_ids = [
+            condition_id for condition_id in self.logic.condition_ids
+            if condition_id in available_set
+        ]
+        self.logic.then_condition_ids = [
+            condition_id for condition_id in self.logic.then_condition_ids
+            if condition_id in available_set
+        ]
+        if self.logic.if_condition_id not in available_set:
+            self.logic.if_condition_id = None
+        if not self.logic.condition_ids:
+            if self.logic.operator == "IF_THEN":
+                self.logic.condition_ids = list(dict.fromkeys(
+                    ([self.logic.if_condition_id] if self.logic.if_condition_id else [])
+                    + self.logic.then_condition_ids
+                ))
+            else:
+                self.logic.condition_ids = mandatory or available
+        return self
 
 
 # Regex helpers for deterministic contract parsing
@@ -106,6 +168,7 @@ def parse_requirement_contract(
     clause_coverage: Optional[list[dict[str, Any]]] = None,
     unmapped_obligations: Optional[list[str]] = None,
     contract_complete: Optional[bool] = None,
+    logic: Optional[dict[str, Any]] = None,
 ) -> RequirementContract:
     """Build a structured RequirementContract from requirement text deterministically.
     
@@ -147,6 +210,7 @@ def parse_requirement_contract(
         ],
         unmapped_obligations=list(unmapped_obligations or []),
         contract_complete=contract_complete,
+        logic=RequirementLogicContract.model_validate(logic or {}),
     )
 
     # A structured condition tree is canonical whenever the caller has one.
@@ -170,6 +234,7 @@ def parse_requirement_contract(
 
             contract.atomic_conditions.append(AtomicConditionContract(
                 condition_id=condition_id,
+                condition_role=raw.get("condition_role", "VERIFICATION"),
                 description=raw.get("description"),
                 parameter=raw.get("parameter"),
                 operator=operator,
@@ -180,6 +245,7 @@ def parse_requirement_contract(
                 scope=raw.get("scope") or scope,
                 mandatory=bool(raw.get("mandatory", True)),
                 verification_method=raw.get("verification_method") or v_method,
+                requires_visual_evidence=bool(raw.get("requires_visual_evidence", False)),
             ))
 
         first = contract.atomic_conditions[0]
@@ -202,7 +268,7 @@ def parse_requirement_contract(
             contract.requirement_type = "boolean"
         elif first.operator == "==":
             contract.requirement_type = "enumeration"
-        return contract
+        return RequirementContract.model_validate(contract.model_dump())
 
     # 1. Check for IP rating
     ip_match = IP_REGEX.search(full_text)

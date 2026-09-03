@@ -69,6 +69,13 @@ def _bm25_retrieve(
         t for t in query_tokens
         if len(t) > 3 and t not in ("the", "shall", "with", "from", "that", "this", "over", "under", "within", "must", "unit", "system", "requirement")
     }
+    query_lower = requirement_text.lower()
+    visual_query = any(term in query_lower for term in (
+        "figure", "image", "visual", "symbol", "marking", "label", "diagram", "photograph",
+    ))
+    structured_query = visual_query or any(term in query_lower for term in (
+        "table", "formula", "calculate", "measured", "result", "v1", "v2", "resistance",
+    ))
 
     total_tokens = sum(len(tokenize(c.get("content", ""))) for c in chunks)
     avg_len = total_tokens / max(len(chunks), 1)
@@ -107,6 +114,15 @@ def _bm25_retrieve(
         if any(k in doc_name_lower for k in ["datasheet", "ds-", "report", "matrix", "compliance"]):
             if matched_params or (req_code_token and req_code_token in doc_tokens):
                 score += 1.0
+
+        # 5. Structure-intent boost. Captions and compact table rows contain
+        # fewer prose terms than ordinary paragraphs, so pure BM25 otherwise
+        # suppresses exactly the blocks needed for visual/formula conditions.
+        block_type = str((c.get("metadata") or {}).get("block_type") or "").lower()
+        if visual_query and block_type == "figure":
+            score += 5.0
+        elif structured_query and block_type in {"table", "formula", "checkbox"}:
+            score += 2.0
 
         if score >= min_score:
             matched = [t for t in query_tokens if t in doc_tokens and len(t) > 2]
@@ -153,12 +169,12 @@ def _condition_aware_rerank(
     condition_rankings: list[list[str]],
     top_k: int,
 ) -> list[RetrievedChunk]:
-    """Apply a soft condition-coverage bonus, then rerank by relevance.
+    """Select a relevance leader plus bounded per-condition coverage.
 
-    Atomic-condition queries should help a passage, not reserve a top-k slot
-    regardless of its final hybrid relevance.  A bounded rank bonus preserves
-    semantic/BM25 ordering while rewarding passages that serve one or more
-    condition queries.
+    A single requirement-level ranking repeatedly missed evidence for later
+    atomic conditions. Reserve only high-ranked candidates from condition
+    queries, then fill remaining slots by hybrid relevance. Python is choosing
+    context coverage here, not deciding whether any passage proves a condition.
     """
     if not condition_rankings:
         return _diversified_rerank(list(candidate_pool), top_k)
@@ -184,7 +200,99 @@ def _condition_aware_rerank(
         # hard reservation that can displace a materially stronger passage.
         item.score += max_base_score * (0.08 * rank_signal + 0.02 * multi_condition_signal)
 
-    return _diversified_rerank(list(candidate_pool), top_k)
+    ranked = sorted(candidate_pool, key=lambda item: item.score, reverse=True)
+    by_key = {_chunk_key(item): item for item in ranked}
+    selected: list[RetrievedChunk] = []
+    selected_keys: set[str] = set()
+
+    def add(item: RetrievedChunk | None) -> None:
+        if item is None or len(selected) >= top_k:
+            return
+        key = _chunk_key(item)
+        if key in selected_keys:
+            return
+        selected.append(item)
+        selected_keys.add(key)
+
+    # Keep the strongest global hit, then cover distinct atomic-condition
+    # queries while retaining at least one slot for the global ranking.
+    add(ranked[0] if ranked else None)
+    coverage_limit = max(1, top_k - 1)
+    for ranking in condition_rankings:
+        if len(selected) >= coverage_limit:
+            break
+        add(next((by_key.get(key) for key in ranking if key in by_key), None))
+
+    for item in ranked:
+        add(item)
+        if len(selected) >= top_k:
+            break
+    return selected[:top_k]
+
+
+def _expand_structural_context(
+    selected: list[RetrievedChunk],
+    chunks: list[dict[str, Any]],
+    *,
+    max_extra: int = 4,
+) -> list[RetrievedChunk]:
+    """Attach bounded same-page neighbors for tables, forms, and figures.
+
+    The selected item remains first, so ranking metrics stay meaningful. Extra
+    blocks are context only: they restore headers, result rows, captions, and
+    footnotes that layout-aware ingestion intentionally stores separately.
+    """
+    if not selected or max_extra <= 0:
+        return selected
+    positions = {
+        (chunk.get("id") or chunk.get("chunk_id")): index
+        for index, chunk in enumerate(chunks)
+    }
+    seen = {_chunk_key(item) for item in selected}
+    extras: list[RetrievedChunk] = []
+    for item in selected:
+        if len(extras) >= max_extra:
+            break
+        metadata = item.metadata or {}
+        block_type = str(metadata.get("block_type") or "").lower()
+        structured = block_type in {"table", "figure", "formula", "checkbox"}
+        if not structured:
+            continue
+        position = positions.get(item.chunk_id)
+        if position is None:
+            continue
+        for offset in (-2, -1, 1, 2):
+            neighbor_index = position + offset
+            if not 0 <= neighbor_index < len(chunks):
+                continue
+            neighbor = chunks[neighbor_index]
+            if (
+                neighbor.get("document_name") != item.document_name
+                or neighbor.get("page_number") != item.page_number
+            ):
+                continue
+            neighbor_metadata = dict(neighbor.get("metadata") or {})
+            neighbor_metadata["context_only"] = True
+            candidate = RetrievedChunk(
+                chunk_id=neighbor.get("id", "") or neighbor.get("chunk_id", ""),
+                document_id=neighbor.get("document_id", ""),
+                document_name=neighbor.get("document_name", ""),
+                doc_type=neighbor.get("doc_type", "Document"),
+                page_number=neighbor.get("page_number"),
+                content=neighbor.get("content", ""),
+                score=max(item.score - 1e-6, 0.0),
+                matched_terms=["structural_context"],
+                document_profile=neighbor.get("document_profile"),
+                metadata=neighbor_metadata,
+            )
+            key = _chunk_key(candidate)
+            if key in seen:
+                continue
+            seen.add(key)
+            extras.append(candidate)
+            if len(extras) >= max_extra:
+                break
+    return selected + extras
 
 
 def _diversified_rerank(candidate_pool: list[RetrievedChunk], top_k: int) -> list[RetrievedChunk]:
@@ -248,7 +356,8 @@ def retrieve_candidate_evidence(
     ]
     candidate_pool = _merge_candidate_pools(overall_pool, *condition_pools)
     rankings = [[_chunk_key(item) for item in pool] for pool in condition_pools]
-    return _condition_aware_rerank(candidate_pool, rankings, top_k)
+    selected = _condition_aware_rerank(candidate_pool, rankings, top_k)
+    return _expand_structural_context(selected, chunks)
 
 
 async def retrieve_candidate_evidence_hybrid(
@@ -302,13 +411,15 @@ async def retrieve_candidate_evidence_hybrid(
 
     # Step 2: If no embedding capability, fall back to pure BM25
     if not _has_embedding_key():
-        return _condition_aware_rerank(bm25_pool, condition_rankings, top_k)
+        selected = _condition_aware_rerank(bm25_pool, condition_rankings, top_k)
+        return _expand_structural_context(selected, chunks)
 
     # Step 3: Get query embedding
     query_embedding = await embed_single(requirement_text, task_type="RETRIEVAL_QUERY")
     if query_embedding is None:
         logger.info("Embedding unavailable for query; using pure BM25 retrieval")
-        return _condition_aware_rerank(bm25_pool, condition_rankings, top_k)
+        selected = _condition_aware_rerank(bm25_pool, condition_rankings, top_k)
+        return _expand_structural_context(selected, chunks)
 
     # Step 4: Lookup chunk embeddings for candidates in the pool
     needs_embedding: list[int] = []
@@ -347,7 +458,8 @@ async def retrieve_candidate_evidence_hybrid(
             candidate.score = HYBRID_ALPHA * bm25_norm
 
     # Step 6: Diversified rerank on hybrid scores
-    return _condition_aware_rerank(bm25_pool, condition_rankings, top_k)
+    selected = _condition_aware_rerank(bm25_pool, condition_rankings, top_k)
+    return _expand_structural_context(selected, chunks)
 
 
 async def precompute_chunk_embeddings(
