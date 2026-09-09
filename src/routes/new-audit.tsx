@@ -18,6 +18,7 @@ import { useCreateProject } from "@/hooks/use-projects";
 import { useUploadDocument, useDocuments } from "@/hooks/use-documents";
 import { useTriggerAudit } from "@/hooks/use-audit";
 import { useAiSettings } from "@/hooks/use-ai-settings";
+import { useActiveProject } from "@/hooks/use-active-project";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/new-audit")({
@@ -44,7 +45,8 @@ function WizardPage() {
   const [company, setCompany] = useState("Atlas Motion Systems");
   const [selectedModel, setSelectedModel] = useState("gemini-3.7-flash");
   const [thinkingLevel, setThinkingLevel] = useState("HIGH");
-  const [createdProjectId, setCreatedProjectId] = useState<string>("proj-001");
+  const [createdProjectId, setCreatedProjectId] = useState<string>("");
+  const { selectProject } = useActiveProject();
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
@@ -59,14 +61,16 @@ function WizardPage() {
     {
       id: "gemini-3.7-flash",
       name: "Gemini 3.7 Flash",
-      description: "Recommended. Ultra-fast, highly accurate extraction with High Thinking reasoning enabled.",
+      description:
+        "Recommended. Ultra-fast, highly accurate extraction with High Thinking reasoning enabled.",
       thinking_supported: true,
       default_thinking: "HIGH",
     },
     {
       id: "gemini-3.1-pro-preview",
       name: "Gemini 3.1 Pro Preview",
-      description: "Advanced reasoning model with Thinking enabled for deep contradiction analysis across complex technical files.",
+      description:
+        "Advanced reasoning model with Thinking enabled for deep contradiction analysis across complex technical files.",
       thinking_supported: true,
       default_thinking: "HIGH",
     },
@@ -81,6 +85,14 @@ function WizardPage() {
 
   const handleNextStep = async () => {
     if (step === 0) {
+      if (createdProjectId) {
+        setStep(1);
+        return;
+      }
+      if (!projectName.trim() || !productName.trim()) {
+        toast.error("Enter a project and product name");
+        return;
+      }
       try {
         const proj = await createProjectMutation.mutateAsync({
           name: projectName,
@@ -89,11 +101,11 @@ function WizardPage() {
           company: company,
         });
         setCreatedProjectId(proj.id);
+        selectProject(proj.id);
         toast.success("Project created", { description: `${proj.audit_id}` });
         setStep(1);
       } catch (err: any) {
-        // If already exists or error, proceed with default ID
-        setStep(1);
+        toast.error(`Project was not created: ${err.message || err}`);
       }
     } else {
       setStep((s) => s + 1);
@@ -126,13 +138,12 @@ function WizardPage() {
         model: selectedModel,
         thinking_level: thinkingLevel,
       });
-      toast.success("Audit complete!", {
-        description: `Requirements analyzed using ${selectedModel} (Thinking: ${thinkingLevel}).`,
+      toast.success("Audit started", {
+        description: "Follow live progress from any page in this project.",
       });
       setTimeout(() => navigate({ to: "/" }), 800);
     } catch (err: any) {
       toast.error(`Audit pipeline notice: ${err.message || err}`);
-      setTimeout(() => navigate({ to: "/" }), 1200);
     } finally {
       setRunning(false);
     }
@@ -174,7 +185,9 @@ function WizardPage() {
         {step === 0 && (
           <div className="space-y-4">
             <div>
-              <label className="text-xs uppercase tracking-wide text-muted-foreground">Project name</label>
+              <label className="text-xs uppercase tracking-wide text-muted-foreground">
+                Project name
+              </label>
               <Input
                 className="mt-1.5"
                 value={projectName}
@@ -182,7 +195,9 @@ function WizardPage() {
               />
             </div>
             <div>
-              <label className="text-xs uppercase tracking-wide text-muted-foreground">Company name</label>
+              <label className="text-xs uppercase tracking-wide text-muted-foreground">
+                Company name
+              </label>
               <Input
                 className="mt-1.5"
                 value={company}
@@ -190,7 +205,9 @@ function WizardPage() {
               />
             </div>
             <div>
-              <label className="text-xs uppercase tracking-wide text-muted-foreground">Product name</label>
+              <label className="text-xs uppercase tracking-wide text-muted-foreground">
+                Product name
+              </label>
               <Input
                 className="mt-1.5"
                 value={productName}
@@ -198,7 +215,9 @@ function WizardPage() {
               />
             </div>
             <div>
-              <label className="text-xs uppercase tracking-wide text-muted-foreground">Product category</label>
+              <label className="text-xs uppercase tracking-wide text-muted-foreground">
+                Product category
+              </label>
               <Select value={productCategory} onValueChange={setProductCategory}>
                 <SelectTrigger className="mt-1.5">
                   <SelectValue />
@@ -223,9 +242,13 @@ function WizardPage() {
             >
               <UploadCloud className="mx-auto size-5 text-muted-foreground" />
               <p className="mt-2 font-medium">Upload requirements document</p>
-              <p className="text-xs text-muted-foreground">PDF, CSV, XLSX or DOCX requirement lists</p>
+              <p className="text-xs text-muted-foreground">
+                PDF, CSV, XLSX or DOCX requirement lists
+              </p>
             </div>
-            <div className="text-center text-xs text-muted-foreground">or select a pre-configured framework</div>
+            <div className="text-center text-xs text-muted-foreground">
+              or select a pre-configured framework
+            </div>
             <div className="grid gap-2 sm:grid-cols-2">
               {frameworks.map((f) => (
                 <button
@@ -259,7 +282,7 @@ function WizardPage() {
                 "cursor-pointer rounded-xl border-2 border-dashed p-8 text-center transition-all",
                 dragging
                   ? "border-primary bg-primary/10 scale-[1.01]"
-                  : "border-border/80 bg-surface/50 hover:border-primary/70 hover:bg-surface"
+                  : "border-border/80 bg-surface/50 hover:border-primary/70 hover:bg-surface",
               )}
             >
               <div className="mx-auto flex size-12 items-center justify-center rounded-full bg-primary/10 text-primary">
@@ -272,7 +295,8 @@ function WizardPage() {
                 Select and upload all files at once (PDF, DOCX, XLSX, CSV)
               </p>
               <p className="mt-0.5 text-[11px] text-muted-foreground/80">
-                Supports Test Reports, Supplier Datasheets, Compliance Matrices, Architecture Specs & Safety Logs
+                Supports Test Reports, Supplier Datasheets, Compliance Matrices, Architecture Specs
+                & Safety Logs
               </p>
               <Button variant="outline" size="sm" className="mt-4 pointer-events-none">
                 <UploadCloud className="mr-1.5 size-4" />
@@ -288,7 +312,7 @@ function WizardPage() {
                     Uploaded Technical Files ({documentsList.length})
                   </span>
                   <span className="text-xs text-success flex items-center gap-1 font-medium">
-                    <Check className="size-3.5" /> Ready for Audit
+                    <Check className="size-3.5" /> Uploaded
                   </span>
                 </div>
                 <ul className="mt-2 divide-y divide-border/60">
@@ -296,7 +320,9 @@ function WizardPage() {
                     <li key={doc.id} className="flex items-center justify-between py-2 text-xs">
                       <div className="flex items-center gap-2 truncate pr-4">
                         <FileText className="size-4 shrink-0 text-muted-foreground" />
-                        <span className="font-medium text-foreground truncate">{doc.original_filename}</span>
+                        <span className="font-medium text-foreground truncate">
+                          {doc.original_filename}
+                        </span>
                       </div>
                       <span className="shrink-0 rounded-full border border-border bg-surface px-2.5 py-0.5 text-[10px] font-mono text-muted-foreground">
                         {doc.doc_type || "Technical documentation"}
@@ -319,7 +345,7 @@ function WizardPage() {
               <div>
                 <dt className="text-xs text-muted-foreground">Documents Ready</dt>
                 <dd className="text-lg font-semibold tabular">
-                  {documentsList?.length || 6} files
+                  {documentsList?.length || 0} files
                 </dd>
               </div>
             </dl>
@@ -333,7 +359,8 @@ function WizardPage() {
                 </label>
               </div>
               <p className="mt-1 text-xs text-muted-foreground">
-                Choose the Gemini model for requirements extraction, evidence reasoning, and contradiction detection.
+                Choose the primary reasoning model. Figure processing and focused secondary review
+                may use other configured providers.
               </p>
 
               <div className="mt-3 space-y-2">
@@ -345,7 +372,7 @@ function WizardPage() {
                       "cursor-pointer rounded-lg border p-3 transition-all",
                       selectedModel === m.id
                         ? "border-primary bg-info-soft/40 shadow-subtle ring-1 ring-primary"
-                        : "border-border bg-card hover:border-primary/50"
+                        : "border-border bg-card hover:border-primary/50",
                     )}
                   >
                     <div className="flex items-center justify-between">
@@ -362,29 +389,31 @@ function WizardPage() {
               </div>
 
               {/* Thinking Intensity Selector */}
-              <div className="mt-4 border-t border-border/80 pt-3">
-                <div className="flex items-center gap-1.5 text-xs font-medium text-foreground">
-                  <Brain className="size-3.5 text-primary" />
-                  <span>Thinking Intensity (Reasoning Effort):</span>
+              {availableModels.find((m) => m.id === selectedModel)?.thinking_supported && (
+                <div className="mt-4 border-t border-border/80 pt-3">
+                  <div className="flex items-center gap-1.5 text-xs font-medium text-foreground">
+                    <Brain className="size-3.5 text-primary" />
+                    <span>Thinking Intensity (Reasoning Effort):</span>
+                  </div>
+                  <div className="mt-2 flex gap-2">
+                    {["HIGH", "MEDIUM", "LOW"].map((lvl) => (
+                      <button
+                        key={lvl}
+                        type="button"
+                        onClick={() => setThinkingLevel(lvl)}
+                        className={cn(
+                          "flex-1 rounded-md border py-1.5 text-center font-mono text-xs font-semibold uppercase transition-colors",
+                          thinkingLevel === lvl
+                            ? "border-primary bg-primary text-primary-foreground shadow-subtle"
+                            : "border-border bg-card text-muted-foreground hover:text-foreground",
+                        )}
+                      >
+                        {lvl} {lvl === "HIGH" ? "(Recommended)" : ""}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-                <div className="mt-2 flex gap-2">
-                  {["HIGH", "MEDIUM", "LOW"].map((lvl) => (
-                    <button
-                      key={lvl}
-                      type="button"
-                      onClick={() => setThinkingLevel(lvl)}
-                      className={cn(
-                        "flex-1 rounded-md border py-1.5 text-center font-mono text-xs font-semibold uppercase transition-colors",
-                        thinkingLevel === lvl
-                          ? "border-primary bg-primary text-primary-foreground shadow-subtle"
-                          : "border-border bg-card text-muted-foreground hover:text-foreground"
-                      )}
-                    >
-                      {lvl} {lvl === "HIGH" ? "(Recommended)" : ""}
-                    </button>
-                  ))}
-                </div>
-              </div>
+              )}
             </div>
 
             {running && (
@@ -393,24 +422,40 @@ function WizardPage() {
                   <Loader2 className="size-4 animate-spin" />
                   Running {selectedModel} with Thinking: {thinkingLevel}...
                 </div>
-                <Progress value={85} className="mt-3 h-1.5" />
+                <p className="mt-2 text-xs">
+                  Submitting audit job… Live stage updates will appear after the server accepts it.
+                </p>
               </div>
             )}
           </div>
         )}
 
         <div className="mt-6 flex justify-between border-t border-border pt-4">
-          <Button variant="ghost" size="sm" disabled={step === 0 || running} onClick={() => setStep((s) => s - 1)}>
+          <Button
+            variant="ghost"
+            size="sm"
+            disabled={step === 0 || running}
+            onClick={() => setStep((s) => s - 1)}
+          >
             Back
           </Button>
           {step < 3 ? (
-            <Button size="sm" onClick={handleNextStep}>
+            <Button
+              size="sm"
+              disabled={createProjectMutation.isPending || uploadDocMutation.isPending}
+              onClick={handleNextStep}
+            >
               Continue
             </Button>
           ) : (
             <Button
               size="sm"
-              disabled={running}
+              disabled={
+                running ||
+                !createdProjectId ||
+                !documentsList?.length ||
+                uploadDocMutation.isPending
+              }
               onClick={handleStartAudit}
             >
               {running ? (

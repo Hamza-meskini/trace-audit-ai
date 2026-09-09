@@ -229,6 +229,8 @@ def _semantic_retry_condition_ids(
             or any(marker in reason for marker in _NOT_EXECUTED_MARKERS)
         ):
             targets.add(result.condition_id)
+        if result.status == "PENDING" and result.execution_state == "NOT_EXECUTED":
+            targets.add(result.condition_id)
         if (
             result.status == "INCONCLUSIVE"
             and any(marker in evidence_text for marker in _HARD_VIOLATION_MARKERS)
@@ -304,7 +306,10 @@ def _focused_semantic_retry_prompt(
           "status=UNTESTED, evidence_value_role=NOT_ADDRESSED or REQUIRED_OR_PLANNED, and relationship="
           "NOT_ADDRESSED. It is invalid to return FAILED, VIOLATES, or OBSERVED for an unexecuted test or "
           "unmeasured endpoint. status=FAILED requires execution_state=EXECUTED plus an observed violating "
-          "result. Apply these constraints even when the requirement expected the omitted endpoint."
+          "result. status=PENDING requires execution_state=PARTIALLY_EXECUTED (or EXECUTED when an observed "
+          "subset was completed), relationship=PARTIAL_COVERAGE, and direct evidence of partial empirical "
+          "coverage. Never use NOT_EXECUTED for PENDING. Apply these constraints even when the requirement "
+          "expected the omitted endpoint."
     )
 
 
@@ -382,6 +387,9 @@ Binding label rules:
   and an explicit observed violating outcome.
 - A test or endpoint explicitly not executed/not measured is UNTESTED with
   execution_state=NOT_EXECUTED and relationship=NOT_ADDRESSED. Missing execution is never FAILED.
+- PENDING requires direct partial empirical coverage with relationship=PARTIAL_COVERAGE and
+  execution_state=PARTIALLY_EXECUTED (or EXECUTED when a measured subset was completed).
+  A merely planned, scheduled, or not-started test is UNTESTED, never PENDING.
 - UNTESTED means no supplied evidence establishes an execution or outcome for that condition.
 - INCONCLUSIVE means evidence directly addresses the condition but result, authority, identity,
   scope, method, or detail is insufficient to decide it.
@@ -786,11 +794,12 @@ def _audit_llm_condition_metadata(
     contract: RequirementContract,
     analysis: VerificationAnalysisResult,
 ) -> VerificationAnalysisResult:
-    """Audit structured model facts without changing semantic condition statuses.
+    """Audit structured model facts and enforce output-schema invariants.
 
-    The LLM owns PROVEN/FAILED/PENDING/UNTESTED/INCONCLUSIVE.  Python records
-    inconsistencies as validation metadata so they remain visible to reviewers,
-    but those warnings are not a second semantic prediction engine.
+    The LLM owns evidence interpretation. Python records inconsistencies as
+    validation metadata and normalizes only logically impossible combinations
+    of fields supplied by the model itself. This is schema reconciliation, not
+    an independent evidence verdict engine.
     """
     conditions = {condition.condition_id: condition for condition in contract.atomic_conditions}
 
@@ -803,6 +812,26 @@ def _audit_llm_condition_metadata(
                 "No matching atomic contract was available; semantic result was preserved."
             )
             continue
+
+        # NOT_EXECUTED states that no test/measurement outcome exists. Partial
+        # work has its own PARTIALLY_EXECUTED state, so NOT_EXECUTED remains
+        # incompatible with PROVEN, FAILED, or PENDING. Normalize the
+        # status from the model's own execution metadata and keep the rewrite in
+        # condition_transitions for a fully auditable trace.
+        if (
+            result.execution_state == "NOT_EXECUTED"
+            and result.status not in ("UNTESTED", "NOT_APPLICABLE")
+        ):
+            previous_status = result.status
+            result.status = "UNTESTED"
+            result.relationship = "NOT_ADDRESSED"
+            if result.evidence_value_role in ("OBSERVED", "UNCLEAR"):
+                result.evidence_value_role = "NOT_ADDRESSED"
+            result.validation_state = "VALID"
+            result.validation_notes.append(
+                f"Normalized impossible {previous_status}/NOT_EXECUTED combination to UNTESTED; "
+                "no executed observation exists to prove or fail the condition."
+            )
 
         is_numeric = (
             condition.operator in ("<=", "<", ">=", ">", "==", "=", "between")
@@ -859,6 +888,16 @@ def _audit_llm_condition_metadata(
             result.validation_state = "CONTRADICTED"
             result.validation_notes.append(
                 "PENDING conflicts with structured NOT_ADDRESSED metadata; the LLM status was preserved."
+            )
+
+        if result.status == "PENDING" and result.execution_state not in (
+            "PARTIALLY_EXECUTED",
+            "EXECUTED",
+        ):
+            result.validation_state = "CONTRADICTED"
+            result.validation_notes.append(
+                "PENDING lacks a partially executed or executed empirical result; "
+                "the semantic status was preserved and must remain under review."
             )
 
         expected_relationship = {
@@ -1047,9 +1086,10 @@ STEP 2: CONDITION EVALUATION & COMPLIANCE RULES
    - JUDGE EVERY CONDITION INDEPENDENTLY. A sibling condition's missing range, pending test, or failure changes the final requirement status but must never downgrade an independently satisfied condition.
    - PENDING describes partial empirical coverage of THIS condition only. Never use PENDING merely because the overall requirement is PARTIAL. If this condition is fully satisfied by qualified evidence, return PROVEN even when another condition remains incomplete.
    - For every condition, also return the exact observed parameter/value/unit, `evidence_value_role` (OBSERVED, REQUIRED_OR_PLANNED, STATUS_ONLY, NOT_ADDRESSED, or UNCLEAR), and `relationship` (SATISFIES, VIOLATES, PARTIAL_COVERAGE, NOT_ADDRESSED, or UNCLEAR).
-   - Also return `execution_state` (EXECUTED, NOT_EXECUTED, NOT_ADDRESSED, UNKNOWN), `subject_identity` (CONFIRMED, UNCONFIRMED, NOT_REQUIRED, UNKNOWN), and `coverage_scope` (ALL_REQUIRED, SAMPLE, SINGLE_ITEM, NOT_APPLICABLE, UNKNOWN) for every condition.
+   - Also return `execution_state` (EXECUTED, PARTIALLY_EXECUTED, NOT_EXECUTED, NOT_ADDRESSED, UNKNOWN), `subject_identity` (CONFIRMED, UNCONFIRMED, NOT_REQUIRED, UNKNOWN), and `coverage_scope` (ALL_REQUIRED, SAMPLE, SINGLE_ITEM, NOT_APPLICABLE, UNKNOWN) for every condition.
    - A required, target, planned, scheduled, pending, or not-yet-tested value is NOT an observation. Never use it as measured proof. Set `evidence_value_role` to REQUIRED_OR_PLANNED.
    - FAILED requires an executed observation that violates the condition. If the report says the test, endpoint, or measurement was not executed, set execution_state=NOT_EXECUTED and status=UNTESTED; absence of a test is not a failed test.
+   - PENDING requires direct evidence that this condition was partly performed or empirically covered. Set execution_state=PARTIALLY_EXECUTED (or EXECUTED when a measured subset was completed), relationship=PARTIAL_COVERAGE, and evidence_value_role=OBSERVED or STATUS_ONLY. A merely planned, scheduled, or not-started test is UNTESTED, not PENDING.
    - Use `observed_min_value` and `observed_max_value` for an observed range. Use `observed_value` for a scalar, boolean, or categorical observation. Copy the observed unit exactly.
    - Apply the stated Regulatory Logic. ALL_OF requires every applicable condition. ANY_OF is satisfied when at least one alternative path is PROVEN; mark genuinely unused alternatives NOT_APPLICABLE. For IF_THEN, first decide the antecedent and evaluate every consequent when it applies.
    - A figure caption or image placeholder without an actual visual description cannot prove a visual condition. Return INCONCLUSIVE, not UNTESTED, because relevant visual evidence exists but has not been interpreted.
@@ -1253,9 +1293,10 @@ STEP 2: CONDITION EVALUATION & COMPLIANCE RULES
    - JUDGE EVERY CONDITION INDEPENDENTLY. A sibling condition's missing range, pending test, or failure changes the final requirement status but must never downgrade an independently satisfied condition.
    - PENDING describes partial empirical coverage of THIS condition only. Never use PENDING merely because the overall requirement is PARTIAL. If this condition is fully satisfied by qualified evidence, return PROVEN even when another condition remains incomplete.
    - For every condition, also return the exact observed parameter/value/unit, `evidence_value_role` (OBSERVED, REQUIRED_OR_PLANNED, STATUS_ONLY, NOT_ADDRESSED, or UNCLEAR), and `relationship` (SATISFIES, VIOLATES, PARTIAL_COVERAGE, NOT_ADDRESSED, or UNCLEAR).
-   - Also return `execution_state` (EXECUTED, NOT_EXECUTED, NOT_ADDRESSED, UNKNOWN), `subject_identity` (CONFIRMED, UNCONFIRMED, NOT_REQUIRED, UNKNOWN), and `coverage_scope` (ALL_REQUIRED, SAMPLE, SINGLE_ITEM, NOT_APPLICABLE, UNKNOWN) for every condition.
+   - Also return `execution_state` (EXECUTED, PARTIALLY_EXECUTED, NOT_EXECUTED, NOT_ADDRESSED, UNKNOWN), `subject_identity` (CONFIRMED, UNCONFIRMED, NOT_REQUIRED, UNKNOWN), and `coverage_scope` (ALL_REQUIRED, SAMPLE, SINGLE_ITEM, NOT_APPLICABLE, UNKNOWN) for every condition.
    - A required, target, planned, scheduled, pending, or not-yet-tested value is NOT an observation. Never use it as measured proof. Set `evidence_value_role` to REQUIRED_OR_PLANNED.
    - FAILED requires an executed observation that violates the condition. If a test, endpoint, or measurement was not executed, set execution_state=NOT_EXECUTED and status=UNTESTED; absence of a test is not a failed test.
+   - PENDING requires direct evidence that this condition was partly performed or empirically covered. Set execution_state=PARTIALLY_EXECUTED (or EXECUTED when a measured subset was completed), relationship=PARTIAL_COVERAGE, and evidence_value_role=OBSERVED or STATUS_ONLY. A merely planned, scheduled, or not-started test is UNTESTED, not PENDING.
    - Use `observed_min_value` and `observed_max_value` for an observed range. Use `observed_value` for a scalar, boolean, or categorical observation. Copy the observed unit exactly.
    - Apply each item's explicit Regulatory Logic: ALL_OF, ANY_OF, or IF_THEN. Do not treat alternative branches as mandatory siblings.
    - A figure caption or image placeholder without an actual visual description makes a visual condition INCONCLUSIVE, not UNTESTED or PROVEN.

@@ -37,7 +37,15 @@ export const Route = createFileRoute("/requirements/")({
   component: RequirementsPage,
 });
 
-const tabs = ["All", "Supported", "Partial", "Missing", "Conflict", "Unknown", "Needs review"] as const;
+const tabs = [
+  "All",
+  "Supported",
+  "Partial",
+  "Missing",
+  "Conflict",
+  "Unknown",
+  "Needs review",
+] as const;
 
 function RequirementsPage() {
   const navigate = useNavigate();
@@ -53,8 +61,8 @@ function RequirementsPage() {
   const { data: requirementsList, isLoading } = useRequirements(activeProjectId, {
     category,
     severity,
-    status: tab === "Needs review" ? undefined : tab,
-    review: tab === "Needs review" ? "Needs review" : undefined,
+    status: tab === "Needs review" ? "All" : tab,
+    review: tab === "Needs review" ? "Needs review" : "all",
   });
 
   const { data: documentsList } = useDocuments(activeProjectId);

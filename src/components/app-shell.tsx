@@ -64,6 +64,7 @@ const labels: Record<string, string> = {
 };
 
 import { useActiveProject } from "@/hooks/use-active-project";
+import { AuditProgressPanel } from "@/components/audit-progress";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const [collapsed, setCollapsed] = useState(false);
@@ -252,7 +253,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </div>
         </header>
 
-        <main className="min-w-0 flex-1 px-4 py-6 md:px-8 md:py-8">{children}</main>
+        <main className="min-w-0 flex-1 px-4 py-6 md:px-8 md:py-8"><AuditProgressPanel key={activeProject.id} projectId={activeProject.id} />{children}</main>
       </div>
 
       <CommandDialog open={openSearch} onOpenChange={setOpenSearch}>

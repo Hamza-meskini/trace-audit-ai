@@ -1,6 +1,16 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState, useRef } from "react";
-import { CheckCircle2, FileSpreadsheet, FileText, Loader2, Trash2, UploadCloud } from "lucide-react";
+import {
+  AlertCircle,
+  CheckCircle2,
+  Eye,
+  FileSpreadsheet,
+  FileText,
+  Loader2,
+  Play,
+  Trash2,
+  UploadCloud,
+} from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
@@ -10,6 +20,10 @@ import { useActiveProject } from "@/hooks/use-active-project";
 import { useDocuments, useUploadDocument, useDeleteDocument } from "@/hooks/use-documents";
 import { useProjectStats } from "@/hooks/use-projects";
 import { cn } from "@/lib/utils";
+import { DocumentInspector } from "@/components/document-inspector";
+import { Sheet, SheetContent, SheetTitle, SheetDescription } from "@/components/ui/sheet";
+import { useTriggerAudit, useAuditProgress } from "@/hooks/use-audit";
+import { useAiSettings } from "@/hooks/use-ai-settings";
 
 export const Route = createFileRoute("/documents")({
   head: () => ({
@@ -33,15 +47,24 @@ const stages = ["Upload", "Extract", "Analyze", "Index evidence"];
 
 function DocumentsPage() {
   const [dragging, setDragging] = useState(false);
+  const [inspecting, setInspecting] = useState<string | null>(null);
   const { activeProjectId } = useActiveProject();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const { data: documentsList, isLoading } = useDocuments(activeProjectId);
+  const { data: documentsList, isLoading, isError, refetch } = useDocuments(activeProjectId);
+  const audit = useTriggerAudit(activeProjectId);
+  const { data: job } = useAuditProgress(activeProjectId);
+  const { data: settings } = useAiSettings();
+  const busy = job?.status === "running" || job?.status === "queued" || audit.isPending;
   const { data: stats } = useProjectStats(activeProjectId);
   const uploadDocMutation = useUploadDocument(activeProjectId);
   const deleteDocMutation = useDeleteDocument(activeProjectId);
 
   const handleFiles = async (files: FileList | null) => {
+    if (busy) {
+      toast.info("Wait for the active audit to finish before changing documents.");
+      return;
+    }
     if (!files || files.length === 0) return;
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
@@ -57,9 +80,9 @@ function DocumentsPage() {
   };
 
   const projectStats = stats || {
-    documents: documentsList?.length || 6,
-    evidence_segments: 15,
-    supported: 7,
+    documents: documentsList?.length || 0,
+    evidence_segments: 0,
+    supported: 0,
   };
 
   return (
@@ -68,10 +91,37 @@ function DocumentsPage() {
         title="Technical Documents"
         subtitle="Manage the documents used as evidence for this audit."
         actions={
-          <Button onClick={() => fileInputRef.current?.click()}>
-            <UploadCloud className="size-4" />
-            Upload documents
-          </Button>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              disabled={busy || !documentsList?.length}
+              onClick={async () => {
+                if (
+                  !window.confirm(
+                    "Run a new audit on these documents? AI results will be refreshed; saved review history is retained.",
+                  )
+                )
+                  return;
+                try {
+                  await audit.mutateAsync(
+                    settings
+                      ? { model: settings.current_model, thinking_level: settings.thinking_level }
+                      : {},
+                  );
+                  toast.success("Audit queued. Follow live progress above.");
+                } catch (error) {
+                  toast.error(error instanceof Error ? error.message : "Could not start audit");
+                }
+              }}
+            >
+              <Play className="size-4" />
+              {busy ? "Audit running" : "Run audit"}
+            </Button>
+            <Button disabled={busy} onClick={() => fileInputRef.current?.click()}>
+              <UploadCloud className="size-4" />
+              Upload documents
+            </Button>
+          </div>
         }
       />
 
@@ -85,6 +135,14 @@ function DocumentsPage() {
         onChange={(e) => handleFiles(e.target.files)}
       />
 
+      {isError && (
+        <div role="alert" className="mb-4 rounded-lg border p-4 text-sm">
+          Document library could not be loaded.{" "}
+          <Button variant="outline" size="sm" onClick={() => refetch()}>
+            Retry
+          </Button>
+        </div>
+      )}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <Panel className="lg:col-span-2" title="Upload technical documentation">
           <div
@@ -120,13 +178,9 @@ function DocumentsPage() {
 
           <ol className="mt-5 grid grid-cols-2 gap-2 sm:grid-cols-4">
             {stages.map((s, i) => (
-              <li
-                key={s}
-                className="rounded-lg border border-border bg-card px-3 py-2 text-xs"
-              >
+              <li key={s} className="rounded-lg border border-border bg-card px-3 py-2 text-xs">
                 <div className="flex items-center gap-1.5 text-muted-foreground">
                   <span className="font-mono">{i + 1}</span>
-                  <CheckCircle2 className="size-3.5 text-success" />
                 </div>
                 <div className="mt-1 font-medium text-foreground">{s}</div>
               </li>
@@ -135,7 +189,9 @@ function DocumentsPage() {
 
           <div className="mt-5 flex items-center gap-2 rounded-lg border border-success/25 bg-success-soft px-4 py-2.5 text-sm text-success">
             <CheckCircle2 className="size-4" />
-            {projectStats.documents} documents ready & indexed
+            {documentsList?.filter((doc) => doc.processing_status === "Indexed").length ||
+              0} of {projectStats.documents} documents indexed. Run an audit to process queued
+            files.
           </div>
         </Panel>
 
@@ -191,7 +247,12 @@ function DocumentsPage() {
                       ) : (
                         <FileText className="size-4 text-primary" />
                       )}
-                      <span className="font-medium">{d.original_filename}</span>
+                      <button
+                        className="text-left font-medium text-primary hover:underline"
+                        onClick={() => setInspecting(d.id)}
+                      >
+                        {d.original_filename}
+                      </button>
                     </div>
                   </td>
                   <td className="px-5 py-3 text-muted-foreground">{d.doc_type}</td>
@@ -207,9 +268,17 @@ function DocumentsPage() {
                       <span className="inline-flex items-center gap-1.5 text-xs text-success">
                         <CheckCircle2 className="size-3.5" /> Indexed
                       </span>
+                    ) : d.processing_status === "Error" ? (
+                      <span className="inline-flex items-center gap-1.5 text-xs text-critical">
+                        <AlertCircle className="size-3.5" />
+                        Processing failed
+                      </span>
                     ) : (
                       <span className="inline-flex items-center gap-1.5 text-xs text-primary">
-                        <Loader2 className="size-3.5 animate-spin" /> {d.processing_status}
+                        {d.processing_status === "Processing" && (
+                          <Loader2 className="size-3.5 animate-spin" />
+                        )}{" "}
+                        {d.processing_status}
                       </span>
                     )}
                   </td>
@@ -220,9 +289,29 @@ function DocumentsPage() {
                     <Button
                       variant="ghost"
                       size="sm"
-                      onClick={() => {
-                        deleteDocMutation.mutate(d.id);
-                        toast.success("Document deleted");
+                      aria-label={`Inspect ${d.original_filename}`}
+                      onClick={() => setInspecting(d.id)}
+                    >
+                      <Eye className="size-4" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      disabled={busy || deleteDocMutation.isPending}
+                      aria-label={`Delete ${d.original_filename}`}
+                      onClick={async () => {
+                        if (
+                          !window.confirm(
+                            `Delete ${d.original_filename}? Its original file and index will be removed.`,
+                          )
+                        )
+                          return;
+                        try {
+                          await deleteDocMutation.mutateAsync(d.id);
+                          toast.success("Document deleted");
+                        } catch {
+                          toast.error("Document was not deleted. Please retry.");
+                        }
                       }}
                       className="text-muted-foreground hover:text-critical"
                     >
@@ -235,6 +324,32 @@ function DocumentsPage() {
           </table>
         </div>
       </Panel>
+      {isLoading && (
+        <p role="status" className="p-8 text-center text-sm text-muted-foreground">
+          Loading documents…
+        </p>
+      )}
+      {!isLoading && !isError && !documentsList?.length && (
+        <p className="p-8 text-center text-sm text-muted-foreground">
+          No documents yet. Upload the requirement source and independent evidence to begin.
+        </p>
+      )}
+      <Sheet open={!!inspecting} onOpenChange={(open) => !open && setInspecting(null)}>
+        <SheetContent className="w-full overflow-auto sm:max-w-4xl">
+          <SheetTitle>Document inspection</SheetTitle>
+          <SheetDescription className="mb-5">
+            Compare extracted content with the original document. Tables and images remain visible
+            on the source page.
+          </SheetDescription>
+          {inspecting && (
+            <DocumentInspector
+              key={`${activeProjectId}-${inspecting}`}
+              projectId={activeProjectId}
+              documentId={inspecting}
+            />
+          )}
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }

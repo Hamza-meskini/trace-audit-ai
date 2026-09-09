@@ -479,6 +479,126 @@ def audit_condition_evidence(
 
 # ── The single final-status decision function ────────────────────────────────
 
+def _logic_tree_condition_ids(node: Any) -> list[str]:
+    if not isinstance(node, dict):
+        return []
+    output: list[str] = []
+    if node.get("condition_id"):
+        output.append(str(node["condition_id"]))
+    for child in node.get("children") or []:
+        output.extend(_logic_tree_condition_ids(child))
+    for key in ("antecedent", "consequent", "if", "then"):
+        output.extend(_logic_tree_condition_ids(node.get(key)))
+    return list(dict.fromkeys(output))
+
+
+def _aggregate_status_group(operator: str, statuses: list[str]) -> Optional[str]:
+    """Mechanically combine already-interpreted child statuses."""
+    active = [status for status in statuses if status != "NOT_APPLICABLE"]
+    if not active:
+        return "NOT_APPLICABLE"
+    if operator == "ANY_OF":
+        if "SUPPORTED" in active:
+            return "SUPPORTED"
+        if "PARTIAL" in active:
+            return "PARTIAL"
+        if "UNKNOWN" in active:
+            return "UNKNOWN"
+        if "MISSING" in active:
+            return "MISSING"
+        if all(status == "CONFLICT" for status in active):
+            return "CONFLICT"
+        return None
+
+    if "CONFLICT" in active:
+        return "CONFLICT"
+    if all(status == "SUPPORTED" for status in active):
+        return "SUPPORTED"
+    if "SUPPORTED" in active or "PARTIAL" in active:
+        return "PARTIAL"
+    if all(status == "MISSING" for status in active):
+        return "MISSING"
+    if "UNKNOWN" in active:
+        return "UNKNOWN"
+    if "MISSING" in active:
+        return "MISSING"
+    return None
+
+
+def _aggregate_logic_tree_node(
+    node: Any,
+    by_id: dict[str, ConditionVerificationResult],
+) -> Optional[str]:
+    if not isinstance(node, dict):
+        return None
+    operator = str(node.get("operator") or "").upper()
+    if operator == "CONDITION":
+        result = by_id.get(str(node.get("condition_id") or ""))
+        if result is None:
+            return None
+        return {
+            "PROVEN": "SUPPORTED",
+            "FAILED": "CONFLICT",
+            "PENDING": "PARTIAL",
+            "UNTESTED": "MISSING",
+            "INCONCLUSIVE": "UNKNOWN",
+            "NOT_APPLICABLE": "NOT_APPLICABLE",
+        }.get((result.status or "UNTESTED").upper())
+    if operator in {"ALL_OF", "ANY_OF"}:
+        children = node.get("children") or []
+        if not children or (operator == "ANY_OF" and len(children) < 2):
+            return None
+        statuses = [_aggregate_logic_tree_node(child, by_id) for child in children]
+        if any(status is None for status in statuses):
+            return None
+        return _aggregate_status_group(operator, [str(status) for status in statuses])
+    if operator == "IF_THEN":
+        antecedent = node.get("antecedent") or node.get("if")
+        consequent = node.get("consequent") or node.get("then")
+        antecedent_status = _aggregate_logic_tree_node(antecedent, by_id)
+        if antecedent_status is None or consequent is None:
+            return None
+        if antecedent_status == "NOT_APPLICABLE":
+            return "SUPPORTED"
+        if antecedent_status != "SUPPORTED":
+            return antecedent_status
+        return _aggregate_logic_tree_node(consequent, by_id)
+    return None
+
+
+def _aggregate_nested_logic_tree(
+    contract: RequirementContract,
+    condition_results: list[ConditionVerificationResult],
+) -> Optional[tuple[str, float, str]]:
+    tree = getattr(contract, "logic_tree", None)
+    tree_ids = _logic_tree_condition_ids(tree)
+    if not tree or not tree_ids:
+        return None
+    condition_by_id = {condition.condition_id: condition for condition in contract.atomic_conditions}
+    if any(condition_id not in condition_by_id for condition_id in tree_ids):
+        return None
+    tree_conditions = [condition_by_id[condition_id] for condition_id in tree_ids]
+    aligned = _match_condition_results(tree_conditions, condition_results)
+    by_id = {
+        condition.condition_id: result
+        for condition, result in zip(tree_conditions, aligned)
+    }
+    status = _aggregate_logic_tree_node(tree, by_id)
+    if status in {None, "NOT_APPLICABLE"}:
+        return None
+    confidence = {
+        "SUPPORTED": 95.0,
+        "CONFLICT": 95.0,
+        "MISSING": 92.0,
+        "PARTIAL": 88.0,
+        "UNKNOWN": 80.0,
+    }[status]
+    return (
+        status,
+        confidence,
+        f"Mechanical nested-logic aggregation evaluated {len(tree_ids)} declared condition(s).",
+    )
+
 def aggregate_condition_statuses(
     contract: RequirementContract,
     condition_results: list[ConditionVerificationResult],
@@ -495,6 +615,10 @@ def aggregate_condition_statuses(
     Returns:
         (status, confidence, reason)
     """
+    nested = _aggregate_nested_logic_tree(contract, condition_results)
+    if nested is not None:
+        return nested
+
     aligned = _match_condition_results(contract, condition_results)
     logic = getattr(contract, "logic", None)
     operator = getattr(logic, "operator", "ALL_OF") or "ALL_OF"

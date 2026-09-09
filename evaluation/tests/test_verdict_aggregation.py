@@ -170,6 +170,53 @@ class TestAggregationPrecedence(unittest.TestCase):
         )
         self.assertEqual(status, "PARTIAL")
 
+    def test_nested_any_of_does_not_flatten_an_all_of_branch(self):
+        contract = make_contract(conditions=[cond("A"), cond("B"), cond("C")])
+        contract.logic = RequirementLogicContract(
+            operator="ANY_OF", condition_ids=["A", "B", "C"]
+        )
+        contract.logic_tree = {
+            "operator": "ANY_OF",
+            "children": [
+                {"operator": "ALL_OF", "children": [
+                    {"operator": "CONDITION", "condition_id": "A"},
+                    {"operator": "CONDITION", "condition_id": "B"},
+                ]},
+                {"operator": "CONDITION", "condition_id": "C"},
+            ],
+        }
+
+        status, _, reason = aggregate_condition_statuses(
+            contract,
+            [cr("A", "PROVEN"), cr("B", "FAILED"), cr("C", "UNTESTED")],
+        )
+
+        self.assertEqual(status, "MISSING")
+        self.assertIn("nested-logic", reason)
+
+    def test_nested_any_of_accepts_a_complete_alternative_branch(self):
+        contract = make_contract(conditions=[cond("A"), cond("B"), cond("C")])
+        contract.logic = RequirementLogicContract(
+            operator="ANY_OF", condition_ids=["A", "B", "C"]
+        )
+        contract.logic_tree = {
+            "operator": "ANY_OF",
+            "children": [
+                {"operator": "ALL_OF", "children": [
+                    {"operator": "CONDITION", "condition_id": "A"},
+                    {"operator": "CONDITION", "condition_id": "B"},
+                ]},
+                {"operator": "CONDITION", "condition_id": "C"},
+            ],
+        }
+
+        status, _, _ = aggregate_condition_statuses(
+            contract,
+            [cr("A", "FAILED"), cr("B", "UNTESTED"), cr("C", "PROVEN")],
+        )
+
+        self.assertEqual(status, "SUPPORTED")
+
 
 class TestLLMFinalVerdictOverride(unittest.TestCase):
     """Spec Phase 1: the LLM top-level status must never be trusted."""

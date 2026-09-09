@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "document_count": 3,
   "requirement_count": 12,
-  "atomic_condition_count": 25,
+  "atomic_condition_count": 24,
   "expected_distribution": {
     "SUPPORTED": 5,
     "PARTIAL": 2,

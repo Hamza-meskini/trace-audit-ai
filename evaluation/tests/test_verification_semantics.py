@@ -136,6 +136,24 @@ class TestVerificationSemantics(unittest.TestCase):
             ["C1", "C2"],
         )
 
+    def test_semantic_retry_detects_pending_marked_not_executed(self):
+        contract = RequirementContract(
+            requirement_id="REQ-PARTIAL",
+            req_code="REQ-PARTIAL",
+            title="Partial execution",
+            atomic_conditions=[
+                AtomicConditionContract(condition_id="C1", description="complete the test envelope"),
+            ],
+        )
+        results = [ConditionVerificationResult(
+            condition_id="C1",
+            status="PENDING",
+            execution_state="NOT_EXECUTED",
+            relationship="PARTIAL_COVERAGE",
+        )]
+
+        self.assertEqual(_semantic_retry_condition_ids(contract, results, []), ["C1"])
+
     def test_semantic_retry_rechecks_inconclusive_hard_violation(self):
         contract = RequirementContract(
             requirement_id="REQ-LEAK",

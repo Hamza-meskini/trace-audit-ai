@@ -151,6 +151,28 @@ def _supported_review_gate(
                 "inconsistent clause-to-condition coverage map."
             )
 
+    if contract is not None and contract.validation_issues:
+        preview = "; ".join(contract.validation_issues[:3])
+        if len(contract.validation_issues) > 3:
+            preview += f"; +{len(contract.validation_issues) - 3} more"
+        reasons.append("Atomic contract validation requires review: " + preview)
+
+    if (
+        contract is not None
+        and contract.decomposition_confidence is not None
+        and contract.decomposition_confidence < 0.75
+    ):
+        reasons.append(
+            "Atomic decomposition confidence is below the automatic-closure threshold "
+            f"({contract.decomposition_confidence:.0%} < 75%)."
+        )
+
+    if contract is not None and contract.ambiguities:
+        reasons.append(
+            "Atomic decomposition contains unresolved ambiguity: "
+            + "; ".join(contract.ambiguities[:2])
+        )
+
     provisional_status = str(diagnostics.get("llm_provisional_status") or "").strip().upper()
     if provisional_status and provisional_status != "SUPPORTED":
         reasons.append(
@@ -575,10 +597,15 @@ def assess_requirement_coverage(
     candidate_chunks: list[dict],
     spec_doc_names: Optional[set[str]] = None,
     conditions: Optional[list[dict[str, Any]]] = None,
+    semantic_clauses: Optional[list[dict[str, Any]]] = None,
     clause_coverage: Optional[list[dict[str, Any]]] = None,
     unmapped_obligations: Optional[list[str]] = None,
     contract_complete: Optional[bool] = None,
     logic: Optional[dict[str, Any]] = None,
+    logic_tree: Optional[dict[str, Any]] = None,
+    decomposition_confidence: Optional[float] = None,
+    ambiguities: Optional[list[str]] = None,
+    validation_issues: Optional[list[str]] = None,
 ) -> RequirementAssessment:
     """Assess a requirement using the deterministic validation engine only (no LLM calls)."""
     contract = parse_requirement_contract(
@@ -587,10 +614,15 @@ def assess_requirement_coverage(
         description=description,
         category=category,
         structured_conditions=conditions,
+        semantic_clauses=semantic_clauses,
         clause_coverage=clause_coverage,
         unmapped_obligations=unmapped_obligations,
         contract_complete=contract_complete,
         logic=logic,
+        logic_tree=logic_tree,
+        decomposition_confidence=decomposition_confidence,
+        ambiguities=ambiguities,
+        validation_issues=validation_issues,
     )
 
     context, decided = _deterministic_prechecks(
@@ -636,10 +668,15 @@ async def assess_requirement_coverage_async(
     thinking_level: Optional[str] = None,
     spec_doc_names: Optional[set[str]] = None,
     conditions: Optional[list[dict[str, Any]]] = None,
+    semantic_clauses: Optional[list[dict[str, Any]]] = None,
     clause_coverage: Optional[list[dict[str, Any]]] = None,
     unmapped_obligations: Optional[list[str]] = None,
     contract_complete: Optional[bool] = None,
     logic: Optional[dict[str, Any]] = None,
+    logic_tree: Optional[dict[str, Any]] = None,
+    decomposition_confidence: Optional[float] = None,
+    ambiguities: Optional[list[str]] = None,
+    validation_issues: Optional[list[str]] = None,
 ) -> RequirementAssessment:
     """Async assessment that escalates inconclusive cases to the LLM verification reasoner."""
     contract = parse_requirement_contract(
@@ -648,10 +685,15 @@ async def assess_requirement_coverage_async(
         description=description,
         category=category,
         structured_conditions=conditions,
+        semantic_clauses=semantic_clauses,
         clause_coverage=clause_coverage,
         unmapped_obligations=unmapped_obligations,
         contract_complete=contract_complete,
         logic=logic,
+        logic_tree=logic_tree,
+        decomposition_confidence=decomposition_confidence,
+        ambiguities=ambiguities,
+        validation_issues=validation_issues,
     )
 
     context, decided = _deterministic_prechecks(
@@ -699,6 +741,7 @@ async def batch_assess_requirements(
     thinking_level: Optional[str] = None,
     batch_size: int = 3,
     spec_doc_names: Optional[set[str]] = None,
+    progress=None,
 ) -> dict[str, RequirementAssessment]:
     """Assess a batch of requirements: deterministic checks first, batched LLM reasoning for the rest.
 
@@ -719,10 +762,15 @@ async def batch_assess_requirements(
             description=item.get("description", ""),
             category=item.get("category", "General"),
             structured_conditions=item.get("conditions"),
+            semantic_clauses=item.get("semantic_clauses"),
             clause_coverage=item.get("clause_coverage"),
             unmapped_obligations=item.get("unmapped_obligations"),
             contract_complete=item.get("contract_complete"),
             logic=item.get("logic"),
+            logic_tree=item.get("logic_tree"),
+            decomposition_confidence=item.get("decomposition_confidence"),
+            ambiguities=item.get("ambiguities"),
+            validation_issues=item.get("validation_issues"),
         )
         candidate_chunks = item.get("candidate_chunks", [])
 
@@ -793,6 +841,8 @@ async def batch_assess_requirements(
             )
 
         done_count = min(i + len(batch), len(pre_processed))
+        if progress:
+            progress(len(assessments), len(req_items))
         first_code = batch_codes[0] if batch_codes else "?"
         last_code = batch_codes[-1] if batch_codes else "?"
         print(f"    -> [Batch {b_idx:02d}/{total_batches:02d}] {first_code}..{last_code} ({len(batch)} reqs) in {dt:.2f}s | Done: {done_count}/{len(pre_processed)} ({done_count/len(pre_processed)*100:.0f}%)", flush=True)

@@ -9,6 +9,8 @@ import os
 import uuid
 import logging
 import time
+import asyncio
+from datetime import datetime, timezone
 from typing import Optional
 from sqlalchemy import select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -32,6 +34,7 @@ from app.services.document_classifier import (
     profile_documents,
 )
 from app.services.visual_analysis import describe_retrieved_figures
+from app.services.requirement_visual_recovery import recover_requirement_text_from_pages
 
 logger = logging.getLogger("traceaudit.pipeline")
 
@@ -68,6 +71,7 @@ async def run_audit_pipeline(
     db: AsyncSession,
     model: Optional[str] = None,
     thinking_level: Optional[str] = None,
+    progress=None,
 ) -> dict:
     """Execute the full audit pipeline for a project."""
     active_model = model or "gemini-3.7-flash"
@@ -75,6 +79,7 @@ async def run_audit_pipeline(
     pipeline_started = time.perf_counter()
     stage_timings: dict[str, float] = {}
     ingestion_diagnostics: list[dict] = []
+    report_progress = progress or (lambda *args: None)
     # 1. Fetch project
     result = await db.execute(select(Project).where(Project.id == project_id))
     project = result.scalar_one_or_none()
@@ -94,7 +99,8 @@ async def run_audit_pipeline(
     evidence_chunk_models: dict[str, EvidenceChunk] = {}
 
     ingestion_started = time.perf_counter()
-    for doc in documents:
+    report_progress("ingestion", 0, len(documents), "Reading source text, tables and figures")
+    for doc_index, doc in enumerate(documents):
         # Check if chunks already exist
         chunk_check = await db.execute(
             select(EvidenceChunk).where(EvidenceChunk.document_id == doc.id)
@@ -105,7 +111,7 @@ async def run_audit_pipeline(
 
         if (not existing_chunks or not cache_is_current) and os.path.exists(doc.storage_path):
             try:
-                parsed_document = parse_document_with_metadata(doc.storage_path)
+                parsed_document = await asyncio.to_thread(parse_document_with_metadata, doc.storage_path)
                 parsed_chunks = parsed_document.chunks
 
                 # Parse successfully before replacing stale rows, so a parser
@@ -160,6 +166,8 @@ async def run_audit_pipeline(
             })
             doc.processing_status = "Indexed"
 
+        report_progress("ingestion", doc_index + 1, len(documents), f"Processed {doc.original_filename}: {doc.processing_status}")
+
     await db.flush()
     stage_timings["ingestion_seconds"] = round(time.perf_counter() - ingestion_started, 3)
 
@@ -167,6 +175,7 @@ async def run_audit_pipeline(
     # cached on chunk metadata and reused by retrieval and evidence
     # qualification; filenames remain only weak hints.
     profiling_started = time.perf_counter()
+    report_progress("profiling", 0, len(documents), "Identifying document roles from their content")
     document_profiles = await profile_documents(
         documents=documents,
         all_chunks=all_chunks_for_retrieval,
@@ -209,14 +218,34 @@ async def run_audit_pipeline(
         select(Requirement).where(Requirement.project_id == project_id)
     )
     requirements = req_result.scalars().all()
+    requirement_visual_diagnostics: list[dict] = []
 
     if not requirements:
+        report_progress("extraction", 0, len(spec_docs), "Extracting requirement clauses and atomic conditions")
+        extraction_started = time.perf_counter()
         extracted_count = 0
         seen_req_codes = set()
 
         for doc in spec_docs:
             if os.path.exists(doc.storage_path):
-                doc_text = " ".join([c["content"] for c in all_chunks_for_retrieval if c["document_id"] == doc.id])
+                source_chunks = [
+                    chunk for chunk in all_chunks_for_retrieval
+                    if chunk["document_id"] == doc.id
+                ]
+                doc_text = "\n\n".join(chunk["content"] for chunk in source_chunks)
+                recovery = await recover_requirement_text_from_pages(
+                    file_path=doc.storage_path,
+                    chunks=source_chunks,
+                    model=active_model,
+                    chunk_models=evidence_chunk_models,
+                )
+                requirement_visual_diagnostics.append({
+                    "document_id": doc.id,
+                    "document_name": doc.original_filename,
+                    **{key: value for key, value in recovery.items() if key != "text"},
+                })
+                if recovery.get("text"):
+                    doc_text = f"{doc_text}\n\n{recovery['text']}"
                 extracted = await extract_requirements_from_text(
                     doc_text,
                     doc.original_filename,
@@ -238,17 +267,30 @@ async def run_audit_pipeline(
                         severity=er.severity,
                         source_document=doc.original_filename,
                         extracted_parameters={
+                            "source_document_id": doc.id,
                             "parameters": [p.model_dump() for p in er.parameters],
                             "conditions": [c.model_dump() for c in er.conditions],
+                            "semantic_clauses": [
+                                item.model_dump() for item in er.semantic_clauses
+                            ],
                             "clause_coverage": [
                                 item.model_dump() for item in er.clause_coverage
                             ],
                             "unmapped_obligations": list(er.unmapped_obligations),
                             "contract_complete": er.contract_complete,
                             "logic": er.logic.model_dump(),
+                            "logic_tree": er.logic_tree,
+                            "decomposition_confidence": er.decomposition_confidence,
+                            "ambiguities": list(er.ambiguities),
+                            "validation_issues": list(er.validation_issues),
+                            "decomposition_method": er.decomposition_method,
                         },
                     )
                     db.add(req)
+
+        stage_timings["requirement_extraction_seconds"] = round(
+            time.perf_counter() - extraction_started, 3
+        )
 
         await db.flush()
         req_result = await db.execute(
@@ -265,6 +307,7 @@ async def run_audit_pipeline(
 
     # 4a. Pre-compute semantic embeddings for all evidence chunks (single batch call)
     # This avoids redundant API calls when retrieving evidence for each requirement.
+    report_progress("retrieval", 0, len(requirements), "Preparing evidence search")
     chunk_embeddings = await precompute_chunk_embeddings(all_chunks_for_retrieval)
     logger.info(f"Pre-computed embeddings for {len(all_chunks_for_retrieval)} chunks")
 
@@ -326,15 +369,21 @@ async def run_audit_pipeline(
             "description": req.description,
             "category": req.category,
             "conditions": structured_conditions,
+            "semantic_clauses": extraction_data.get("semantic_clauses", []),
             "clause_coverage": extraction_data.get("clause_coverage", []),
             "unmapped_obligations": extraction_data.get("unmapped_obligations", []),
             # None means a legacy database record that pre-dates completeness
             # reporting. It is not silently treated as an explicit failure.
             "contract_complete": extraction_data.get("contract_complete"),
             "logic": extraction_data.get("logic"),
+            "logic_tree": extraction_data.get("logic_tree"),
+            "decomposition_confidence": extraction_data.get("decomposition_confidence"),
+            "ambiguities": extraction_data.get("ambiguities", []),
+            "validation_issues": extraction_data.get("validation_issues", []),
             "candidate_chunks": candidate_chunks,
             "spec_doc_names": spec_doc_names,
         })
+        report_progress("retrieval", len(req_items), len(requirements), f"Located evidence for {req.req_code}")
 
     stage_timings["retrieval_seconds"] = round(time.perf_counter() - retrieval_started, 3)
     retrieval_diagnostics = {
@@ -358,6 +407,7 @@ async def run_audit_pipeline(
     # Render and describe only figures selected by retrieval. Descriptions are
     # persisted on the chunk and reused across requirements and later runs.
     vision_started = time.perf_counter()
+    report_progress("vision", 0, 0, "Interpreting retrieved figures; provider calls may take several minutes")
     visual_diagnostics = await describe_retrieved_figures(
         req_items,
         {document.id: document for document in documents},
@@ -372,11 +422,13 @@ async def run_audit_pipeline(
     # LLM multi-condition reasoning (with Databricks cascade fallback) for
     # inconclusive requirements — same engine used by offline evaluation.
     reasoning_started = time.perf_counter()
+    report_progress("reasoning", 0, len(requirements), "Evaluating conditions, citations and review safety")
     assessments = await batch_assess_requirements(
         req_items=req_items,
         model=active_model,
         thinking_level=active_thinking,
         spec_doc_names=spec_doc_names,
+        progress=lambda done, total: report_progress("reasoning", done, total, f"{done} of {total} requirements evaluated"),
     )
     stage_timings["reasoning_seconds"] = round(time.perf_counter() - reasoning_started, 3)
     reasoning_diagnostics = {
@@ -395,6 +447,7 @@ async def run_audit_pipeline(
     }
 
     # 4c. Persist assessment results, evidence links, and findings
+    report_progress("saving", 0, len(requirements), "Saving traceable decisions and findings")
     for req in requirements:
         assessment = assessments.get(req.req_code)
         if assessment is None:
@@ -408,6 +461,20 @@ async def run_audit_pipeline(
         req.ai_analysis = assessment.ai_analysis
         req.ai_recommendation = assessment.ai_recommendation
         req.sources_count = len(assessment.evidence_links)
+        data = dict(req.extracted_parameters or {})
+        candidates = next((item["candidate_chunks"] for item in req_items if item["req_code"] == req.req_code), [])
+        data["verification"] = {
+            "assessed_at": datetime.now(timezone.utc).isoformat(),
+            "condition_results": [item.model_dump() for item in assessment.condition_results],
+            "diagnostics": assessment.pipeline_diagnostics,
+            "model": active_model,
+            "evidence_catalog": [
+                {"evidence_id": f"E{index}", "chunk_id": item["id"], "document_id": item["document_id"],
+                 "document_name": item["document_name"], "page_number": item.get("page_number")}
+                for index, item in enumerate(candidates, 1)
+            ],
+        }
+        req.extracted_parameters = data
 
         # Insert fresh RequirementEvidence links
         for ev_link in assessment.evidence_links:
@@ -477,6 +544,7 @@ async def run_audit_pipeline(
             "documents": ingestion_diagnostics,
             "retrieval": retrieval_diagnostics,
             "visual_analysis": visual_diagnostics,
+            "requirement_visual_recovery": requirement_visual_diagnostics,
             "reasoning": reasoning_diagnostics,
         },
     }

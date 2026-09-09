@@ -1,5 +1,5 @@
-# Logs
-logs
+# ── Logs ─────────────────────────────────────────────────────
+logs/
 *.log
 npm-debug.log*
 yarn-debug.log*
@@ -7,29 +7,30 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
-# Dependencies
+# ── Dependencies ─────────────────────────────────────────────
 node_modules/
 
-# Build output
+# ── Lock files (regenerated on install) ──────────────────────
+package-lock.json
+bun.lock
+
+# ── Build output ─────────────────────────────────────────────
 dist/
 dist-ssr/
 .output/
 .vinxi/
-.tanstack/**
+.tanstack/
 .nitro/
 *.local
 
-# Wrangler / Cloudflare
+# ── Wrangler / Cloudflare ────────────────────────────────────
 .wrangler/
 .dev.vars
 
-# Editor directories and files
+# ── Editor & IDE files ───────────────────────────────────────
 .vscode/*
 !.vscode/extensions.json
 .idea/
-.DS_Store
-Thumbs.db
-Desktop.ini
 *.suo
 *.ntvs*
 *.njsproj
@@ -37,31 +38,35 @@ Desktop.ini
 *.sw?
 *.swp
 *.bak
-*.tmp
 
-# ── Backend runtime, cache & secrets ────────────────────────
-backend/venv/
-backend/__pycache__/
-backend/traceaudit.db
-backend/uploads/
-backend/chroma_data/
-backend/.env
-backend/.env.*
+# ── OS generated files ──────────────────────────────────────
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# ── Secrets & env files ─────────────────────────────────────
 .env
 .env.*
 !.env.example
-traceaudit.db
-uploads/
-.cache/
-backend/.cache/
+!backend/.env.example
+backend/.env
+backend/.env.*
 
-# Python bytecode & test caches (anywhere in tree)
+# ── Python virtual environments (anywhere) ───────────────────
+venv/
+.venv/
+.venv-docling/
+backend/venv/
+env/
+
+# ── Python bytecode & caches (anywhere in tree) ─────────────
 __pycache__/
 **/__pycache__/
 *.pyc
 *.pyo
 *.pyd
 .pytest_cache/
+**/.pytest_cache/
 .coverage
 htmlcov/
 *.sqlite3
@@ -70,25 +75,37 @@ htmlcov/
 *.egg-info/
 build/
 
-# ── Generated / local-only files ─────────────────────────────
-sample_documents/
-TraceAudit_AI_Product_Strategy_Report.docx
+# ── Database files ───────────────────────────────────────────
+*.db
+traceaudit.db
+backend/traceaudit.db
 
-# Office / Excel temporary lock files
+# ── Uploads & user data (runtime generated) ──────────────────
+uploads/
+backend/uploads/
+backend/chroma_data/
+.cache/
+backend/.cache/
+
+# ── Temporary & scratch directories ─────────────────────────
+tmp/
+.review-tmp/
+sample_documents/
+
+# ── Generated documents ─────────────────────────────────────
+TraceAudit_AI_Product_Strategy_Report.docx
+*.docx
+*.xlsx
+
+# ── Office / Excel temporary lock files ──────────────────────
 ~$*
 *.tmp
 
-# Temporary debug & scratch outputs
-evaluation/results/detailed_*.json
-evaluation/results/*_v2.xlsx
+# ── Evaluation results & outputs (generated, not source) ────
+evaluation/results/*.json
 evaluation/results/*.xlsx
-!evaluation/tests/*.py
+evaluation/results/*.md
+evaluation/results/.*.json
 
-# Review tool temp files
-.review-tmp/
-
-# Temporary working directories
-tmp/
-
-# Codex visualizations / analysis artifacts
+# ── Codex visualizations / analysis artifacts ────────────────
 .codex/

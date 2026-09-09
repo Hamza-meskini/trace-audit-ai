@@ -315,6 +315,10 @@ def _pymupdf_elements(file_path: str) -> tuple[list[DocumentElement], int, dict[
         "native_text_pages": 0,
         "ocr_pages": 0,
         "ocr_failed_pages": 0,
+        "ocr_page_numbers": [],
+        "ocr_failed_page_numbers": [],
+        "low_text_page_numbers": [],
+        "page_native_text_chars": {},
         "tables_detected": 0,
         "figures_detected": 0,
         "decorative_images_filtered": 0,
@@ -326,15 +330,19 @@ def _pymupdf_elements(file_path: str) -> tuple[list[DocumentElement], int, dict[
         for page_index, page in enumerate(document):
             page_number = page_index + 1
             native_text = page.get_text("text").strip()
+            diagnostics["page_native_text_chars"][str(page_number)] = len(native_text)
             text_page = None
             used_ocr = False
             if len(native_text) < MIN_NATIVE_TEXT_CHARS:
+                diagnostics["low_text_page_numbers"].append(page_number)
                 try:
                     text_page = page.get_textpage_ocr(dpi=220, full=True)
                     used_ocr = True
                     diagnostics["ocr_pages"] += 1
+                    diagnostics["ocr_page_numbers"].append(page_number)
                 except Exception as exc:
                     diagnostics["ocr_failed_pages"] += 1
+                    diagnostics["ocr_failed_page_numbers"].append(page_number)
                     logger.info("OCR unavailable for page %s of %s: %s", page_number, file_path, exc)
             else:
                 diagnostics["native_text_pages"] += 1

@@ -37,10 +37,21 @@ class Settings(BaseSettings):
     # On-demand technical-figure description cascade. Gemini remains primary;
     # Groq and Hugging Face are used only when the preceding provider fails.
     GROQ_VISION_MODEL: str = "qwen/qwen3.6-27b"
+    GROQ_TEXT_MODEL: str = "qwen/qwen3.8-27b"
     HF_VISION_MODEL: str = "Qwen/Qwen2.5-VL-3B-Instruct"
 
-    LLM_PROVIDER: str = "gemini"  # "gemini" or "openai"
+    LLM_PROVIDER: str = "gemini"  # "gemini", "groq", "databricks", or "openai"
     LLM_MODEL: str = "gemini-3.7-flash"  # Default: gemini-3.7-flash, alternative: gemini-3.1-pro-preview
+
+    # Requirement discovery can use the caller-selected model (Maverick in the
+    # extraction benchmark), while semantic planning and atomic construction use
+    # a reasoning-focused model.  The fallback is stage-local and is attempted
+    # only when the primary atomic model returns no schema-valid response.
+    # TokenRouter's configured GLM 5.3 route avoids Gemini quota contention for
+    # semantic planning and atomic contract construction.
+    ATOMIC_DECOMPOSITION_MODEL: str = "z-ai/glm-5.3-free"
+    ATOMIC_DECOMPOSITION_FALLBACK_MODEL: str = "system.ai.llama-4-maverick"
+    ATOMIC_DECOMPOSITION_THINKING_LEVEL: str = "PROVIDER_DEFAULT"
     
     # Gemini Thinking Configuration (https://ai.google.dev/gemini-api/docs/thinking)
     # Supported thinking levels for Gemini 3 series: "LOW", "MEDIUM", "HIGH", "MINIMAL"
@@ -50,24 +61,27 @@ class Settings(BaseSettings):
     # Databricks AI Gateway Settings (MLflow Model Serving)
     DATABRICKS_TOKEN: str = ""
     DATABRICKS_BASE_URL: str = ""  # e.g. "https://<workspace-id>.cloud.databricks.com/ai-gateway/mlflow/v1"
-    DATABRICKS_MODEL: str = "system.ai.qwen35-122b-a10b"
-    DATABRICKS_FALLBACK_MODELS: list[str] = [
-        "system.ai.llama-4-maverick",
-        "system.ai.qwen35-122b-a10b",
-        "system.ai.meta-llama-3-3-70b-instruct",
-        "system.ai.gpt-oss-120b",
-    ]
+    DATABRICKS_MODEL: str = "system.ai.llama-4-maverick"
+    DATABRICKS_FALLBACK_MODELS: list[str] = []
+
+    # TokenRouter Settings (Multi-Model OpenAI-Compatible Gateway)
+    TOKENROUTER_API_KEY: str = ""
+    TOKENROUTER_BASE_URL: str = "https://api.tokenrouter.com/v1"
+    TOKENROUTER_MODEL: str = "z-ai/glm-5.3-free"
+
+    # OpenAI-compatible Base URL
+    OPENAI_BASE_URL: str = "https://api.openai.com/v1"
 
     # A different model reviews only condition decisions that remain
     # internally inconsistent after the primary model's focused retry.  It is
     # not a blanket ensemble and Python never substitutes a semantic label.
     SECONDARY_ADJUDICATOR_ENABLED: bool = True
-    SECONDARY_ADJUDICATOR_MODEL: str = "system.ai.qwen35-122b-a10b"
+    SECONDARY_ADJUDICATOR_MODEL: str = ""
 
     # Extractive citation grounding runs only when an attributed condition's
     # current quote is not a literal span of its cited evidence excerpt.
     CITATION_GROUNDING_ENABLED: bool = True
-    CITATION_GROUNDING_MODEL: str = "system.ai.qwen35-122b-a10b"
+    CITATION_GROUNDING_MODEL: str = ""
 
     model_config = {
         "env_file": (
@@ -96,6 +110,23 @@ class Settings(BaseSettings):
         return os.environ.get("OPENAI_API_KEY", "")
 
     @property
+    def effective_openai_base_url(self) -> str:
+        """Return OpenAI base URL without trailing slash."""
+        url = self.OPENAI_BASE_URL or os.environ.get("OPENAI_BASE_URL", "") or "https://api.openai.com/v1"
+        return url.rstrip("/")
+
+    @property
+    def effective_tokenrouter_api_key(self) -> str:
+        """Return TokenRouter API key from TOKENROUTER_API_KEY or environment."""
+        return self.TOKENROUTER_API_KEY or os.environ.get("TOKENROUTER_API_KEY", "")
+
+    @property
+    def effective_tokenrouter_base_url(self) -> str:
+        """Return TokenRouter base URL without trailing slash."""
+        url = self.TOKENROUTER_BASE_URL or os.environ.get("TOKENROUTER_BASE_URL", "") or "https://api.tokenrouter.com/v1"
+        return url.rstrip("/")
+
+    @property
     def effective_groq_api_key(self) -> str:
         """Return the active Groq API key without exposing it to diagnostics."""
         return self.GROQ_API_KEY or os.environ.get("GROQ_API_KEY", "")
@@ -121,6 +152,15 @@ settings = Settings()
 # Supported models list for UI and API validation
 SUPPORTED_MODELS = [
     {
+        "id": "gemini-3.8-flash",
+        "name": "Gemini 3.8 Flash",
+        "provider": "gemini",
+        "thinking_supported": True,
+        "default_thinking": "MEDIUM",
+        "description": "Reasoning model used by default for semantic clause planning and atomic decomposition.",
+        "is_default": False,
+    },
+    {
         "id": "gemini-3.7-flash",
         "name": "Gemini 3.7 Flash",
         "provider": "gemini",
@@ -128,6 +168,22 @@ SUPPORTED_MODELS = [
         "default_thinking": "HIGH",
         "description": "Recommended. Ultra-fast, highly accurate extraction with High Thinking reasoning enabled.",
         "is_default": True,
+    },
+    {
+        "id": "z-ai/glm-5.3-flash",
+        "name": "GLM 5.3 Flash (TokenRouter)",
+        "provider": "tokenrouter",
+        "thinking_supported": False,
+        "description": "Fast GLM 5.3 endpoint for semantic planning and structured atomic decomposition.",
+        "is_default": False,
+    },
+    {
+        "id": "z-ai/glm-5.3-free",
+        "name": "GLM 5.3 (TokenRouter)",
+        "provider": "tokenrouter",
+        "thinking_supported": False,
+        "description": "High-performance GLM 5.3 model hosted via TokenRouter OpenAI-compatible gateway.",
+        "is_default": False,
     },
     {
         "id": "system.ai.llama-4-maverick",

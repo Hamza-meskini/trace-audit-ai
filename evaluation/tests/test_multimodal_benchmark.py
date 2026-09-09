@@ -1,5 +1,7 @@
 """Regression checks for the synthetic multimodal diagnostic pack."""
 
+from pathlib import Path
+
 from evaluation.multimodal_benchmark.validate_multimodal_benchmark import validate
 from evaluation.run_multimodal_benchmark import (
     MULTIMODAL_DEFAULT_MODEL,
@@ -7,6 +9,7 @@ from evaluation.run_multimodal_benchmark import (
     load_dataset,
 )
 from evaluation.run_fmvss305_benchmark import _atomic_metrics
+from app.services.ingestion import parse_document_with_metadata
 
 
 def test_multimodal_dataset_is_structurally_valid():
@@ -15,11 +18,24 @@ def test_multimodal_dataset_is_structurally_valid():
     assert result["counts"] == {
         "documents": 3,
         "requirements": 12,
-        "atomic_conditions": 25,
+        "atomic_conditions": 24,
         "tables_detected": 15,
         "figures_detected": 6,
     }
     assert result["warnings"] == []
+
+
+def test_requirement_pdf_does_not_leak_atomic_answer_keys():
+    dataset = load_dataset()
+    filename = dataset["documents"]["requirements"]["filename"]
+    parsed = parse_document_with_metadata(
+        str(Path(__file__).resolve().parents[1] / "multimodal_benchmark" / "documents" / filename)
+    )
+    source = "\n".join(chunk.content for chunk in parsed.chunks)
+
+    assert "C1:" not in source
+    assert "C2:" not in source
+    assert "C3:" not in source
 
 
 def test_multimodal_dataset_covers_all_final_states():

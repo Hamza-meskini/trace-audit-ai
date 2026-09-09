@@ -217,7 +217,7 @@ async def run_benchmark(
     # ──────────────────────────────────────────────────────────────────────────
     # Stage 4: Verification, Contradiction Detection & Coverage Classification
     # ──────────────────────────────────────────────────────────────────────────
-    print("\n[4/4] Running Verification & Contradiction Detection Engine (Batched with Gemini 3.7 Flash)...")
+    print(f"\n[4/4] Running Verification & Contradiction Detection Engine (Batched with {model})...")
     actual_predictions: dict[str, str] = {}
     detailed_assessments: dict[str, Any] = {}
 
@@ -397,15 +397,64 @@ async def run_benchmark(
 
 def main():
     parser = argparse.ArgumentParser(description="TraceAudit AI Pipeline Benchmark Runner")
-    parser.add_argument("--model", type=str, default="gemini-3.7-flash", help="LLM model identifier")
-    parser.add_argument("--thinking-level", type=str, default="HIGH", help="Gemini thinking level (HIGH, MEDIUM, LOW)")
+    parser.add_argument("--model", type=str, default=None, help="LLM model identifier (defaults to LLM_MODEL or gemini-3.7-flash)")
+    parser.add_argument("--provider", type=str, default=None, help="LLM provider: tokenrouter, databricks, gemini, groq, openai")
+    parser.add_argument("--base-url", type=str, default=None, help="Custom base URL for OpenAI/TokenRouter endpoint")
+    parser.add_argument("--api-key", type=str, default=None, help="Custom API key for provider")
+    parser.add_argument("--thinking-level", type=str, default="HIGH", help="Gemini/provider thinking level (HIGH, MEDIUM, LOW)")
     parser.add_argument("--regenerate", action="store_true", help="Force regenerate synthetic documents and ground truth")
     parser.add_argument("--oracle", action="store_true", help="Run in Oracle mode: feed ground-truth evidence directly to the verifier")
 
     args = parser.parse_args()
 
+    # Dynamic CLI overrides
+    if args.provider:
+        settings.LLM_PROVIDER = args.provider.strip().lower()
+        os.environ["LLM_PROVIDER"] = settings.LLM_PROVIDER
+
+    if args.base_url:
+        target_provider = (args.provider or settings.LLM_PROVIDER or "").strip().lower()
+        if target_provider == "tokenrouter":
+            settings.TOKENROUTER_BASE_URL = args.base_url
+            os.environ["TOKENROUTER_BASE_URL"] = args.base_url
+        else:
+            settings.OPENAI_BASE_URL = args.base_url
+            os.environ["OPENAI_BASE_URL"] = args.base_url
+
+    if args.api_key:
+        target_provider = (args.provider or settings.LLM_PROVIDER or "").strip().lower()
+        if target_provider == "tokenrouter":
+            settings.TOKENROUTER_API_KEY = args.api_key
+            os.environ["TOKENROUTER_API_KEY"] = args.api_key
+        elif target_provider == "databricks":
+            settings.DATABRICKS_TOKEN = args.api_key
+            os.environ["DATABRICKS_TOKEN"] = args.api_key
+        elif target_provider == "groq":
+            settings.GROQ_API_KEY = args.api_key
+            os.environ["GROQ_API_KEY"] = args.api_key
+        elif target_provider == "gemini":
+            settings.GEMINI_API_KEY = args.api_key
+            os.environ["GEMINI_API_KEY"] = args.api_key
+        else:
+            settings.OPENAI_API_KEY = args.api_key
+            os.environ["OPENAI_API_KEY"] = args.api_key
+
+    # Determine effective model
+    model = args.model or os.environ.get("LLM_MODEL") or settings.LLM_MODEL or "gemini-3.7-flash"
+    settings.LLM_MODEL = model
+    os.environ["LLM_MODEL"] = model
+
+    # If provider wasn't explicitly given, auto-infer from model
+    if not args.provider and not os.environ.get("LLM_PROVIDER"):
+        from app.services.llm_client import resolve_llm_provider
+        inferred = resolve_llm_provider(model)
+        settings.LLM_PROVIDER = inferred
+        os.environ["LLM_PROVIDER"] = inferred
+
+    print(f">> Active Configuration: Provider='{settings.LLM_PROVIDER}', Model='{model}'")
+
     asyncio.run(run_benchmark(
-        model=args.model,
+        model=model,
         thinking_level=args.thinking_level,
         regenerate_data=args.regenerate,
         oracle=args.oracle,

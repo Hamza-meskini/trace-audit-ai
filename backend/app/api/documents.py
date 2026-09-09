@@ -4,20 +4,30 @@ import os
 import uuid
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Query
+from fastapi.responses import FileResponse, Response
+from starlette.concurrency import run_in_threadpool
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.database import get_db
 from app.models.project import Project
-from app.models.document import Document
+from app.models.document import Document, EvidenceChunk
+from app.api.requirements import block_response, public_metadata, chunk_pages
 from app.schemas.document import DocumentResponse, DocumentUploadResponse
+from app.services import audit_progress
 
 router = APIRouter(prefix="/projects/{project_id}/documents", tags=["Documents"])
 
 # Maximum upload size: 50 MB
 MAX_UPLOAD_SIZE_BYTES = 50 * 1024 * 1024
+
+
+def _require_idle(project_id):
+    job = audit_progress.latest(project_id)
+    if job and job["status"] in ("queued", "running"):
+        raise HTTPException(409, "Documents cannot change while this audit is running")
 
 # Map file extensions and filename keywords to realistic engineering document types
 DOC_TYPE_MAP = {
@@ -70,6 +80,8 @@ async def upload_document(
     result = await db.execute(select(Project).where(Project.id == project_id))
     if not result.scalar_one_or_none():
         raise HTTPException(status_code=404, detail="Project not found")
+
+    _require_idle(project_id)
 
     # Validate file type
     ext = Path(file.filename or "").suffix.lower()
@@ -135,6 +147,7 @@ async def get_document(project_id: str, document_id: str, db: AsyncSession = Dep
 
 @router.delete("/{document_id}", status_code=204)
 async def delete_document(project_id: str, document_id: str, db: AsyncSession = Depends(get_db)):
+    _require_idle(project_id)
     result = await db.execute(
         select(Document).where(Document.id == document_id, Document.project_id == project_id)
     )
@@ -149,3 +162,86 @@ async def delete_document(project_id: str, document_id: str, db: AsyncSession = 
         pass
 
     await db.delete(doc)
+
+
+async def _scoped_document(db, project_id, document_id):
+    doc = (await db.execute(select(Document).where(
+        Document.id == document_id, Document.project_id == project_id,
+    ))).scalar_one_or_none()
+    if doc is None:
+        raise HTTPException(404, "Document not found")
+    return doc
+
+
+def _source_path(doc):
+    path = Path(doc.storage_path).resolve()
+    root = Path(settings.UPLOAD_DIR).resolve()
+    if not path.is_relative_to(root) or not path.is_file():
+        raise HTTPException(404, "Original file is unavailable in managed document storage")
+    return path
+
+
+@router.get("/{document_id}/file")
+async def download_source(project_id: str, document_id: str, db: AsyncSession = Depends(get_db)):
+    doc = await _scoped_document(db, project_id, document_id)
+    path = _source_path(doc)
+    return FileResponse(path, filename=doc.original_filename,
+                        content_disposition_type="inline" if path.suffix.lower() == ".pdf" else "attachment")
+
+
+def _render_original_page(path, page_number):
+    import fitz
+    with fitz.open(path) as pdf:
+        if not 1 <= page_number <= len(pdf):
+            raise HTTPException(404, "Page not found")
+        page = pdf[page_number - 1]
+        scale = min(1.6, 2200 / max(page.rect.width, page.rect.height, 1))
+        return page.get_pixmap(matrix=fitz.Matrix(scale, scale), alpha=False).tobytes("png")
+
+
+def _pdf_page_count(path):
+    import fitz
+    with fitz.open(path) as pdf:
+        return len(pdf)
+
+
+@router.get("/{document_id}/pages/{page_number}.png")
+async def original_page(project_id: str, document_id: str, page_number: int,
+                        db: AsyncSession = Depends(get_db)):
+    doc = await _scoped_document(db, project_id, document_id)
+    path = _source_path(doc)
+    if path.suffix.lower() != ".pdf":
+        raise HTTPException(415, "Page previews are available for PDF originals; use extracted blocks or download")
+    png = await run_in_threadpool(_render_original_page, path, page_number)
+    return Response(png, media_type="image/png", headers={"Cache-Control": "private, max-age=300"})
+
+
+@router.get("/{document_id}/inspection")
+async def inspect_document(project_id: str, document_id: str, page: int = Query(1, ge=1),
+                           db: AsyncSession = Depends(get_db)):
+    doc = await _scoped_document(db, project_id, document_id)
+    chunks = (await db.execute(select(EvidenceChunk).where(
+        EvidenceChunk.document_id == doc.id,
+    ).order_by(EvidenceChunk.chunk_index))).scalars().all()
+    metadata = public_metadata(chunks[0].metadata_json) if chunks else {}
+    available_pages = sorted({page for chunk in chunks for page in chunk_pages(chunk)})
+    document_response = DocumentResponse.model_validate(doc)
+    is_pdf = Path(doc.filename).suffix.lower() == ".pdf"
+    if is_pdf and not document_response.page_count:
+        try:
+            document_response.page_count = await run_in_threadpool(_pdf_page_count, _source_path(doc))
+        except (HTTPException, RuntimeError, ValueError):
+            # Extraction and download remain available even if a preview cannot be rendered.
+            pass
+    return {
+        "document": document_response,
+        "is_pdf": is_pdf,
+        "available_pages": available_pages,
+        "profile": metadata.get("document_profile", {}),
+        "diagnostics": metadata.get("document_diagnostics", {}),
+        "blocks": [block_response(chunk) for chunk in chunks
+                   if page in chunk_pages(chunk) or (not chunk_pages(chunk) and page == 1)],
+        "counts": {"blocks": len(chunks),
+                   "tables": sum((chunk.metadata_json or {}).get("block_type") == "table" for chunk in chunks),
+                   "figures": sum((chunk.metadata_json or {}).get("block_type") == "figure" for chunk in chunks)},
+    }

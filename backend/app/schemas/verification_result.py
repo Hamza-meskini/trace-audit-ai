@@ -11,7 +11,13 @@ VerificationTopLevelStatus = Literal["SUPPORTED", "PARTIAL", "MISSING", "UNKNOWN
 ConditionValidationState = Literal["VALID", "UNRESOLVED", "CONTRADICTED"]
 EvidenceRelationship = Literal["SATISFIES", "VIOLATES", "PARTIAL_COVERAGE", "NOT_ADDRESSED", "UNCLEAR"]
 EvidenceValueRole = Literal["OBSERVED", "REQUIRED_OR_PLANNED", "STATUS_ONLY", "NOT_ADDRESSED", "UNCLEAR"]
-TestExecutionState = Literal["EXECUTED", "NOT_EXECUTED", "NOT_ADDRESSED", "UNKNOWN"]
+TestExecutionState = Literal[
+    "EXECUTED",
+    "PARTIALLY_EXECUTED",
+    "NOT_EXECUTED",
+    "NOT_ADDRESSED",
+    "UNKNOWN",
+]
 SubjectIdentityState = Literal["CONFIRMED", "UNCONFIRMED", "NOT_REQUIRED", "UNKNOWN"]
 CoverageScopeState = Literal["ALL_REQUIRED", "SAMPLE", "SINGLE_ITEM", "NOT_APPLICABLE", "UNKNOWN"]
 
@@ -104,12 +110,60 @@ _TOP_LEVEL_STATUS_SYNONYMS: dict[str, VerificationTopLevelStatus] = {
     "UNVERIFIED": "UNKNOWN",
 }
 
+_EXECUTION_STATE_SYNONYMS: dict[str, TestExecutionState] = {
+    "EXECUTED": "EXECUTED",
+    "PERFORMED": "EXECUTED",
+    "COMPLETE": "EXECUTED",
+    "COMPLETED": "EXECUTED",
+    "PARTIALLY_EXECUTED": "PARTIALLY_EXECUTED",
+    "PART_EXECUTED": "PARTIALLY_EXECUTED",
+    "PARTIAL": "PARTIALLY_EXECUTED",
+    "PARTIALLY_TESTED": "PARTIALLY_EXECUTED",
+    "IN_PROGRESS": "PARTIALLY_EXECUTED",
+    "ONGOING": "PARTIALLY_EXECUTED",
+    "INCOMPLETE": "PARTIALLY_EXECUTED",
+    "NOT_EXECUTED": "NOT_EXECUTED",
+    "NOT_TESTED": "NOT_EXECUTED",
+    "NOT_PERFORMED": "NOT_EXECUTED",
+    "NOT_STARTED": "NOT_EXECUTED",
+    "NOT_ADDRESSED": "NOT_ADDRESSED",
+    "NO_EVIDENCE": "NOT_ADDRESSED",
+    "UNKNOWN": "UNKNOWN",
+    "UNCLEAR": "UNKNOWN",
+}
+
+_EVIDENCE_VALUE_ROLE_SYNONYMS: dict[str, EvidenceValueRole] = {
+    "OBSERVED": "OBSERVED",
+    "MEASURED": "OBSERVED",
+    "ACTUAL": "OBSERVED",
+    "RESULT": "OBSERVED",
+    "REQUIRED_OR_PLANNED": "REQUIRED_OR_PLANNED",
+    "REQUIRED": "REQUIRED_OR_PLANNED",
+    "PLANNED": "REQUIRED_OR_PLANNED",
+    "TARGET": "REQUIRED_OR_PLANNED",
+    "SCHEDULED": "REQUIRED_OR_PLANNED",
+    "STATUS_ONLY": "STATUS_ONLY",
+    "STATUS": "STATUS_ONLY",
+    "DISPOSITION": "STATUS_ONLY",
+    "PARTIAL_COVERAGE": "STATUS_ONLY",
+    "NOT_ADDRESSED": "NOT_ADDRESSED",
+    "NO_EVIDENCE": "NOT_ADDRESSED",
+    "UNCLEAR": "UNCLEAR",
+    "UNKNOWN": "UNCLEAR",
+}
+
+
+def _normalize_enum_token(raw: Any) -> str:
+    if not isinstance(raw, str):
+        return ""
+    return raw.strip().upper().replace(" ", "_").replace("-", "_").replace(".", "_").replace("/", "_").strip("_")
+
 
 def normalize_condition_status(raw: Any) -> AtomicConditionStatus:
     """Normalize free-form LLM condition status into canonical AtomicConditionStatus."""
     if not isinstance(raw, str):
         return "UNTESTED"
-    clean = raw.strip().upper().replace(" ", "_").replace("-", "_").replace(".", "_").replace("/", "_").strip("_")
+    clean = _normalize_enum_token(raw)
     return _CONDITION_STATUS_SYNONYMS.get(clean, "UNTESTED")
 
 
@@ -117,8 +171,18 @@ def normalize_top_level_status(raw: Any) -> VerificationTopLevelStatus:
     """Normalize free-form LLM top-level status into canonical VerificationTopLevelStatus."""
     if not isinstance(raw, str):
         return "UNKNOWN"
-    clean = raw.strip().upper().replace(" ", "_").replace("-", "_").replace(".", "_").replace("/", "_").strip("_")
+    clean = _normalize_enum_token(raw)
     return _TOP_LEVEL_STATUS_SYNONYMS.get(clean, "UNKNOWN")
+
+
+def normalize_execution_state(raw: Any) -> TestExecutionState:
+    """Normalize common LLM descriptions of test progress without losing partial work."""
+    return _EXECUTION_STATE_SYNONYMS.get(_normalize_enum_token(raw), "UNKNOWN")
+
+
+def normalize_evidence_value_role(raw: Any) -> EvidenceValueRole:
+    """Normalize harmless role aliases so one malformed item cannot reject a batch."""
+    return _EVIDENCE_VALUE_ROLE_SYNONYMS.get(_normalize_enum_token(raw), "UNCLEAR")
 
 
 class RequirementCondition(BaseModel):
@@ -176,6 +240,16 @@ class ConditionVerificationResult(BaseModel):
     @classmethod
     def _validate_status(cls, v: Any) -> str:
         return normalize_condition_status(v)
+
+    @field_validator("execution_state", mode="before")
+    @classmethod
+    def _validate_execution_state(cls, value: Any) -> str:
+        return normalize_execution_state(value)
+
+    @field_validator("evidence_value_role", mode="before")
+    @classmethod
+    def _validate_evidence_value_role(cls, value: Any) -> str:
+        return normalize_evidence_value_role(value)
 
     @field_validator("observed_value", mode="before")
     @classmethod

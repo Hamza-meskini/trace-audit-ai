@@ -9,13 +9,24 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "backend"))
 
 from app.services.extraction import (
     ExtractionResult,
+    DiscoveredRequirement,
     ExtractedClauseCoverage,
     ExtractedCondition,
     ExtractedRequirement,
     ExtractedRequirementLogic,
+    ExtractedSemanticClause,
+    RequirementClausePlan,
+    RequirementDiscoveryResult,
+    RequirementPlanningResult,
+    _build_extraction_prompt,
+    _canonicalize_logic_tree,
+    _contract_validation_issues,
     _extract_chunk_with_retry,
+    _extract_chunk_staged,
     _estimated_atomic_obligations,
     _normalize_extracted_requirements,
+    _source_requirement_description,
+    _semantic_repair_issues,
     _requirement_blocks,
     _requirement_code_from_block,
     _split_text_into_chunks,
@@ -56,6 +67,77 @@ def requirement(code: str, text: str) -> ExtractedRequirement:
         unmapped_obligations=[],
         contract_complete=True,
     )
+
+
+def test_structured_extraction_coerces_null_list_fields():
+    result = ExtractionResult.model_validate({
+        "requirements": [{
+            "req_code": "REQ-NULL-001",
+            "title": "Null collection tolerance",
+            "description": "The controller shall log the event.",
+            "parameters": None,
+            "conditions": None,
+            "clause_coverage": None,
+            "unmapped_obligations": None,
+            "logic": {"operator": "ALL_OF", "condition_ids": None, "then_condition_ids": None},
+        }]
+    })
+    item = result.requirements[0]
+    assert item.parameters == []
+    assert item.conditions == []
+    assert item.logic.condition_ids == []
+    assert item.logic.then_condition_ids == []
+
+
+def test_structured_extraction_coerces_null_logic_to_default_all_of():
+    result = ExtractionResult.model_validate({
+        "requirements": [{
+            "req_code": "REQ-NULL-LOGIC-001",
+            "title": "Null logic tolerance",
+            "description": "Every instrument shall have valid calibration.",
+            "logic": None,
+        }]
+    })
+
+    assert result.requirements[0].logic.operator == "ALL_OF"
+
+
+def test_source_description_recovery_restores_wrapped_normative_sentence():
+    block = """REQ-MET-010 - Instrument traceability
+Every instrument used for acceptance data shall be identified by serial number and have calibration
+valid within 12 months on the test date.
+Page 6 of 7"""
+
+    recovered = _source_requirement_description(block, "REQ-MET-010 - Instrument traceability")
+
+    assert recovered == (
+        "Every instrument used for acceptance data shall be identified by serial number and have calibration "
+        "valid within 12 months on the test date."
+    )
+
+
+def test_condition_operator_aliases_are_canonicalized():
+    assert ExtractedCondition(description="limit", operator="LESS_THAN_OR_EQUAL_TO").operator == "<="
+    assert ExtractedCondition(description="state", operator="equal to").operator == "=="
+    assert ExtractedCondition(description="range", operator="WITHIN").operator == "between"
+
+
+def test_extraction_prompt_defines_canonical_atomic_boundaries_with_general_examples():
+    prompt = _build_extraction_prompt(
+        "REQ-X: The component shall operate as specified.",
+        "generic-specification.pdf",
+        "section 1",
+    )
+
+    assert "one subject, one property or action" in prompt
+    assert "Assign sequential IDs C1, C2, C3" in prompt
+    assert "Do not split a continuous numeric range" in prompt
+    assert "Never create an umbrella condition" in prompt
+    assert "Example 7 — performance across a verification envelope" in prompt
+    assert "When an action/state and its timing can fail independently" in prompt
+    assert "Example 2 — trigger, required state, and independent latency" in prompt
+    assert "Example 6 — true alternatives" in prompt
+    assert "REQ-NVA" not in prompt
 
 
 class TestRequirementBoundaryChunking(unittest.TestCase):
@@ -260,6 +342,249 @@ class TestAdaptiveExtractionRetry(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual([item.req_code for item in recovered], ["REQ-AUT-001", "REQ-AUT-002"])
         self.assertEqual(mocked.await_count, 2)
+
+
+class TestStagedAtomicDecomposition(unittest.IsolatedAsyncioTestCase):
+    def _plan(self) -> RequirementClausePlan:
+        return RequirementClausePlan(
+            req_code="REQ-GATE-001",
+            semantic_clauses=[
+                ExtractedSemanticClause(
+                    clause_id="CL1",
+                    clause_type="APPLICABILITY",
+                    source_span="If charging is connected",
+                    subject="charging",
+                    predicate="is connected",
+                    relationship="IF",
+                ),
+                ExtractedSemanticClause(
+                    clause_id="CL2",
+                    clause_type="VERIFICATION",
+                    source_span="torque shall remain zero",
+                    subject="torque",
+                    predicate="shall remain zero",
+                    relationship="THEN",
+                ),
+            ],
+            logic_tree={
+                "operator": "IF_THEN",
+                "antecedent": {"operator": "CONDITION", "clause_id": "CL1"},
+                "consequent": {"operator": "CONDITION", "clause_id": "CL2"},
+            },
+            decomposition_confidence=0.92,
+        )
+
+    def _contract(self) -> ExtractedRequirement:
+        return ExtractedRequirement(
+            req_code="REQ-GATE-001",
+            title="Drive-away inhibition",
+            description="If charging is connected, torque shall remain zero.",
+            conditions=[
+                ExtractedCondition(
+                    condition_id="C1",
+                    condition_role="APPLICABILITY",
+                    description="Charging is connected",
+                    source_span="If charging is connected",
+                    source_parameter="charging connection",
+                    canonical_parameter="charging_connected",
+                    parameter="charging_connected",
+                    operator="==",
+                    threshold=True,
+                    clause_ids=["CL1"],
+                ),
+                ExtractedCondition(
+                    condition_id="C2",
+                    description="Torque remains zero",
+                    source_span="torque shall remain zero",
+                    source_parameter="torque",
+                    canonical_parameter="propulsion_torque",
+                    parameter="propulsion_torque",
+                    operator="==",
+                    threshold=0,
+                    clause_ids=["CL2"],
+                ),
+            ],
+            logic=ExtractedRequirementLogic(
+                operator="IF_THEN",
+                condition_ids=["C1", "C2"],
+                if_condition_id="C1",
+                then_condition_ids=["C2"],
+            ),
+            logic_tree={
+                "operator": "IF_THEN",
+                "antecedent": {"operator": "CONDITION", "condition_id": "C1"},
+                "consequent": {"operator": "CONDITION", "condition_id": "C2"},
+            },
+            clause_coverage=[
+                ExtractedClauseCoverage(
+                    clause_id="CL1", clause="If charging is connected", condition_ids=["C1"]
+                ),
+                ExtractedClauseCoverage(
+                    clause_id="CL2", clause="torque shall remain zero", condition_ids=["C2"]
+                ),
+            ],
+            contract_complete=True,
+            decomposition_confidence=0.9,
+            decomposition_method="staged",
+        )
+
+    async def test_discovery_planning_and_atomic_construction_are_separate_calls(self):
+        source = "REQ-GATE-001: If charging is connected, torque shall remain zero."
+        discovered = RequirementDiscoveryResult(requirements=[DiscoveredRequirement(
+            req_code="REQ-GATE-001",
+            title="Drive-away inhibition",
+            description="If charging is connected, torque shall remain zero.",
+            category="Safety",
+            severity="High",
+        )])
+        planned = RequirementPlanningResult(plans=[self._plan()])
+        constructed = ExtractionResult(requirements=[self._contract()])
+        mocked = AsyncMock(side_effect=[discovered, planned, constructed])
+
+        with patch("app.services.extraction.generate_structured", mocked):
+            result = await _extract_chunk_staged(
+                source,
+                doc_name="requirements.pdf",
+                active_model="test-model",
+                thinking_level=None,
+                chunk_label="Section 1/1",
+                allow_rule_fallback=False,
+                allow_model_fallback=False,
+            )
+
+        self.assertEqual(mocked.await_count, 3)
+        self.assertEqual(len(result), 1)
+        self.assertTrue(result[0].contract_complete)
+        self.assertEqual(result[0].validation_issues, [])
+        self.assertEqual(result[0].conditions[1].canonical_parameter, "propulsion_torque")
+        self.assertEqual(result[0].logic_tree["operator"], "IF_THEN")
+
+    async def test_atomic_stages_use_the_reasoning_model_split(self):
+        source = "REQ-GATE-001: If charging is connected, torque shall remain zero."
+        discovered = RequirementDiscoveryResult(requirements=[DiscoveredRequirement(
+            req_code="REQ-GATE-001",
+            title="Drive-away inhibition",
+            description="If charging is connected, torque shall remain zero.",
+            category="Safety",
+            severity="High",
+        )])
+        mocked = AsyncMock(side_effect=[
+            discovered,
+            RequirementPlanningResult(plans=[self._plan()]),
+            ExtractionResult(requirements=[self._contract()]),
+        ])
+
+        with patch("app.services.extraction.generate_structured", mocked):
+            result = await _extract_chunk_staged(
+                source,
+                doc_name="requirements.pdf",
+                active_model="system.ai.llama-4-maverick",
+                thinking_level="HIGH",
+                atomic_model="z-ai/glm-5.3-free",
+                atomic_thinking_level="PROVIDER_DEFAULT",
+                atomic_fallback_model="system.ai.llama-4-maverick",
+                chunk_label="Section 1/1",
+                allow_rule_fallback=False,
+                allow_model_fallback=False,
+            )
+
+        self.assertEqual(len(result), 1)
+        self.assertEqual(mocked.await_args_list[0].kwargs["model"], "system.ai.llama-4-maverick")
+        self.assertEqual(mocked.await_args_list[1].kwargs["model"], "z-ai/glm-5.3-free")
+        self.assertEqual(mocked.await_args_list[2].kwargs["model"], "z-ai/glm-5.3-free")
+        self.assertEqual(mocked.await_args_list[1].kwargs["thinking_level"], "PROVIDER_DEFAULT")
+
+    def test_logic_tree_syntax_is_canonicalized_before_validation(self):
+        logic = ExtractedRequirementLogic(
+            operator="IF_THEN",
+            condition_ids=["C1", "C2", "C3"],
+            if_condition_id="C1",
+            then_condition_ids=["C2", "C3"],
+        )
+        known = {"C1", "C2", "C3"}
+        variants = [
+            {"operator": "IF_THEN", "antecedent": "C1", "consequent": {"ALL_OF": ["C2", "C3"]}},
+            {"IF_THEN": {"if_condition_id": "C1", "then_condition_ids": ["C2", "C3"]}},
+            {"operator": "IF_THEN", "antecedent": {"CONDITION": "C1"}, "consequent": {"operator": "ALL_OF", "condition_ids": ["C2", "C3"]}},
+        ]
+
+        for variant in variants:
+            canonical = _canonicalize_logic_tree(variant, logic, known)
+            self.assertEqual(canonical["operator"], "IF_THEN")
+            self.assertEqual(canonical["antecedent"]["condition_id"], "C1")
+            self.assertEqual(
+                {item["condition_id"] for item in canonical["consequent"]["children"]},
+                {"C2", "C3"},
+            )
+
+    def test_nonsemantic_validation_does_not_trigger_a_second_llm_repair(self):
+        issues = [
+            "Condition C1 has no grounded source_span.",
+            "Clause CL1 has unmapped numeric value(s): 2.",
+            "Condition C2 uses generic parameter 'value'.",
+        ]
+        self.assertEqual(_semantic_repair_issues(issues), [])
+
+    async def test_schema_invalid_atomic_response_gets_one_correction_retry(self):
+        source = "REQ-GATE-001: If charging is connected, torque shall remain zero."
+        discovered = RequirementDiscoveryResult(requirements=[DiscoveredRequirement(
+            req_code="REQ-GATE-001",
+            title="Drive-away inhibition",
+            description="If charging is connected, torque shall remain zero.",
+            category="Safety",
+            severity="High",
+        )])
+        mocked = AsyncMock(side_effect=[
+            discovered,
+            RequirementPlanningResult(plans=[self._plan()]),
+            None,
+            ExtractionResult(requirements=[self._contract()]),
+        ])
+
+        with patch("app.services.extraction.generate_structured", mocked):
+            result = await _extract_chunk_staged(
+                source,
+                doc_name="requirements.pdf",
+                active_model="test-model",
+                thinking_level=None,
+                chunk_label="Section 1/1",
+                allow_rule_fallback=False,
+                allow_model_fallback=False,
+            )
+
+        self.assertEqual(mocked.await_count, 4)
+        self.assertEqual(len(result), 1)
+        self.assertIn("QUALIFIER is permitted only inside semantic_clauses", mocked.await_args_list[3].kwargs["prompt"])
+
+    def test_ungrounded_condition_span_blocks_completeness(self):
+        item = self._contract()
+        item.semantic_clauses = self._plan().semantic_clauses
+        item.conditions[1].source_span = "a sentence that does not exist"
+
+        normalized = _normalize_extracted_requirements(
+            [item],
+            source_by_code={
+                "REQ-GATE-001": "If charging is connected, torque shall remain zero."
+            },
+        )[0]
+
+        self.assertFalse(normalized.contract_complete)
+        self.assertTrue(any("grounded source_span" in issue for issue in normalized.validation_issues))
+
+    def test_structural_validator_rejects_generic_parameters_and_dangling_logic(self):
+        item = self._contract()
+        item.semantic_clauses = self._plan().semantic_clauses
+        item.conditions[1].canonical_parameter = "value"
+        item.conditions[1].parameter = "value"
+        item.logic_tree["consequent"]["condition_id"] = "C99"
+
+        issues = _contract_validation_issues(
+            item,
+            "If charging is connected, torque shall remain zero.",
+        )
+
+        self.assertTrue(any("generic parameter" in issue for issue in issues))
+        self.assertTrue(any("unknown condition" in issue for issue in issues))
 
 
 class TestBenchmarkRequirementSource(unittest.TestCase):

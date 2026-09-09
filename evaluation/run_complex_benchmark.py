@@ -136,11 +136,19 @@ def _build_pipeline_requirements(
             "category": item.category,
             "severity": item.severity,
             "conditions": [condition.model_dump(exclude_none=True) for condition in item.conditions],
+            "semantic_clauses": [
+                clause.model_dump(exclude_none=True) for clause in item.semantic_clauses
+            ],
             "clause_coverage": [
                 mapping.model_dump(exclude_none=True) for mapping in item.clause_coverage
             ],
             "unmapped_obligations": list(item.unmapped_obligations),
             "contract_complete": item.contract_complete,
+            "logic": item.logic.model_dump(exclude_none=True),
+            "logic_tree": item.logic_tree,
+            "decomposition_confidence": item.decomposition_confidence,
+            "ambiguities": list(item.ambiguities),
+            "validation_issues": list(item.validation_issues),
         }
         for item in extracted_reqs
     ]

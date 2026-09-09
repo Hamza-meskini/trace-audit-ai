@@ -26,6 +26,8 @@ async def lifespan(app: FastAPI):
     # Startup
     logger.info("Initializing database...")
     await init_db()
+    from app.services.audit_progress import recover_interrupted
+    recover_interrupted()
 
     # Seed mock data for development
     async with async_session() as db:

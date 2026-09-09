@@ -5,7 +5,7 @@
   "counts": {
     "documents": 3,
     "requirements": 12,
-    "atomic_conditions": 25,
+    "atomic_conditions": 24,
     "tables_detected": 15,
     "figures_detected": 6
   },
@@ -17,7 +17,7 @@
     "MISSING": 1
   },
   "atomic_distribution": {
-    "PROVEN": 15,
+    "PROVEN": 14,
     "UNTESTED": 5,
     "FAILED": 3,
     "INCONCLUSIVE": 2
@@ -63,7 +63,7 @@
     },
     {
       "requirement_id": "MM-REQ-001",
-      "condition_id": "MM-001-C2",
+      "condition_id": "MM-001-C1",
       "document": "02_Aquila_Design_Validation_Test_Report.pdf",
       "page": 2,
       "annotated_block_type": "table",

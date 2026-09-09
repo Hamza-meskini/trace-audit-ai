@@ -56,6 +56,8 @@ async def update_ai_settings(body: UpdateAiSettingsRequest):
             settings.LLM_PROVIDER = "gemini"
         elif model_lower.startswith("system.ai.") or "databricks" in model_lower:
             settings.LLM_PROVIDER = "databricks"
+        elif "z-ai/" in model_lower or "glm-" in model_lower or "tokenrouter" in model_lower:
+            settings.LLM_PROVIDER = "tokenrouter"
         else:
             settings.LLM_PROVIDER = "openai"
 

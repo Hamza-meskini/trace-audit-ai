@@ -1,0 +1,4496 @@
+{
+  "benchmark_id": "traceaudit-nova-end-to-end-v1",
+  "version": "2.0.0",
+  "purpose": "Measure ingestion, multimodal requirement extraction, atomic decomposition, document profiling, evidence retrieval, condition verification, aggregation, citation grounding, and review-gate safety.",
+  "leakage_policy": "Atomic IDs, logic labels, normalized fields, and evaluator annotations must never appear in source PDFs.",
+  "documents": [
+    {
+      "filename": "01_Nova_HV_Electrical_Requirements.pdf",
+      "title": "Nova High-Voltage Electrical Requirements",
+      "doc_type": "System specification",
+      "expected_role": "SPECIFICATION",
+      "requirement_ids": [
+        "REQ-NVA-ELE-001",
+        "REQ-NVA-ELE-002",
+        "REQ-NVA-ELE-003",
+        "REQ-NVA-ELE-004",
+        "REQ-NVA-ELE-005",
+        "REQ-NVA-ELE-006"
+      ],
+      "expected_tables": 2,
+      "expected_figures": 1
+    },
+    {
+      "filename": "02_Nova_Thermal_Control_Requirements.pdf",
+      "title": "Nova Thermal Control Requirements",
+      "doc_type": "System specification",
+      "expected_role": "SPECIFICATION",
+      "requirement_ids": [
+        "REQ-NVA-THM-001",
+        "REQ-NVA-THM-002",
+        "REQ-NVA-THM-003",
+        "REQ-NVA-THM-004",
+        "REQ-NVA-THM-005",
+        "REQ-NVA-THM-006"
+      ],
+      "expected_tables": 2,
+      "expected_figures": 2
+    },
+    {
+      "filename": "03_Nova_Network_Diagnostics_Requirements.pdf",
+      "title": "Nova Network and Diagnostics Requirements",
+      "doc_type": "System specification",
+      "expected_role": "SPECIFICATION",
+      "requirement_ids": [
+        "REQ-NVA-NET-001",
+        "REQ-NVA-NET-002",
+        "REQ-NVA-NET-003",
+        "REQ-NVA-NET-004",
+        "REQ-NVA-NET-005",
+        "REQ-NVA-NET-006"
+      ],
+      "expected_tables": 2,
+      "expected_figures": 2
+    },
+    {
+      "filename": "04_Nova_Environmental_Mechanical_Requirements.pdf",
+      "title": "Nova Environmental and Mechanical Requirements",
+      "doc_type": "System specification",
+      "expected_role": "SPECIFICATION",
+      "requirement_ids": [
+        "REQ-NVA-ENV-001",
+        "REQ-NVA-ENV-002",
+        "REQ-NVA-ENV-003",
+        "REQ-NVA-ENV-004",
+        "REQ-NVA-ENV-005",
+        "REQ-NVA-ENV-006"
+      ],
+      "expected_tables": 2,
+      "expected_figures": 1
+    },
+    {
+      "filename": "05_Nova_Functional_Safety_Requirements.pdf",
+      "title": "Nova Functional Safety Requirements",
+      "doc_type": "System specification",
+      "expected_role": "SPECIFICATION",
+      "requirement_ids": [
+        "REQ-NVA-FSA-001",
+        "REQ-NVA-FSA-002",
+        "REQ-NVA-FSA-003",
+        "REQ-NVA-FSA-004",
+        "REQ-NVA-FSA-005",
+        "REQ-NVA-FSA-006"
+      ],
+      "expected_tables": 2,
+      "expected_figures": 1
+    },
+    {
+      "filename": "06_Nova_Cybersecurity_Requirements.pdf",
+      "title": "Nova Cybersecurity Requirements",
+      "doc_type": "System specification",
+      "expected_role": "SPECIFICATION",
+      "requirement_ids": [
+        "REQ-NVA-CYS-001",
+        "REQ-NVA-CYS-002",
+        "REQ-NVA-CYS-003",
+        "REQ-NVA-CYS-004",
+        "REQ-NVA-CYS-005",
+        "REQ-NVA-CYS-006"
+      ],
+      "expected_tables": 2,
+      "expected_figures": 2
+    },
+    {
+      "filename": "07_Nova_Charging_Power_Requirements.pdf",
+      "title": "Nova Charging and Power Conversion Requirements",
+      "doc_type": "System specification",
+      "expected_role": "SPECIFICATION",
+      "requirement_ids": [
+        "REQ-NVA-CHG-001",
+        "REQ-NVA-CHG-002",
+        "REQ-NVA-CHG-003",
+        "REQ-NVA-CHG-004",
+        "REQ-NVA-CHG-005",
+        "REQ-NVA-CHG-006"
+      ],
+      "expected_tables": 2,
+      "expected_figures": 2
+    },
+    {
+      "filename": "08_Nova_Manufacturing_Quality_Requirements.pdf",
+      "title": "Nova Manufacturing and Quality Requirements",
+      "doc_type": "System specification",
+      "expected_role": "SPECIFICATION",
+      "requirement_ids": [
+        "REQ-NVA-QLT-001",
+        "REQ-NVA-QLT-002",
+        "REQ-NVA-QLT-003",
+        "REQ-NVA-QLT-004",
+        "REQ-NVA-QLT-005",
+        "REQ-NVA-QLT-006"
+      ],
+      "expected_tables": 2,
+      "expected_figures": 1
+    }
+  ],
+  "requirements": [
+    {
+      "requirement_id": "REQ-NVA-ELE-001",
+      "title": "Operating voltage window",
+      "requirement_text": "The traction battery controller shall remain functional from 350 V DC through 820 V DC.",
+      "logic": {
+        "operator": "ALL_OF",
+        "condition_ids": [
+          "REQ-NVA-ELE-001-C1",
+          "REQ-NVA-ELE-001-C2"
+        ]
+      },
+      "conditions": [
+        {
+          "condition_id": "REQ-NVA-ELE-001-C1",
+          "description": "Functional coverage includes 350 V DC",
+          "parameter": "operating_voltage_lower",
+          "operator": "<=",
+          "threshold": 350,
+          "unit": "V",
+          "condition_role": "VERIFICATION",
+          "mandatory": true,
+          "requires_visual_evidence": false,
+          "expected_status": "PROVEN",
+          "evidence": [
+            {
+              "document": "09_Nova_Electrical_Thermal_Verification_Report.pdf",
+              "page": 2,
+              "block_type": "table",
+              "role": "supporting",
+              "quote": "PASS - Executed for REQ-NVA-ELE-001; the recorded result confirms: Functional coverage includes 350 V DC."
+            }
+          ]
+        },
+        {
+          "condition_id": "REQ-NVA-ELE-001-C2",
+          "description": "Functional coverage includes 820 V DC",
+          "parameter": "operating_voltage_upper",
+          "operator": ">=",
+          "threshold": 820,
+          "unit": "V",
+          "condition_role": "VERIFICATION",
+          "mandatory": true,
+          "requires_visual_evidence": false,
+          "expected_status": "PROVEN",
+          "evidence": [
+            {
+              "document": "09_Nova_Electrical_Thermal_Verification_Report.pdf",
+              "page": 2,
+              "block_type": "table",
+              "role": "supporting",
+              "quote": "PASS - Executed for REQ-NVA-ELE-001; the recorded result confirms: Functional coverage includes 820 V DC."
+            }
+          ]
+        }
+      ],
+      "document": "01_Nova_HV_Electrical_Requirements.pdf",
+      "source_page": 2,
+      "source_modality": "body_text",
+      "category": "Electrical safety",
+      "clause": "REQ-NVA-ELE-001",
+      "expected_status": "SUPPORTED",
+      "expected_review_state": "Reviewed"
+    },
+    {
+      "requirement_id": "REQ-NVA-ELE-002",
+      "title": "Sleep current",
+      "requirement_text": "After the wake line has remained low for 120 seconds, controller supply current shall not exceed 5 mA.",
+      "logic": {
+        "operator": "IF_THEN",
+        "condition_ids": [
+          "REQ-NVA-ELE-002-C1",
+          "REQ-NVA-ELE-002-C2"
+        ],
+        "if_condition_id": "REQ-NVA-ELE-002-C1",
+        "then_condition_ids": [
+          "REQ-NVA-ELE-002-C2"
+        ]
+      },
+      "conditions": [
+        {
+          "condition_id": "REQ-NVA-ELE-002-C1",
+          "description": "Wake line remains low for at least 120 seconds",
+          "parameter": "sleep_entry_delay",
+          "operator": ">=",
+          "threshold": 120,
+          "unit": "s",
+          "condition_role": "APPLICABILITY",
+          "mandatory": true,
+          "requires_visual_evidence": false,
+          "expected_status": "PROVEN",
+          "evidence": [
+            {
+              "document": "09_Nova_Electrical_Thermal_Verification_Report.pdf",
+              "page": 2,
+              "block_type": "table",
+              "role": "supporting",
+              "quote": "PASS - Executed for REQ-NVA-ELE-002; the recorded result confirms: Wake line remains low for at least 120 seconds."
+            }
+          ]
+        },
+        {
+          "condition_id": "REQ-NVA-ELE-002-C2",
+          "description": "Controller supply current does not exceed 5 mA",
+          "parameter": "sleep_current",
+          "operator": "<=",
+          "threshold": 5,
+          "unit": "mA",
+          "condition_role": "VERIFICATION",
+          "mandatory": true,
+          "requires_visual_evidence": false,
+          "expected_status": "PENDING",
+          "evidence": [
+            {
+              "document": "09_Nova_Electrical_Thermal_Verification_Report.pdf",
+              "page": 2,
+              "block_type": "table",
+              "role": "adverse_or_unresolved",
+              "quote": "IN PROGRESS - Partial execution exists for REQ-NVA-ELE-002, but verification is not complete: Controller supply current does not exceed 5 mA."
+            }
+          ]
+        }
+      ],
+      "document": "01_Nova_HV_Electrical_Requirements.pdf",
+      "source_page": 2,
+      "source_modality": "two_column_text",
+      "category": "Electrical safety",
+      "clause": "REQ-NVA-ELE-002",
+      "expected_status": "PARTIAL",
+      "expected_review_state": "Needs review"
+    },
+    {
+      "requirement_id": "REQ-NVA-ELE-003",
+      "title": "Post-impact isolation",
+      "requirement_text": "At 60 seconds after an impact event, the measured isolation resistance divided by the measured bus voltage shall be at least 500 ohm/V.",
+      "logic": {
+        "operator": "ALL_OF",
+        "condition_ids": [
+          "REQ-NVA-ELE-003-C1",
+          "REQ-NVA-ELE-003-C2"
+        ]
+      },
+      "conditions": [
+        {
+          "condition_id": "REQ-NVA-ELE-003-C1",
+          "description": "Isolation measurement occurs 60 seconds after impact",
+          "parameter": "post_impact_time",
+          "operator": "==",
+          "threshold": 60,
+          "unit": "s",
+          "condition_role": "VERIFICATION",
+          "mandatory": true,
+          "requires_visual_evidence": false,
+          "expected_status": "PROVEN",
+          "evidence": [
+            {
+              "document": "09_Nova_Electrical_Thermal_Verification_Report.pdf",
+              "page": 2,
+              "block_type": "table",
+              "role": "supporting",
+              "quote": "PASS - Executed for REQ-NVA-ELE-003; the recorded result confirms: Isolation measurement occurs 60 seconds after impact."
+            }
+          ]
+        },
+        {
+          "condition_id": "REQ-NVA-ELE-003-C2",
+          "description": "Isolation resistance per bus voltage is at least 500 ohm/V",
+          "parameter": "isolation_ratio",
+          "operator": ">=",
+          "threshold": 500,
+          "unit": "ohm/V",
+          "condition_role": "VERIFICATION",
+          "mandatory": true,
+          "requires_visual_evidence": false,
+          "expected_status": "FAILED",
+          "evidence": [
+            {
+              "document": "09_Nova_Electrical_Thermal_Verification_Report.pdf",
+              "page": 2,
+              "block_type": "table",
+              "role": "adverse_or_unresolved",
+              "quote": "FAIL - Executed for REQ-NVA-ELE-003; the observed result does not satisfy: Isolation resistance per bus voltage is at least 500 ohm/V."
+            }
+          ]
+        }
+      ],
+      "document": "01_Nova_HV_Electrical_Requirements.pdf",
+      "source_page": 2,
+      "source_modality": "two_column_text",
+      "category": "Electrical safety",
+      "clause": "REQ-NVA-ELE-003",
+      "expected_status": "CONFLICT",
+      "expected_review_state": "Reviewed"
+    },
+    {
+      "requirement_id": "REQ-NVA-ELE-004",
+      "title": "Contactor opening",
+      "requirement_text": "When a validated crash input is received, the positive and negative main contactors shall each reach the open state within 20 ms.",
+      "logic": {
+        "operator": "IF_THEN",
+        "condition_ids": [
+          "REQ-NVA-ELE-004-C1",
+          "REQ-NVA-ELE-004-C2",
+          "REQ-NVA-ELE-004-C3"
+        ],
+        "if_condition_id": "REQ-NVA-ELE-004-C1",
+        "then_condition_ids": [
+          "REQ-NVA-ELE-004-C2",
+          "REQ-NVA-ELE-004-C3"
+        ]
+      },
+      "conditions": [
+        {
+          "condition_id": "REQ-NVA-ELE-004-C1",
+          "description": "A validated crash input is received",
+          "parameter": "crash_input_valid",
+          "operator": "==",
+          "threshold": true,
+          "unit": null,
+          "condition_role": "APPLICABILITY",
+          "mandatory": true,
+          "requires_visual_evidence": false,
+          "expected_status": "UNTESTED",
+          "evidence": [
+            {
+              "document": "09_Nova_Electrical_Thermal_Verification_Report.pdf",
+              "page": 2,
+              "block_type": "table",
+              "role": "adverse_or_unresolved",
+              "quote": "NOT TESTED - No test or inspection was performed for REQ-NVA-ELE-004: A validated crash input is received."
+            }
+          ]
+        },
+        {
+          "condition_id": "REQ-NVA-ELE-004-C2",
+          "description": "Both positive and negative contactors reach open state",
+          "parameter": "main_contactors_open",
+          "operator": "==",
+          "threshold": true,
+          "unit": null,
+          "condition_role": "VERIFICATION",
+          "mandatory": true,
+          "requires_visual_evidence": false,
+          "expected_status": "UNTESTED",
+          "evidence": [
+            {
+              "document": "09_Nova_Electrical_Thermal_Verification_Report.pdf",
+              "page": 2,
+              "block_type": "table",
+              "role": "adverse_or_unresolved",
+              "quote": "NOT TESTED - No test or inspection was performed for REQ-NVA-ELE-004: Both positive and negative contactors reach open state."
+            }
+          ]
+        },
+        {
+          "condition_id": "REQ-NVA-ELE-004-C3",
+          "description": "Opening completes within 20 ms",
+          "parameter": "contactor_open_latency",
+          "operator": "<=",
+          "threshold": 20,
+          "unit": "ms",
+          "condition_role": "VERIFICATION",
+          "mandatory": true,
+          "requires_visual_evidence": false,
+          "expected_status": "UNTESTED",
+          "evidence": [
+            {
+              "document": "09_Nova_Electrical_Thermal_Verification_Report.pdf",
+              "page": 2,
+              "block_type": "table",
+              "role": "adverse_or_unresolved",
+              "quote": "NOT TESTED - No test or inspection was performed for REQ-NVA-ELE-004: Opening completes within 20 ms."
+            }
+          ]
+        }
+      ],
+      "document": "01_Nova_HV_Electrical_Requirements.pdf",
+      "source_page": 3,
+      "source_modality": "table",
+      "category": "Electrical safety",
+      "clause": "REQ-NVA-ELE-004",
+      "expected_status": "MISSING",
+      "expected_review_state": "Needs review"
+    },
+    {
+      "requirement_id": "REQ-NVA-ELE-005",
+      "title": "Precharge behavior",
+      "requirement_text": "During each high-voltage start, the DC link shall reach at least 90 percent of pack voltage within 2.0 s without exceeding pack voltage by more than 10 V.",
+      "logic": {
+        "operator": "ALL_OF",
+        "condition_ids": [
+          "REQ-NVA-ELE-005-C1",
+          "REQ-NVA-ELE-005-C2",
+          "REQ-NVA-ELE-005-C3"
+        ]
+      },
+      "conditions": [
+        {
+          "condition_id": "REQ-NVA-ELE-005-C1",
+          "description": "DC link reaches at least 90 percent of pack voltage",
+          "parameter": "precharge_ratio",
+          "operator": ">=",
+          "threshold": 90,
+          "unit": "%",
+          "condition_role": "VERIFICATION",
+          "mandatory": true,
+          "requires_visual_evidence": false,
+          "expected_status": "INCONCLUSIVE",
+          "evidence": [
+            {
+              "document": "09_Nova_Electrical_Thermal_Verification_Report.pdf",
+              "page": 3,
+              "block_type": "table",
+              "role": "adverse_or_unresolved",
+              "quote": "INCONCLUSIVE - Work was attempted for REQ-NVA-ELE-005, but incomplete scope or calibration prevents deciding: DC link reaches at least 90 percent of pack voltage."
+            }
+          ]
+        },
+        {
+          "condition_id": "REQ-NVA-ELE-005-C2",
+          "description": "Required level is reached within 2.0 seconds",
+          "parameter": "precharge_time",
+          "operator": "<=",
+          "threshold": 2.0,
+          "unit": "s",
+          "condition_role": "VERIFICATION",
+          "mandatory": true,
+          "requires_visual_evidence": false,
+          "expected_status": "INCONCLUSIVE",
+          "evidence": [
+            {
+              "document": "09_Nova_Electrical_Thermal_Verification_Report.pdf",
+              "page": 3,
+              "block_type": "table",
+              "role": "adverse_or_unresolved",
+              "quote": "INCONCLUSIVE - Work was attempted for REQ-NVA-ELE-005, but incomplete scope or calibration prevents deciding: Required level is reached within 2.0 seconds."
+            }
+          ]
+        },
+        {
+          "condition_id": "REQ-NVA-ELE-005-C3",
+          "description": "DC-link overshoot above pack voltage does not exceed 10 V",
+          "parameter": "precharge_overshoot",
+          "operator": "<=",
+          "threshold": 10,
+          "unit": "V",
+          "condition_role": "VERIFICATION",
+          "mandatory": true,
+          "requires_visual_evidence": false,
+          "expected_status": "INCONCLUSIVE",
+          "evidence": [
+            {
+              "document": "09_Nova_Electrical_Thermal_Verification_Report.pdf",
+              "page": 3,
+              "block_type": "table",
+              "role": "adverse_or_unresolved",
+              "quote": "INCONCLUSIVE - Work was attempted for REQ-NVA-ELE-005, but incomplete scope or calibration prevents deciding: DC-link overshoot above pack voltage does not exceed 10 V."
+            }
+          ]
+        }
+      ],
+      "document": "01_Nova_HV_Electrical_Requirements.pdf",
+      "source_page": 3,
+      "source_modality": "table",
+      "category": "Electrical safety",
+      "clause": "REQ-NVA-ELE-005",
+      "expected_status": "UNKNOWN",
+      "expected_review_state": "Needs review"
+    },
+    {
+      "requirement_id": "REQ-NVA-ELE-006",
+      "title": "Emergency discharge",
+      "requirement_text": "Following an emergency disconnect, the exposed DC bus shall fall below 60 V within 5.0 s and the red high-voltage warning indicator shall illuminate.",
+      "logic": {
+        "operator": "ALL_OF",
+        "condition_ids": [
+          "REQ-NVA-ELE-006-C1",
+          "REQ-NVA-ELE-006-C2",
+          "REQ-NVA-ELE-006-C3"
+        ]
+      },
+      "conditions": [
+        {
+          "condition_id": "REQ-NVA-ELE-006-C1",
+          "description": "Exposed DC bus falls below 60 V",
+          "parameter": "discharge_voltage",
+          "operator": "<",
+          "threshold": 60,
+          "unit": "V",
+          "condition_role": "VERIFICATION",
+          "mandatory": true,
+          "requires_visual_evidence": true,
+          "expected_status": "PROVEN",
+          "evidence": [
+            {
+              "document": "09_Nova_Electrical_Thermal_Verification_Report.pdf",
+              "page": 5,
+              "block_type": "figure",
+              "role": "supporting",
+              "quote": "PASS - Executed for REQ-NVA-ELE-006; the recorded result confirms: Exposed DC bus falls below 60 V."
+            }
+          ]
+        },
+        {
+          "condition_id": "REQ-NVA-ELE-006-C2",
+          "description": "Voltage limit is achieved within 5.0 seconds",
+          "parameter": "discharge_time",
+          "operator": "<=",
+          "threshold": 5.0,
+          "unit": "s",
+          "condition_role": "VERIFICATION",
+          "mandatory": true,
+          "requires_visual_evidence": true,
+          "expected_status": "PROVEN",
+          "evidence": [
+            {
+              "document": "09_Nova_Electrical_Thermal_Verification_Report.pdf",
+              "page": 5,
+              "block_type": "figure",
+              "role": "supporting",
+              "quote": "PASS - Executed for REQ-NVA-ELE-006; the recorded result confirms: Voltage limit is achieved within 5.0 seconds."
+            }
+          ]
+        },
+        {
+          "condition_id": "REQ-NVA-ELE-006-C3",
+          "description": "Red high-voltage warning indicator illuminates",
+          "parameter": "hv_warning_red",
+          "operator": "==",
+          "threshold": true,
+          "unit": null,
+          "condition_role": "VERIFICATION",
+          "mandatory": true,
+          "requires_visual_evidence": true,
+          "expected_status": "PROVEN",
+          "evidence": [
+            {
+              "document": "09_Nova_Electrical_Thermal_Verification_Report.pdf",
+              "page": 5,
+              "block_type": "figure",
+              "role": "supporting",
+              "quote": "PASS - Executed for REQ-NVA-ELE-006; the recorded result confirms: Red high-voltage warning indicator illuminates."
+            }
+          ]
+        }
+      ],
+      "document": "01_Nova_HV_Electrical_Requirements.pdf",
+      "source_page": 4,
+      "source_modality": "figure",
+      "category": "Electrical safety",
+      "clause": "REQ-NVA-ELE-006",
+      "expected_status": "SUPPORTED",
+      "expected_review_state": "Reviewed"
+    },
+    {
+      "requirement_id": "REQ-NVA-THM-001",
+      "title": "Ambient operating range",
+      "requirement_text": "The battery control assembly shall perform all monitoring functions from -30 deg C to +70 deg C ambient.",
+      "logic": {
+        "operator": "ALL_OF",
+        "condition_ids": [
+          "REQ-NVA-THM-001-C1",
+          "REQ-NVA-THM-001-C2"
+        ]
+      },
+      "conditions": [
+        {
+          "condition_id": "REQ-NVA-THM-001-C1",
+          "description": "Monitoring functions operate at -30 deg C",
+          "parameter": "ambient_temperature_lower",
+          "operator": "<=",
+          "threshold": -30,
+          "unit": "deg C",
+          "condition_role": "VERIFICATION",
+          "mandatory": true,
+          "requires_visual_evidence": false,
+          "expected_status": "PROVEN",
+          "evidence": [
+            {
+              "document": "09_Nova_Electrical_Thermal_Verification_Report.pdf",
+              "page": 3,
+              "block_type": "table",
+              "role": "supporting",
+              "quote": "PASS - Executed for REQ-NVA-THM-001; the recorded result confirms: Monitoring functions operate at -30 deg C."
+            }
+          ]
+        },
+        {
+          "condition_id": "REQ-NVA-THM-001-C2",
+          "description": "Monitoring functions operate at +70 deg C",
+          "parameter": "ambient_temperature_upper",
+          "operator": ">=",
+          "threshold": 70,
+          "unit": "deg C",
+          "condition_role": "VERIFICATION",
+          "mandatory": true,
+          "requires_visual_evidence": false,
+          "expected_status": "UNTESTED",
+          "evidence": [
+            {
+              "document": "09_Nova_Electrical_Thermal_Verification_Report.pdf",
+              "page": 3,
+              "block_type": "table",
+              "role": "adverse_or_unresolved",
+              "quote": "NOT TESTED - No test or inspection was performed for REQ-NVA-THM-001: Monitoring functions operate at +70 deg C."
+            }
+          ]
+        }
+      ],
+      "document": "02_Nova_Thermal_Control_Requirements.pdf",
+      "source_page": 2,
+      "source_modality": "body_text",
+      "category": "Thermal control",
+      "clause": "REQ-NVA-THM-001",
+      "expected_status": "PARTIAL",
+      "expected_review_state": "Needs review"
+    },
+    {
+      "requirement_id": "REQ-NVA-THM-002",
+      "title": "Shutdown band",
+      "requirement_text": "The controller shall command thermal shutdown at or above 90 deg C and shall not command thermal shutdown below 85 deg C.",
+      "logic": {
+        "operator": "ALL_OF",
+        "condition_ids": [
+          "REQ-NVA-THM-002-C1",
+          "REQ-NVA-THM-002-C2"
+        ]
+      },
+      "conditions": [
+        {
+          "condition_id": "REQ-NVA-THM-002-C1",
+          "description": "Thermal shutdown is commanded at or above 90 deg C",
+          "parameter": "shutdown_upper",
+          "operator": ">=",
+          "threshold": 90,
+          "unit": "deg C",
+          "condition_role": "VERIFICATION",
+          "mandatory": true,
+          "requires_visual_evidence": false,
+          "expected_status": "PROVEN",
+          "evidence": [
+            {
+              "document": "09_Nova_Electrical_Thermal_Verification_Report.pdf",
+              "page": 3,
+              "block_type": "table",
+              "role": "supporting",
+              "quote": "PASS - Executed for REQ-NVA-THM-002; the recorded result confirms: Thermal shutdown is commanded at or above 90 deg C."
+            }
+          ]
+        },
+        {
+          "condition_id": "REQ-NVA-THM-002-C2",
+          "description": "Thermal shutdown is not commanded below 85 deg C",
+          "parameter": "shutdown_lower_guard",
+          "operator": ">=",
+          "threshold": 85,
+          "unit": "deg C",
+          "condition_role": "VERIFICATION",
+          "mandatory": true,
+          "requires_visual_evidence": false,
+          "expected_status": "FAILED",
+          "evidence": [
+            {
+              "document": "09_Nova_Electrical_Thermal_Verification_Report.pdf",
+              "page": 3,
+              "block_type": "table",
+              "role": "adverse_or_unresolved",
+              "quote": "FAIL - Executed for REQ-NVA-THM-002; the observed result does not satisfy: Thermal shutdown is not commanded below 85 deg C."
+            }
+          ]
+        }
+      ],
+      "document": "02_Nova_Thermal_Control_Requirements.pdf",
+      "source_page": 2,
+      "source_modality": "two_column_text",
+      "category": "Thermal control",
+      "clause": "REQ-NVA-THM-002",
+      "expected_status": "CONFLICT",
+      "expected_review_state": "Reviewed"
+    },
+    {
+      "requirement_id": "REQ-NVA-THM-003",
+      "title": "Coolant delivery",
+      "requirement_text": "While battery heat rejection is 35 kW, coolant flow through the pack shall be at least 8.0 L/min.",
+      "logic": {
+        "operator": "IF_THEN",
+        "condition_ids": [
+          "REQ-NVA-THM-003-C1",
+          "REQ-NVA-THM-003-C2"
+        ],
+        "if_condition_id": "REQ-NVA-THM-003-C1",
+        "then_condition_ids": [
+          "REQ-NVA-THM-003-C2"
+        ]
+      },
+      "conditions": [
+        {
+          "condition_id": "REQ-NVA-THM-003-C1",
+          "description": "Battery heat rejection is 35 kW",
+          "parameter": "heat_rejection",
+          "operator": "==",
+          "threshold": 35,
+          "unit": "kW",
+          "condition_role": "APPLICABILITY",
+          "mandatory": true,
+          "requires_visual_evidence": false,
+          "expected_status": "UNTESTED",
+          "evidence": [
+            {
+              "document": "09_Nova_Electrical_Thermal_Verification_Report.pdf",
+              "page": 3,
+              "block_type": "table",
+              "role": "adverse_or_unresolved",
+              "quote": "NOT TESTED - No test or inspection was performed for REQ-NVA-THM-003: Battery heat rejection is 35 kW."
+            }
+          ]
+        },
+        {
+          "condition_id": "REQ-NVA-THM-003-C2",
+          "description": "Pack coolant flow is at least 8.0 L/min",
+          "parameter": "coolant_flow",
+          "operator": ">=",
+          "threshold": 8.0,
+          "unit": "L/min",
+          "condition_role": "VERIFICATION",
+          "mandatory": true,
+          "requires_visual_evidence": false,
+          "expected_status": "UNTESTED",
+          "evidence": [
+            {
+              "document": "09_Nova_Electrical_Thermal_Verification_Report.pdf",
+              "page": 3,
+              "block_type": "table",
+              "role": "adverse_or_unresolved",
+              "quote": "NOT TESTED - No test or inspection was performed for REQ-NVA-THM-003: Pack coolant flow is at least 8.0 L/min."
+            }
+          ]
+        }
+      ],
+      "document": "02_Nova_Thermal_Control_Requirements.pdf",
+      "source_page": 2,
+      "source_modality": "two_column_text",
+      "category": "Thermal control",
+      "clause": "REQ-NVA-THM-003",
+      "expected_status": "MISSING",
+      "expected_review_state": "Needs review"
+    },
+    {
+      "requirement_id": "REQ-NVA-THM-004",
+      "title": "Controlled recovery",
+      "requirement_text": "After thermal shutdown, recovery shall be permitted only when temperature has remained below 70 deg C for 60 s, and no latched sensor fault is present.",
+      "logic": {
+        "operator": "ALL_OF",
+        "condition_ids": [
+          "REQ-NVA-THM-004-C1",
+          "REQ-NVA-THM-004-C2",
+          "REQ-NVA-THM-004-C3"
+        ]
+      },
+      "conditions": [
+        {
+          "condition_id": "REQ-NVA-THM-004-C1",
+          "description": "Temperature is below 70 deg C",
+          "parameter": "recovery_temperature",
+          "operator": "<",
+          "threshold": 70,
+          "unit": "deg C",
+          "condition_role": "VERIFICATION",
+          "mandatory": true,
+          "requires_visual_evidence": false,
+          "expected_status": "INCONCLUSIVE",
+          "evidence": [
+            {
+              "document": "09_Nova_Electrical_Thermal_Verification_Report.pdf",
+              "page": 4,
+              "block_type": "table",
+              "role": "adverse_or_unresolved",
+              "quote": "INCONCLUSIVE - Work was attempted for REQ-NVA-THM-004, but incomplete scope or calibration prevents deciding: Temperature is below 70 deg C."
+            }
+          ]
+        },
+        {
+          "condition_id": "REQ-NVA-THM-004-C2",
+          "description": "Temperature remains below the limit for 60 seconds",
+          "parameter": "recovery_dwell",
+          "operator": ">=",
+          "threshold": 60,
+          "unit": "s",
+          "condition_role": "VERIFICATION",
+          "mandatory": true,
+          "requires_visual_evidence": false,
+          "expected_status": "INCONCLUSIVE",
+          "evidence": [
+            {
+              "document": "09_Nova_Electrical_Thermal_Verification_Report.pdf",
+              "page": 4,
+              "block_type": "table",
+              "role": "adverse_or_unresolved",
+              "quote": "INCONCLUSIVE - Work was attempted for REQ-NVA-THM-004, but incomplete scope or calibration prevents deciding: Temperature remains below the limit for 60 seconds."
+            }
+          ]
+        },
+        {
+          "condition_id": "REQ-NVA-THM-004-C3",
+          "description": "No latched temperature-sensor fault is present",
+          "parameter": "sensor_fault_latched",
+          "operator": "==",
+          "threshold": false,
+          "unit": null,
+          "condition_role": "VERIFICATION",
+          "mandatory": true,
+          "requires_visual_evidence": false,
+          "expected_status": "INCONCLUSIVE",
+          "evidence": [
+            {
+              "document": "09_Nova_Electrical_Thermal_Verification_Report.pdf",
+              "page": 4,
+              "block_type": "table",
+              "role": "adverse_or_unresolved",
+              "quote": "INCONCLUSIVE - Work was attempted for REQ-NVA-THM-004, but incomplete scope or calibration prevents deciding: No latched temperature-sensor fault is present."
+            }
+          ]
+        }
+      ],
+      "document": "02_Nova_Thermal_Control_Requirements.pdf",
+      "source_page": 3,
+      "source_modality": "table",
+      "category": "Thermal control",
+      "clause": "REQ-NVA-THM-004",
+      "expected_status": "UNKNOWN",
+      "expected_review_state": "Needs review"
+    },
+    {
+      "requirement_id": "REQ-NVA-THM-005",
+      "title": "Cell temperature uniformity",
+      "requirement_text": "During a 30-minute 2C discharge, the difference between the hottest and coldest measured cell temperatures shall not exceed 5 deg C.",
+      "logic": {
+        "operator": "IF_THEN",
+        "condition_ids": [
+          "REQ-NVA-THM-005-C1",
+          "REQ-NVA-THM-005-C2",
+          "REQ-NVA-THM-005-C3"
+        ],
+        "if_condition_id": "REQ-NVA-THM-005-C1",
+        "then_condition_ids": [
+          "REQ-NVA-THM-005-C2",
+          "REQ-NVA-THM-005-C3"
+        ]
+      },
+      "conditions": [
+        {
+          "condition_id": "REQ-NVA-THM-005-C1",
+          "description": "Discharge rate is 2C",
+          "parameter": "discharge_rate",
+          "operator": "==",
+          "threshold": 2,
+          "unit": "C",
+          "condition_role": "APPLICABILITY",
+          "mandatory": true,
+          "requires_visual_evidence": false,
+          "expected_status": "PROVEN",
+          "evidence": [
+            {
+              "document": "09_Nova_Electrical_Thermal_Verification_Report.pdf",
+              "page": 4,
+              "block_type": "table",
+              "role": "supporting",
+              "quote": "PASS - Executed for REQ-NVA-THM-005; the recorded result confirms: Discharge rate is 2C."
+            }
+          ]
+        },
+        {
+          "condition_id": "REQ-NVA-THM-005-C2",
+          "description": "Discharge duration is at least 30 minutes",
+          "parameter": "discharge_duration",
+          "operator": ">=",
+          "threshold": 30,
+          "unit": "min",
+          "condition_role": "APPLICABILITY",
+          "mandatory": true,
+          "requires_visual_evidence": false,
+          "expected_status": "PROVEN",
+          "evidence": [
+            {
+              "document": "09_Nova_Electrical_Thermal_Verification_Report.pdf",
+              "page": 4,
+              "block_type": "table",
+              "role": "supporting",
+              "quote": "PASS - Executed for REQ-NVA-THM-005; the recorded result confirms: Discharge duration is at least 30 minutes."
+            }
+          ]
+        },
+        {
+          "condition_id": "REQ-NVA-THM-005-C3",
+          "description": "Maximum cell-temperature difference is 5 deg C or less",
+          "parameter": "cell_temperature_delta",
+          "operator": "<=",
+          "threshold": 5,
+          "unit": "deg C",
+          "condition_role": "VERIFICATION",
+          "mandatory": true,
+          "requires_visual_evidence": false,
+          "expected_status": "PROVEN",
+          "evidence": [
+            {
+              "document": "09_Nova_Electrical_Thermal_Verification_Report.pdf",
+              "page": 4,
+              "block_type": "table",
+              "role": "supporting",
+              "quote": "PASS - Executed for REQ-NVA-THM-005; the recorded result confirms: Maximum cell-temperature difference is 5 deg C or less."
+            }
+          ]
+        }
+      ],
+      "document": "02_Nova_Thermal_Control_Requirements.pdf",
+      "source_page": 3,
+      "source_modality": "table",
+      "category": "Thermal control",
+      "clause": "REQ-NVA-THM-005",
+      "expected_status": "SUPPORTED",
+      "expected_review_state": "Reviewed"
+    },
+    {
+      "requirement_id": "REQ-NVA-THM-006",
+      "title": "Cooling flow direction",
+      "requirement_text": "The installed cooling module shall move air from the blue inlet toward the red outlet, provide at least 420 m3/h, and leave the service clearance unobstructed.",
+      "logic": {
+        "operator": "ALL_OF",
+        "condition_ids": [
+          "REQ-NVA-THM-006-C1",
+          "REQ-NVA-THM-006-C2",
+          "REQ-NVA-THM-006-C3"
+        ]
+      },
+      "conditions": [
+        {
+          "condition_id": "REQ-NVA-THM-006-C1",
+          "description": "Air moves from the blue inlet toward the red outlet",
+          "parameter": "airflow_direction",
+          "operator": "==",
+          "threshold": "blue_to_red",
+          "unit": null,
+          "condition_role": "VERIFICATION",
+          "mandatory": true,
+          "requires_visual_evidence": true,
+          "expected_status": "PROVEN",
+          "evidence": [
+            {
+              "document": "09_Nova_Electrical_Thermal_Verification_Report.pdf",
+              "page": 5,
+              "block_type": "figure",
+              "role": "supporting",
+              "quote": "PASS - Executed for REQ-NVA-THM-006; the recorded result confirms: Air moves from the blue inlet toward the red outlet."
+            }
+          ]
+        },
+        {
+          "condition_id": "REQ-NVA-THM-006-C2",
+          "description": "Cooling airflow is at least 420 m3/h",
+          "parameter": "cooling_airflow",
+          "operator": ">=",
+          "threshold": 420,
+          "unit": "m3/h",
+          "condition_role": "VERIFICATION",
+          "mandatory": true,
+          "requires_visual_evidence": true,
+          "expected_status": "UNTESTED",
+          "evidence": [
+            {
+              "document": "09_Nova_Electrical_Thermal_Verification_Report.pdf",
+              "page": 5,
+              "block_type": "figure",
+              "role": "adverse_or_unresolved",
+              "quote": "NOT TESTED - No test or inspection was performed for REQ-NVA-THM-006: Cooling airflow is at least 420 m3/h."
+            }
+          ]
+        },
+        {
+          "condition_id": "REQ-NVA-THM-006-C3",
+          "description": "Service clearance is unobstructed",
+          "parameter": "service_clearance_open",
+          "operator": "==",
+          "threshold": true,
+          "unit": null,
+          "condition_role": "VERIFICATION",
+          "mandatory": true,
+          "requires_visual_evidence": true,
+          "expected_status": "UNTESTED",
+          "evidence": [
+            {
+              "document": "09_Nova_Electrical_Thermal_Verification_Report.pdf",
+              "page": 5,
+              "block_type": "figure",
+              "role": "adverse_or_unresolved",
+              "quote": "NOT TESTED - No test or inspection was performed for REQ-NVA-THM-006: Service clearance is unobstructed."
+            }
+          ]
+        }
+      ],
+      "document": "02_Nova_Thermal_Control_Requirements.pdf",
+      "source_page": 4,
+      "source_modality": "figure",
+      "category": "Thermal control",
+      "clause": "REQ-NVA-THM-006",
+      "expected_status": "PARTIAL",
+      "expected_review_state": "Needs review"
+    },
+    {
+      "requirement_id": "REQ-NVA-NET-001",
+      "title": "CAN heartbeat",
+      "requirement_text": "The controller shall transmit its CAN FD heartbeat at intervals not exceeding 100 ms for a continuous 30-minute operating period.",
+      "logic": {
+        "operator": "ALL_OF",
+        "condition_ids": [
+          "REQ-NVA-NET-001-C1",
+          "REQ-NVA-NET-001-C2"
+        ]
+      },
+      "conditions": [
+        {
+          "condition_id": "REQ-NVA-NET-001-C1",
+          "description": "CAN FD heartbeat interval does not exceed 100 ms",
+          "parameter": "heartbeat_interval",
+          "operator": "<=",
+          "threshold": 100,
+          "unit": "ms",
+          "condition_role": "VERIFICATION",
+          "mandatory": true,
+          "requires_visual_evidence": false,
+          "expected_status": "PROVEN",
+          "evidence": [
+            {
+              "document": "10_Nova_Network_Environmental_Qualification_Report.pdf",
+              "page": 2,
+              "block_type": "table",
+              "role": "supporting",
+              "quote": "PASS - Executed for REQ-NVA-NET-001; the recorded result confirms: CAN FD heartbeat interval does not exceed 100 ms."
+            }
+          ]
+        },
+        {
+          "condition_id": "REQ-NVA-NET-001-C2",
+          "description": "Heartbeat behavior is maintained for at least 30 minutes",
+          "parameter": "heartbeat_duration",
+          "operator": ">=",
+          "threshold": 30,
+          "unit": "min",
+          "condition_role": "VERIFICATION",
+          "mandatory": true,
+          "requires_visual_evidence": false,
+          "expected_status": "FAILED",
+          "evidence": [
+            {
+              "document": "10_Nova_Network_Environmental_Qualification_Report.pdf",
+              "page": 2,
+              "block_type": "table",
+              "role": "adverse_or_unresolved",
+              "quote": "FAIL - Executed for REQ-NVA-NET-001; the observed result does not satisfy: Heartbeat behavior is maintained for at least 30 minutes."
+            }
+          ]
+        }
+      ],
+      "document": "03_Nova_Network_Diagnostics_Requirements.pdf",
+      "source_page": 2,
+      "source_modality": "scanned_text",
+      "category": "Communications",
+      "clause": "REQ-NVA-NET-001",
+      "expected_status": "CONFLICT",
+      "expected_review_state": "Reviewed"
+    },
+    {
+      "requirement_id": "REQ-NVA-NET-002",
+      "title": "Packet loss",
+      "requirement_text": "During the 30-minute heartbeat test, no heartbeat frame shall be lost at a bus load of 70 percent.",
+      "logic": {
+        "operator": "IF_THEN",
+        "condition_ids": [
+          "REQ-NVA-NET-002-C1",
+          "REQ-NVA-NET-002-C2",
+          "REQ-NVA-NET-002-C3"
+        ],
+        "if_condition_id": "REQ-NVA-NET-002-C1",
+        "then_condition_ids": [
+          "REQ-NVA-NET-002-C2",
+          "REQ-NVA-NET-002-C3"
+        ]
+      },
+      "conditions": [
+        {
+          "condition_id": "REQ-NVA-NET-002-C1",
+          "description": "Heartbeat test duration is 30 minutes",
+          "parameter": "heartbeat_test_duration",
+          "operator": "==",
+          "threshold": 30,
+          "unit": "min",
+          "condition_role": "APPLICABILITY",
+          "mandatory": true,
+          "requires_visual_evidence": false,
+          "expected_status": "UNTESTED",
+          "evidence": [
+            {
+              "document": "10_Nova_Network_Environmental_Qualification_Report.pdf",
+              "page": 2,
+              "block_type": "table",
+              "role": "adverse_or_unresolved",
+              "quote": "NOT TESTED - No test or inspection was performed for REQ-NVA-NET-002: Heartbeat test duration is 30 minutes."
+            }
+          ]
+        },
+        {
+          "condition_id": "REQ-NVA-NET-002-C2",
+          "description": "CAN bus load is 70 percent",
+          "parameter": "bus_load",
+          "operator": "==",
+          "threshold": 70,
+          "unit": "%",
+          "condition_role": "APPLICABILITY",
+          "mandatory": true,
+          "requires_visual_evidence": false,
+          "expected_status": "UNTESTED",
+          "evidence": [
+            {
+              "document": "10_Nova_Network_Environmental_Qualification_Report.pdf",
+              "page": 2,
+              "block_type": "table",
+              "role": "adverse_or_unresolved",
+              "quote": "NOT TESTED - No test or inspection was performed for REQ-NVA-NET-002: CAN bus load is 70 percent."
+            }
+          ]
+        },
+        {
+          "condition_id": "REQ-NVA-NET-002-C3",
+          "description": "Lost heartbeat frame count is zero",
+          "parameter": "lost_heartbeat_frames",
+          "operator": "==",
+          "threshold": 0,
+          "unit": "count",
+          "condition_role": "VERIFICATION",
+          "mandatory": true,
+          "requires_visual_evidence": false,
+          "expected_status": "UNTESTED",
+          "evidence": [
+            {
+              "document": "10_Nova_Network_Environmental_Qualification_Report.pdf",
+              "page": 2,
+              "block_type": "table",
+              "role": "adverse_or_unresolved",
+              "quote": "NOT TESTED - No test or inspection was performed for REQ-NVA-NET-002: Lost heartbeat frame count is zero."
+            }
+          ]
+        }
+      ],
+      "document": "03_Nova_Network_Diagnostics_Requirements.pdf",
+      "source_page": 2,
+      "source_modality": "scanned_text",
+      "category": "Communications",
+      "clause": "REQ-NVA-NET-002",
+      "expected_status": "MISSING",
+      "expected_review_state": "Needs review"
+    },
+    {
+      "requirement_id": "REQ-NVA-NET-003",
+      "title": "Ethernet latency",
+      "requirement_text": "For authenticated diagnostic traffic, round-trip latency over 100BASE-T1 shall remain below 12 ms at 95 percent network utilization.",
+      "logic": {
+        "operator": "IF_THEN",
+        "condition_ids": [
+          "REQ-NVA-NET-003-C1",
+          "REQ-NVA-NET-003-C2",
+          "REQ-NVA-NET-003-C3",
+          "REQ-NVA-NET-003-C4"
+        ],
+        "if_condition_id": "REQ-NVA-NET-003-C1",
+        "then_condition_ids": [
+          "REQ-NVA-NET-003-C2",
+          "REQ-NVA-NET-003-C3",
+          "REQ-NVA-NET-003-C4"
+        ]
+      },
+      "conditions": [
+        {
+          "condition_id": "REQ-NVA-NET-003-C1",
+          "description": "Diagnostic traffic is authenticated",
+          "parameter": "diagnostic_traffic_authenticated",
+          "operator": "==",
+          "threshold": true,
+          "unit": null,
+          "condition_role": "APPLICABILITY",
+          "mandatory": true,
+          "requires_visual_evidence": false,
+          "expected_status": "INCONCLUSIVE",
+          "evidence": [
+            {
+              "document": "10_Nova_Network_Environmental_Qualification_Report.pdf",
+              "page": 2,
+              "block_type": "table",
+              "role": "adverse_or_unresolved",
+              "quote": "INCONCLUSIVE - Work was attempted for REQ-NVA-NET-003, but incomplete scope or calibration prevents deciding: Diagnostic traffic is authenticated."
+            }
+          ]
+        },
+        {
+          "condition_id": "REQ-NVA-NET-003-C2",
+          "description": "Transport uses 100BASE-T1",
+          "parameter": "ethernet_physical_layer",
+          "operator": "==",
+          "threshold": "100BASE-T1",
+          "unit": null,
+          "condition_role": "APPLICABILITY",
+          "mandatory": true,
+          "requires_visual_evidence": false,
+          "expected_status": "INCONCLUSIVE",
+          "evidence": [
+            {
+              "document": "10_Nova_Network_Environmental_Qualification_Report.pdf",
+              "page": 2,
+              "block_type": "table",
+              "role": "adverse_or_unresolved",
+              "quote": "INCONCLUSIVE - Work was attempted for REQ-NVA-NET-003, but incomplete scope or calibration prevents deciding: Transport uses 100BASE-T1."
+            }
+          ]
+        },
+        {
+          "condition_id": "REQ-NVA-NET-003-C3",
+          "description": "Network utilization is 95 percent",
+          "parameter": "network_utilization",
+          "operator": "==",
+          "threshold": 95,
+          "unit": "%",
+          "condition_role": "APPLICABILITY",
+          "mandatory": true,
+          "requires_visual_evidence": false,
+          "expected_status": "INCONCLUSIVE",
+          "evidence": [
+            {
+              "document": "10_Nova_Network_Environmental_Qualification_Report.pdf",
+              "page": 2,
+              "block_type": "table",
+              "role": "adverse_or_unresolved",
+              "quote": "INCONCLUSIVE - Work was attempted for REQ-NVA-NET-003, but incomplete scope or calibration prevents deciding: Network utilization is 95 percent."
+            }
+          ]
+        },
+        {
+          "condition_id": "REQ-NVA-NET-003-C4",
+          "description": "Diagnostic round-trip latency remains below 12 ms",
+          "parameter": "diagnostic_round_trip_latency",
+          "operator": "<",
+          "threshold": 12,
+          "unit": "ms",
+          "condition_role": "VERIFICATION",
+          "mandatory": true,
+          "requires_visual_evidence": false,
+          "expected_status": "INCONCLUSIVE",
+          "evidence": [
+            {
+              "document": "10_Nova_Network_Environmental_Qualification_Report.pdf",
+              "page": 2,
+              "block_type": "table",
+              "role": "adverse_or_unresolved",
+              "quote": "INCONCLUSIVE - Work was attempted for REQ-NVA-NET-003, but incomplete scope or calibration prevents deciding: Diagnostic round-trip latency remains below 12 ms."
+            }
+          ]
+        }
+      ],
+      "document": "03_Nova_Network_Diagnostics_Requirements.pdf",
+      "source_page": 2,
+      "source_modality": "scanned_text",
+      "category": "Communications",
+      "clause": "REQ-NVA-NET-003",
+      "expected_status": "UNKNOWN",
+      "expected_review_state": "Needs review"
+    },
+    {
+      "requirement_id": "REQ-NVA-NET-004",
+      "title": "Diagnostic session timeout",
+      "requirement_text": "An inactive extended diagnostic session shall return to the default session after 5 s, clear the temporary unlock state, and record the timeout event.",
+      "logic": {
+        "operator": "IF_THEN",
+        "condition_ids": [
+          "REQ-NVA-NET-004-C1",
+          "REQ-NVA-NET-004-C2",
+          "REQ-NVA-NET-004-C3",
+          "REQ-NVA-NET-004-C4"
+        ],
+        "if_condition_id": "REQ-NVA-NET-004-C1",
+        "then_condition_ids": [
+          "REQ-NVA-NET-004-C2",
+          "REQ-NVA-NET-004-C3",
+          "REQ-NVA-NET-004-C4"
+        ]
+      },
+      "conditions": [
+        {
+          "condition_id": "REQ-NVA-NET-004-C1",
+          "description": "Extended diagnostic session is inactive",
+          "parameter": "extended_session_inactive",
+          "operator": "==",
+          "threshold": true,
+          "unit": null,
+          "condition_role": "APPLICABILITY",
+          "mandatory": true,
+          "requires_visual_evidence": false,
+          "expected_status": "PROVEN",
+          "evidence": [
+            {
+              "document": "10_Nova_Network_Environmental_Qualification_Report.pdf",
+              "page": 2,
+              "block_type": "table",
+              "role": "supporting",
+              "quote": "PASS - Executed for REQ-NVA-NET-004; the recorded result confirms: Extended diagnostic session is inactive."
+            }
+          ]
+        },
+        {
+          "condition_id": "REQ-NVA-NET-004-C2",
+          "description": "Session returns to default after 5 seconds",
+          "parameter": "session_timeout",
+          "operator": "==",
+          "threshold": 5,
+          "unit": "s",
+          "condition_role": "VERIFICATION",
+          "mandatory": true,
+          "requires_visual_evidence": false,
+          "expected_status": "PROVEN",
+          "evidence": [
+            {
+              "document": "10_Nova_Network_Environmental_Qualification_Report.pdf",
+              "page": 2,
+              "block_type": "table",
+              "role": "supporting",
+              "quote": "PASS - Executed for REQ-NVA-NET-004; the recorded result confirms: Session returns to default after 5 seconds."
+            }
+          ]
+        },
+        {
+          "condition_id": "REQ-NVA-NET-004-C3",
+          "description": "Temporary unlock state is cleared",
+          "parameter": "temporary_unlock_cleared",
+          "operator": "==",
+          "threshold": true,
+          "unit": null,
+          "condition_role": "VERIFICATION",
+          "mandatory": true,
+          "requires_visual_evidence": false,
+          "expected_status": "PROVEN",
+          "evidence": [
+            {
+              "document": "10_Nova_Network_Environmental_Qualification_Report.pdf",
+              "page": 2,
+              "block_type": "table",
+              "role": "supporting",
+              "quote": "PASS - Executed for REQ-NVA-NET-004; the recorded result confirms: Temporary unlock state is cleared."
+            }
+          ]
+        },
+        {
+          "condition_id": "REQ-NVA-NET-004-C4",
+          "description": "Timeout event is recorded",
+          "parameter": "timeout_event_logged",
+          "operator": "==",
+          "threshold": true,
+          "unit": null,
+          "condition_role": "VERIFICATION",
+          "mandatory": true,
+          "requires_visual_evidence": false,
+          "expected_status": "PROVEN",
+          "evidence": [
+            {
+              "document": "10_Nova_Network_Environmental_Qualification_Report.pdf",
+              "page": 2,
+              "block_type": "table",
+              "role": "supporting",
+              "quote": "PASS - Executed for REQ-NVA-NET-004; the recorded result confirms: Timeout event is recorded."
+            }
+          ]
+        }
+      ],
+      "document": "03_Nova_Network_Diagnostics_Requirements.pdf",
+      "source_page": 3,
+      "source_modality": "table",
+      "category": "Communications",
+      "clause": "REQ-NVA-NET-004",
+      "expected_status": "SUPPORTED",
+      "expected_review_state": "Reviewed"
+    },
+    {
+      "requirement_id": "REQ-NVA-NET-005",
+      "title": "Bus-off recovery",
+      "requirement_text": "Following bus-off detection, the node shall inhibit transmission for at least 1.0 s, recover without an ignition cycle, and increment the persistent bus-off counter.",
+      "logic": {
+        "operator": "IF_THEN",
+        "condition_ids": [
+          "REQ-NVA-NET-005-C1",
+          "REQ-NVA-NET-005-C2",
+          "REQ-NVA-NET-005-C3",
+          "REQ-NVA-NET-005-C4"
+        ],
+        "if_condition_id": "REQ-NVA-NET-005-C1",
+        "then_condition_ids": [
+          "REQ-NVA-NET-005-C2",
+          "REQ-NVA-NET-005-C3",
+          "REQ-NVA-NET-005-C4"
+        ]
+      },
+      "conditions": [
+        {
+          "condition_id": "REQ-NVA-NET-005-C1",
+          "description": "Bus-off is detected",
+          "parameter": "bus_off_detected",
+          "operator": "==",
+          "threshold": true,
+          "unit": null,
+          "condition_role": "APPLICABILITY",
+          "mandatory": true,
+          "requires_visual_evidence": false,
+          "expected_status": "PROVEN",
+          "evidence": [
+            {
+              "document": "10_Nova_Network_Environmental_Qualification_Report.pdf",
+              "page": 3,
+              "block_type": "table",
+              "role": "supporting",
+              "quote": "PASS - Executed for REQ-NVA-NET-005; the recorded result confirms: Bus-off is detected."
+            }
+          ]
+        },
+        {
+          "condition_id": "REQ-NVA-NET-005-C2",
+          "description": "Transmission is inhibited for at least 1.0 second",
+          "parameter": "bus_off_inhibit",
+          "operator": ">=",
+          "threshold": 1.0,
+          "unit": "s",
+          "condition_role": "VERIFICATION",
+          "mandatory": true,
+          "requires_visual_evidence": false,
+          "expected_status": "PENDING",
+          "evidence": [
+            {
+              "document": "10_Nova_Network_Environmental_Qualification_Report.pdf",
+              "page": 3,
+              "block_type": "table",
+              "role": "adverse_or_unresolved",
+              "quote": "IN PROGRESS - Partial execution exists for REQ-NVA-NET-005, but verification is not complete: Transmission is inhibited for at least 1.0 second."
+            }
+          ]
+        },
+        {
+          "condition_id": "REQ-NVA-NET-005-C3",
+          "description": "Node recovers without an ignition cycle",
+          "parameter": "ignition_cycle_required",
+          "operator": "==",
+          "threshold": false,
+          "unit": null,
+          "condition_role": "VERIFICATION",
+          "mandatory": true,
+          "requires_visual_evidence": false,
+          "expected_status": "UNTESTED",
+          "evidence": [
+            {
+              "document": "10_Nova_Network_Environmental_Qualification_Report.pdf",
+              "page": 3,
+              "block_type": "table",
+              "role": "adverse_or_unresolved",
+              "quote": "NOT TESTED - No test or inspection was performed for REQ-NVA-NET-005: Node recovers without an ignition cycle."
+            }
+          ]
+        },
+        {
+          "condition_id": "REQ-NVA-NET-005-C4",
+          "description": "Persistent bus-off counter is incremented",
+          "parameter": "bus_off_counter_incremented",
+          "operator": "==",
+          "threshold": true,
+          "unit": null,
+          "condition_role": "VERIFICATION",
+          "mandatory": true,
+          "requires_visual_evidence": false,
+          "expected_status": "UNTESTED",
+          "evidence": [
+            {
+              "document": "10_Nova_Network_Environmental_Qualification_Report.pdf",
+              "page": 3,
+              "block_type": "table",
+              "role": "adverse_or_unresolved",
+              "quote": "NOT TESTED - No test or inspection was performed for REQ-NVA-NET-005: Persistent bus-off counter is incremented."
+            }
+          ]
+        }
+      ],
+      "document": "03_Nova_Network_Diagnostics_Requirements.pdf",
+      "source_page": 3,
+      "source_modality": "table",
+      "category": "Communications",
+      "clause": "REQ-NVA-NET-005",
+      "expected_status": "PARTIAL",
+      "expected_review_state": "Needs review"
+    },
+    {
+      "requirement_id": "REQ-NVA-NET-006",
+      "title": "Gateway routing",
+      "requirement_text": "Messages entering port A with identifier 0x18FF50E5 shall leave port C within 4 ms, retain their payload, and carry the updated alive counter shown in the routing diagram.",
+      "logic": {
+        "operator": "IF_THEN",
+        "condition_ids": [
+          "REQ-NVA-NET-006-C1",
+          "REQ-NVA-NET-006-C2",
+          "REQ-NVA-NET-006-C3",
+          "REQ-NVA-NET-006-C4",
+          "REQ-NVA-NET-006-C5"
+        ],
+        "if_condition_id": "REQ-NVA-NET-006-C1",
+        "then_condition_ids": [
+          "REQ-NVA-NET-006-C2",
+          "REQ-NVA-NET-006-C3",
+          "REQ-NVA-NET-006-C4",
+          "REQ-NVA-NET-006-C5"
+        ]
+      },
+      "conditions": [
+        {
+          "condition_id": "REQ-NVA-NET-006-C1",
+          "description": "A message with identifier 0x18FF50E5 enters port A",
+          "parameter": "gateway_input",
+          "operator": "==",
+          "threshold": "port_A_0x18FF50E5",
+          "unit": null,
+          "condition_role": "APPLICABILITY",
+          "mandatory": true,
+          "requires_visual_evidence": true,
+          "expected_status": "PROVEN",
+          "evidence": [
+            {
+              "document": "10_Nova_Network_Environmental_Qualification_Report.pdf",
+              "page": 5,
+              "block_type": "figure",
+              "role": "supporting",
+              "quote": "PASS - Executed for REQ-NVA-NET-006; the recorded result confirms: A message with identifier 0x18FF50E5 enters port A."
+            }
+          ]
+        },
+        {
+          "condition_id": "REQ-NVA-NET-006-C2",
+          "description": "Message leaves through port C",
+          "parameter": "gateway_output_port",
+          "operator": "==",
+          "threshold": "C",
+          "unit": null,
+          "condition_role": "VERIFICATION",
+          "mandatory": true,
+          "requires_visual_evidence": true,
+          "expected_status": "PROVEN",
+          "evidence": [
+            {
+              "document": "10_Nova_Network_Environmental_Qualification_Report.pdf",
+              "page": 5,
+              "block_type": "figure",
+              "role": "supporting",
+              "quote": "PASS - Executed for REQ-NVA-NET-006; the recorded result confirms: Message leaves through port C."
+            }
+          ]
+        },
+        {
+          "condition_id": "REQ-NVA-NET-006-C3",
+          "description": "Routing latency does not exceed 4 ms",
+          "parameter": "gateway_latency",
+          "operator": "<=",
+          "threshold": 4,
+          "unit": "ms",
+          "condition_role": "VERIFICATION",
+          "mandatory": true,
+          "requires_visual_evidence": true,
+          "expected_status": "PROVEN",
+          "evidence": [
+            {
+              "document": "10_Nova_Network_Environmental_Qualification_Report.pdf",
+              "page": 5,
+              "block_type": "figure",
+              "role": "supporting",
+              "quote": "PASS - Executed for REQ-NVA-NET-006; the recorded result confirms: Routing latency does not exceed 4 ms."
+            }
+          ]
+        },
+        {
+          "condition_id": "REQ-NVA-NET-006-C4",
+          "description": "Message payload is retained",
+          "parameter": "payload_retained",
+          "operator": "==",
+          "threshold": true,
+          "unit": null,
+          "condition_role": "VERIFICATION",
+          "mandatory": true,
+          "requires_visual_evidence": true,
+          "expected_status": "PROVEN",
+          "evidence": [
+            {
+              "document": "10_Nova_Network_Environmental_Qualification_Report.pdf",
+              "page": 5,
+              "block_type": "figure",
+              "role": "supporting",
+              "quote": "PASS - Executed for REQ-NVA-NET-006; the recorded result confirms: Message payload is retained."
+            }
+          ]
+        },
+        {
+          "condition_id": "REQ-NVA-NET-006-C5",
+          "description": "Alive counter is updated",
+          "parameter": "alive_counter_updated",
+          "operator": "==",
+          "threshold": true,
+          "unit": null,
+          "condition_role": "VERIFICATION",
+          "mandatory": true,
+          "requires_visual_evidence": true,
+          "expected_status": "FAILED",
+          "evidence": [
+            {
+              "document": "10_Nova_Network_Environmental_Qualification_Report.pdf",
+              "page": 5,
+              "block_type": "figure",
+              "role": "adverse_or_unresolved",
+              "quote": "FAIL - Executed for REQ-NVA-NET-006; the observed result does not satisfy: Alive counter is updated."
+            }
+          ]
+        }
+      ],
+      "document": "03_Nova_Network_Diagnostics_Requirements.pdf",
+      "source_page": 4,
+      "source_modality": "figure",
+      "category": "Communications",
+      "clause": "REQ-NVA-NET-006",
+      "expected_status": "CONFLICT",
+      "expected_review_state": "Reviewed"
+    },
+    {
+      "requirement_id": "REQ-NVA-ENV-001",
+      "title": "Ingress protection",
+      "requirement_text": "Connector J17 shall remain IP67 after immersion in 1 m of water for 30 minutes.",
+      "logic": {
+        "operator": "IF_THEN",
+        "condition_ids": [
+          "REQ-NVA-ENV-001-C1",
+          "REQ-NVA-ENV-001-C2",
+          "REQ-NVA-ENV-001-C3"
+        ],
+        "if_condition_id": "REQ-NVA-ENV-001-C1",
+        "then_condition_ids": [
+          "REQ-NVA-ENV-001-C2",
+          "REQ-NVA-ENV-001-C3"
+        ]
+      },
+      "conditions": [
+        {
+          "condition_id": "REQ-NVA-ENV-001-C1",
+          "description": "Connector J17 is immersed to a depth of 1 m",
+          "parameter": "immersion_depth",
+          "operator": "==",
+          "threshold": 1,
+          "unit": "m",
+          "condition_role": "APPLICABILITY",
+          "mandatory": true,
+          "requires_visual_evidence": false,
+          "expected_status": "UNTESTED",
+          "evidence": [
+            {
+              "document": "10_Nova_Network_Environmental_Qualification_Report.pdf",
+              "page": 3,
+              "block_type": "table",
+              "role": "adverse_or_unresolved",
+              "quote": "NOT TESTED - No test or inspection was performed for REQ-NVA-ENV-001: Connector J17 is immersed to a depth of 1 m."
+            }
+          ]
+        },
+        {
+          "condition_id": "REQ-NVA-ENV-001-C2",
+          "description": "Immersion duration is 30 minutes",
+          "parameter": "immersion_duration",
+          "operator": "==",
+          "threshold": 30,
+          "unit": "min",
+          "condition_role": "APPLICABILITY",
+          "mandatory": true,
+          "requires_visual_evidence": false,
+          "expected_status": "UNTESTED",
+          "evidence": [
+            {
+              "document": "10_Nova_Network_Environmental_Qualification_Report.pdf",
+              "page": 3,
+              "block_type": "table",
+              "role": "adverse_or_unresolved",
+              "quote": "NOT TESTED - No test or inspection was performed for REQ-NVA-ENV-001: Immersion duration is 30 minutes."
+            }
+          ]
+        },
+        {
+          "condition_id": "REQ-NVA-ENV-001-C3",
+          "description": "Connector J17 retains IP67 protection",
+          "parameter": "ingress_rating",
+          "operator": "==",
+          "threshold": "IP67",
+          "unit": null,
+          "condition_role": "VERIFICATION",
+          "mandatory": true,
+          "requires_visual_evidence": false,
+          "expected_status": "UNTESTED",
+          "evidence": [
+            {
+              "document": "10_Nova_Network_Environmental_Qualification_Report.pdf",
+              "page": 3,
+              "block_type": "table",
+              "role": "adverse_or_unresolved",
+              "quote": "NOT TESTED - No test or inspection was performed for REQ-NVA-ENV-001: Connector J17 retains IP67 protection."
+            }
+          ]
+        }
+      ],
+      "document": "04_Nova_Environmental_Mechanical_Requirements.pdf",
+      "source_page": 2,
+      "source_modality": "body_text",
+      "category": "Environmental qualification",
+      "clause": "REQ-NVA-ENV-001",
+      "expected_status": "MISSING",
+      "expected_review_state": "Needs review"
+    },
+    {
+      "requirement_id": "REQ-NVA-ENV-002",
+      "title": "Vibration endurance",
+      "requirement_text": "The enclosure shall withstand 30 g RMS random vibration for 8 hours per axis without loss of electrical continuity.",
+      "logic": {
+        "operator": "IF_THEN",
+        "condition_ids": [
+          "REQ-NVA-ENV-002-C1",
+          "REQ-NVA-ENV-002-C2",
+          "REQ-NVA-ENV-002-C3"
+        ],
+        "if_condition_id": "REQ-NVA-ENV-002-C1",
+        "then_condition_ids": [
+          "REQ-NVA-ENV-002-C2",
+          "REQ-NVA-ENV-002-C3"
+        ]
+      },
+      "conditions": [
+        {
+          "condition_id": "REQ-NVA-ENV-002-C1",
+          "description": "Random vibration level is 30 g RMS",
+          "parameter": "random_vibration_level",
+          "operator": "==",
+          "threshold": 30,
+          "unit": "g RMS",
+          "condition_role": "APPLICABILITY",
+          "mandatory": true,
+          "requires_visual_evidence": false,
+          "expected_status": "INCONCLUSIVE",
+          "evidence": [
+            {
+              "document": "10_Nova_Network_Environmental_Qualification_Report.pdf",
+              "page": 3,
+              "block_type": "table",
+              "role": "adverse_or_unresolved",
+              "quote": "INCONCLUSIVE - Work was attempted for REQ-NVA-ENV-002, but incomplete scope or calibration prevents deciding: Random vibration level is 30 g RMS."
+            }
+          ]
+        },
+        {
+          "condition_id": "REQ-NVA-ENV-002-C2",
+          "description": "Exposure lasts 8 hours per axis",
+          "parameter": "vibration_duration_per_axis",
+          "operator": "==",
+          "threshold": 8,
+          "unit": "h",
+          "condition_role": "APPLICABILITY",
+          "mandatory": true,
+          "requires_visual_evidence": false,
+          "expected_status": "INCONCLUSIVE",
+          "evidence": [
+            {
+              "document": "10_Nova_Network_Environmental_Qualification_Report.pdf",
+              "page": 3,
+              "block_type": "table",
+              "role": "adverse_or_unresolved",
+              "quote": "INCONCLUSIVE - Work was attempted for REQ-NVA-ENV-002, but incomplete scope or calibration prevents deciding: Exposure lasts 8 hours per axis."
+            }
+          ]
+        },
+        {
+          "condition_id": "REQ-NVA-ENV-002-C3",
+          "description": "Electrical continuity is not lost",
+          "parameter": "electrical_continuity_loss",
+          "operator": "==",
+          "threshold": false,
+          "unit": null,
+          "condition_role": "VERIFICATION",
+          "mandatory": true,
+          "requires_visual_evidence": false,
+          "expected_status": "INCONCLUSIVE",
+          "evidence": [
+            {
+              "document": "10_Nova_Network_Environmental_Qualification_Report.pdf",
+              "page": 3,
+              "block_type": "table",
+              "role": "adverse_or_unresolved",
+              "quote": "INCONCLUSIVE - Work was attempted for REQ-NVA-ENV-002, but incomplete scope or calibration prevents deciding: Electrical continuity is not lost."
+            }
+          ]
+        }
+      ],
+      "document": "04_Nova_Environmental_Mechanical_Requirements.pdf",
+      "source_page": 2,
+      "source_modality": "two_column_text",
+      "category": "Environmental qualification",
+      "clause": "REQ-NVA-ENV-002",
+      "expected_status": "UNKNOWN",
+      "expected_review_state": "Needs review"
+    },
+    {
+      "requirement_id": "REQ-NVA-ENV-003",
+      "title": "Mechanical shock",
+      "requirement_text": "Following three 50 g half-sine shocks on each axis, no fastener shall loosen and the enclosure shall show no crack longer than 2 mm.",
+      "logic": {
+        "operator": "IF_THEN",
+        "condition_ids": [
+          "REQ-NVA-ENV-003-C1",
+          "REQ-NVA-ENV-003-C2",
+          "REQ-NVA-ENV-003-C3"
+        ],
+        "if_condition_id": "REQ-NVA-ENV-003-C1",
+        "then_condition_ids": [
+          "REQ-NVA-ENV-003-C2",
+          "REQ-NVA-ENV-003-C3"
+        ]
+      },
+      "conditions": [
+        {
+          "condition_id": "REQ-NVA-ENV-003-C1",
+          "description": "Three 50 g half-sine shocks are applied on each axis",
+          "parameter": "mechanical_shock",
+          "operator": "==",
+          "threshold": "3x_50_g_each_axis",
+          "unit": null,
+          "condition_role": "APPLICABILITY",
+          "mandatory": true,
+          "requires_visual_evidence": false,
+          "expected_status": "PROVEN",
+          "evidence": [
+            {
+              "document": "10_Nova_Network_Environmental_Qualification_Report.pdf",
+              "page": 3,
+              "block_type": "table",
+              "role": "supporting",
+              "quote": "PASS - Executed for REQ-NVA-ENV-003; the recorded result confirms: Three 50 g half-sine shocks are applied on each axis."
+            }
+          ]
+        },
+        {
+          "condition_id": "REQ-NVA-ENV-003-C2",
+          "description": "No fastener loosens",
+          "parameter": "loose_fasteners",
+          "operator": "==",
+          "threshold": 0,
+          "unit": "count",
+          "condition_role": "VERIFICATION",
+          "mandatory": true,
+          "requires_visual_evidence": false,
+          "expected_status": "PROVEN",
+          "evidence": [
+            {
+              "document": "10_Nova_Network_Environmental_Qualification_Report.pdf",
+              "page": 3,
+              "block_type": "table",
+              "role": "supporting",
+              "quote": "PASS - Executed for REQ-NVA-ENV-003; the recorded result confirms: No fastener loosens."
+            }
+          ]
+        },
+        {
+          "condition_id": "REQ-NVA-ENV-003-C3",
+          "description": "No enclosure crack is longer than 2 mm",
+          "parameter": "maximum_crack_length",
+          "operator": "<=",
+          "threshold": 2,
+          "unit": "mm",
+          "condition_role": "VERIFICATION",
+          "mandatory": true,
+          "requires_visual_evidence": false,
+          "expected_status": "PROVEN",
+          "evidence": [
+            {
+              "document": "10_Nova_Network_Environmental_Qualification_Report.pdf",
+              "page": 3,
+              "block_type": "table",
+              "role": "supporting",
+              "quote": "PASS - Executed for REQ-NVA-ENV-003; the recorded result confirms: No enclosure crack is longer than 2 mm."
+            }
+          ]
+        }
+      ],
+      "document": "04_Nova_Environmental_Mechanical_Requirements.pdf",
+      "source_page": 2,
+      "source_modality": "two_column_text",
+      "category": "Environmental qualification",
+      "clause": "REQ-NVA-ENV-003",
+      "expected_status": "SUPPORTED",
+      "expected_review_state": "Reviewed"
+    },
+    {
+      "requirement_id": "REQ-NVA-ENV-004",
+      "title": "Salt-mist resistance",
+      "requirement_text": "After 96 hours of salt-mist exposure, connector contact resistance shall remain below 15 mOhm, sealing surfaces shall show no red corrosion, and labels shall remain legible.",
+      "logic": {
+        "operator": "IF_THEN",
+        "condition_ids": [
+          "REQ-NVA-ENV-004-C1",
+          "REQ-NVA-ENV-004-C2",
+          "REQ-NVA-ENV-004-C3",
+          "REQ-NVA-ENV-004-C4"
+        ],
+        "if_condition_id": "REQ-NVA-ENV-004-C1",
+        "then_condition_ids": [
+          "REQ-NVA-ENV-004-C2",
+          "REQ-NVA-ENV-004-C3",
+          "REQ-NVA-ENV-004-C4"
+        ]
+      },
+      "conditions": [
+        {
+          "condition_id": "REQ-NVA-ENV-004-C1",
+          "description": "Salt-mist exposure lasts 96 hours",
+          "parameter": "salt_mist_duration",
+          "operator": "==",
+          "threshold": 96,
+          "unit": "h",
+          "condition_role": "APPLICABILITY",
+          "mandatory": true,
+          "requires_visual_evidence": false,
+          "expected_status": "PROVEN",
+          "evidence": [
+            {
+              "document": "10_Nova_Network_Environmental_Qualification_Report.pdf",
+              "page": 4,
+              "block_type": "table",
+              "role": "supporting",
+              "quote": "PASS - Executed for REQ-NVA-ENV-004; the recorded result confirms: Salt-mist exposure lasts 96 hours."
+            }
+          ]
+        },
+        {
+          "condition_id": "REQ-NVA-ENV-004-C2",
+          "description": "Contact resistance remains below 15 mOhm",
+          "parameter": "contact_resistance",
+          "operator": "<",
+          "threshold": 15,
+          "unit": "mOhm",
+          "condition_role": "VERIFICATION",
+          "mandatory": true,
+          "requires_visual_evidence": false,
+          "expected_status": "PENDING",
+          "evidence": [
+            {
+              "document": "10_Nova_Network_Environmental_Qualification_Report.pdf",
+              "page": 4,
+              "block_type": "table",
+              "role": "adverse_or_unresolved",
+              "quote": "IN PROGRESS - Partial execution exists for REQ-NVA-ENV-004, but verification is not complete: Contact resistance remains below 15 mOhm."
+            }
+          ]
+        },
+        {
+          "condition_id": "REQ-NVA-ENV-004-C3",
+          "description": "Sealing surfaces show no red corrosion",
+          "parameter": "red_corrosion_present",
+          "operator": "==",
+          "threshold": false,
+          "unit": null,
+          "condition_role": "VERIFICATION",
+          "mandatory": true,
+          "requires_visual_evidence": false,
+          "expected_status": "UNTESTED",
+          "evidence": [
+            {
+              "document": "10_Nova_Network_Environmental_Qualification_Report.pdf",
+              "page": 4,
+              "block_type": "table",
+              "role": "adverse_or_unresolved",
+              "quote": "NOT TESTED - No test or inspection was performed for REQ-NVA-ENV-004: Sealing surfaces show no red corrosion."
+            }
+          ]
+        },
+        {
+          "condition_id": "REQ-NVA-ENV-004-C4",
+          "description": "Labels remain legible",
+          "parameter": "labels_legible",
+          "operator": "==",
+          "threshold": true,
+          "unit": null,
+          "condition_role": "VERIFICATION",
+          "mandatory": true,
+          "requires_visual_evidence": false,
+          "expected_status": "UNTESTED",
+          "evidence": [
+            {
+              "document": "10_Nova_Network_Environmental_Qualification_Report.pdf",
+              "page": 4,
+              "block_type": "table",
+              "role": "adverse_or_unresolved",
+              "quote": "NOT TESTED - No test or inspection was performed for REQ-NVA-ENV-004: Labels remain legible."
+            }
+          ]
+        }
+      ],
+      "document": "04_Nova_Environmental_Mechanical_Requirements.pdf",
+      "source_page": 3,
+      "source_modality": "table",
+      "category": "Environmental qualification",
+      "clause": "REQ-NVA-ENV-004",
+      "expected_status": "PARTIAL",
+      "expected_review_state": "Needs review"
+    },
+    {
+      "requirement_id": "REQ-NVA-ENV-005",
+      "title": "Mounting integrity",
+      "requirement_text": "Each of the four mounting bolts shall be tightened to 22 Nm, marked with torque witness paint, and retain at least 18 Nm after vibration.",
+      "logic": {
+        "operator": "ALL_OF",
+        "condition_ids": [
+          "REQ-NVA-ENV-005-C1",
+          "REQ-NVA-ENV-005-C2",
+          "REQ-NVA-ENV-005-C3",
+          "REQ-NVA-ENV-005-C4"
+        ]
+      },
+      "conditions": [
+        {
+          "condition_id": "REQ-NVA-ENV-005-C1",
+          "description": "All four mounting bolts are included",
+          "parameter": "mounting_bolt_count",
+          "operator": "==",
+          "threshold": 4,
+          "unit": "count",
+          "condition_role": "VERIFICATION",
+          "mandatory": true,
+          "requires_visual_evidence": false,
+          "expected_status": "PROVEN",
+          "evidence": [
+            {
+              "document": "10_Nova_Network_Environmental_Qualification_Report.pdf",
+              "page": 4,
+              "block_type": "table",
+              "role": "supporting",
+              "quote": "PASS - Executed for REQ-NVA-ENV-005; the recorded result confirms: All four mounting bolts are included."
+            }
+          ]
+        },
+        {
+          "condition_id": "REQ-NVA-ENV-005-C2",
+          "description": "Initial mounting-bolt torque is 22 Nm",
+          "parameter": "initial_bolt_torque",
+          "operator": "==",
+          "threshold": 22,
+          "unit": "Nm",
+          "condition_role": "VERIFICATION",
+          "mandatory": true,
+          "requires_visual_evidence": false,
+          "expected_status": "PROVEN",
+          "evidence": [
+            {
+              "document": "10_Nova_Network_Environmental_Qualification_Report.pdf",
+              "page": 4,
+              "block_type": "table",
+              "role": "supporting",
+              "quote": "PASS - Executed for REQ-NVA-ENV-005; the recorded result confirms: Initial mounting-bolt torque is 22 Nm."
+            }
+          ]
+        },
+        {
+          "condition_id": "REQ-NVA-ENV-005-C3",
+          "description": "Every mounting bolt has torque witness paint",
+          "parameter": "witness_marks_present",
+          "operator": "==",
+          "threshold": true,
+          "unit": null,
+          "condition_role": "VERIFICATION",
+          "mandatory": true,
+          "requires_visual_evidence": false,
+          "expected_status": "PROVEN",
+          "evidence": [
+            {
+              "document": "10_Nova_Network_Environmental_Qualification_Report.pdf",
+              "page": 4,
+              "block_type": "table",
+              "role": "supporting",
+              "quote": "PASS - Executed for REQ-NVA-ENV-005; the recorded result confirms: Every mounting bolt has torque witness paint."
+            }
+          ]
+        },
+        {
+          "condition_id": "REQ-NVA-ENV-005-C4",
+          "description": "Post-vibration residual torque is at least 18 Nm",
+          "parameter": "residual_bolt_torque",
+          "operator": ">=",
+          "threshold": 18,
+          "unit": "Nm",
+          "condition_role": "VERIFICATION",
+          "mandatory": true,
+          "requires_visual_evidence": false,
+          "expected_status": "FAILED",
+          "evidence": [
+            {
+              "document": "10_Nova_Network_Environmental_Qualification_Report.pdf",
+              "page": 4,
+              "block_type": "table",
+              "role": "adverse_or_unresolved",
+              "quote": "FAIL - Executed for REQ-NVA-ENV-005; the observed result does not satisfy: Post-vibration residual torque is at least 18 Nm."
+            }
+          ]
+        }
+      ],
+      "document": "04_Nova_Environmental_Mechanical_Requirements.pdf",
+      "source_page": 3,
+      "source_modality": "table",
+      "category": "Environmental qualification",
+      "clause": "REQ-NVA-ENV-005",
+      "expected_status": "CONFLICT",
+      "expected_review_state": "Reviewed"
+    },
+    {
+      "requirement_id": "REQ-NVA-ENV-006",
+      "title": "Drain orientation",
+      "requirement_text": "With the enclosure mounted in vehicle orientation, the drain slot shall face downward, remain outside the gasket boundary, and provide an unobstructed opening of at least 18 mm2.",
+      "logic": {
+        "operator": "IF_THEN",
+        "condition_ids": [
+          "REQ-NVA-ENV-006-C1",
+          "REQ-NVA-ENV-006-C2",
+          "REQ-NVA-ENV-006-C3",
+          "REQ-NVA-ENV-006-C4"
+        ],
+        "if_condition_id": "REQ-NVA-ENV-006-C1",
+        "then_condition_ids": [
+          "REQ-NVA-ENV-006-C2",
+          "REQ-NVA-ENV-006-C3",
+          "REQ-NVA-ENV-006-C4"
+        ]
+      },
+      "conditions": [
+        {
+          "condition_id": "REQ-NVA-ENV-006-C1",
+          "description": "Enclosure is mounted in vehicle orientation",
+          "parameter": "vehicle_mounting_orientation",
+          "operator": "==",
+          "threshold": true,
+          "unit": null,
+          "condition_role": "APPLICABILITY",
+          "mandatory": true,
+          "requires_visual_evidence": true,
+          "expected_status": "UNTESTED",
+          "evidence": [
+            {
+              "document": "10_Nova_Network_Environmental_Qualification_Report.pdf",
+              "page": 5,
+              "block_type": "figure",
+              "role": "adverse_or_unresolved",
+              "quote": "NOT TESTED - No test or inspection was performed for REQ-NVA-ENV-006: Enclosure is mounted in vehicle orientation."
+            }
+          ]
+        },
+        {
+          "condition_id": "REQ-NVA-ENV-006-C2",
+          "description": "Drain slot faces downward",
+          "parameter": "drain_orientation",
+          "operator": "==",
+          "threshold": "downward",
+          "unit": null,
+          "condition_role": "VERIFICATION",
+          "mandatory": true,
+          "requires_visual_evidence": true,
+          "expected_status": "UNTESTED",
+          "evidence": [
+            {
+              "document": "10_Nova_Network_Environmental_Qualification_Report.pdf",
+              "page": 5,
+              "block_type": "figure",
+              "role": "adverse_or_unresolved",
+              "quote": "NOT TESTED - No test or inspection was performed for REQ-NVA-ENV-006: Drain slot faces downward."
+            }
+          ]
+        },
+        {
+          "condition_id": "REQ-NVA-ENV-006-C3",
+          "description": "Drain slot remains outside the gasket boundary",
+          "parameter": "drain_outside_gasket",
+          "operator": "==",
+          "threshold": true,
+          "unit": null,
+          "condition_role": "VERIFICATION",
+          "mandatory": true,
+          "requires_visual_evidence": true,
+          "expected_status": "UNTESTED",
+          "evidence": [
+            {
+              "document": "10_Nova_Network_Environmental_Qualification_Report.pdf",
+              "page": 5,
+              "block_type": "figure",
+              "role": "adverse_or_unresolved",
+              "quote": "NOT TESTED - No test or inspection was performed for REQ-NVA-ENV-006: Drain slot remains outside the gasket boundary."
+            }
+          ]
+        },
+        {
+          "condition_id": "REQ-NVA-ENV-006-C4",
+          "description": "Unobstructed drain opening is at least 18 mm2",
+          "parameter": "drain_open_area",
+          "operator": ">=",
+          "threshold": 18,
+          "unit": "mm2",
+          "condition_role": "VERIFICATION",
+          "mandatory": true,
+          "requires_visual_evidence": true,
+          "expected_status": "UNTESTED",
+          "evidence": [
+            {
+              "document": "10_Nova_Network_Environmental_Qualification_Report.pdf",
+              "page": 5,
+              "block_type": "figure",
+              "role": "adverse_or_unresolved",
+              "quote": "NOT TESTED - No test or inspection was performed for REQ-NVA-ENV-006: Unobstructed drain opening is at least 18 mm2."
+            }
+          ]
+        }
+      ],
+      "document": "04_Nova_Environmental_Mechanical_Requirements.pdf",
+      "source_page": 4,
+      "source_modality": "figure",
+      "category": "Environmental qualification",
+      "clause": "REQ-NVA-ENV-006",
+      "expected_status": "MISSING",
+      "expected_review_state": "Needs review"
+    },
+    {
+      "requirement_id": "REQ-NVA-FSA-001",
+      "title": "Watchdog reaction",
+      "requirement_text": "If the control task misses two consecutive execution windows, the independent watchdog shall reset the controller within 50 ms.",
+      "logic": {
+        "operator": "IF_THEN",
+        "condition_ids": [
+          "REQ-NVA-FSA-001-C1",
+          "REQ-NVA-FSA-001-C2"
+        ],
+        "if_condition_id": "REQ-NVA-FSA-001-C1",
+        "then_condition_ids": [
+          "REQ-NVA-FSA-001-C2"
+        ]
+      },
+      "conditions": [
+        {
+          "condition_id": "REQ-NVA-FSA-001-C1",
+          "description": "Control task misses two consecutive execution windows",
+          "parameter": "missed_execution_windows",
+          "operator": "==",
+          "threshold": 2,
+          "unit": "count",
+          "condition_role": "APPLICABILITY",
+          "mandatory": true,
+          "requires_visual_evidence": false,
+          "expected_status": "INCONCLUSIVE",
+          "evidence": [
+            {
+              "document": "11_Nova_Safety_Cybersecurity_Assurance_Report.pdf",
+              "page": 2,
+              "block_type": "table",
+              "role": "adverse_or_unresolved",
+              "quote": "INCONCLUSIVE - Work was attempted for REQ-NVA-FSA-001, but incomplete scope or calibration prevents deciding: Control task misses two consecutive execution windows."
+            }
+          ]
+        },
+        {
+          "condition_id": "REQ-NVA-FSA-001-C2",
+          "description": "Independent watchdog resets the controller within 50 ms",
+          "parameter": "watchdog_reset_latency",
+          "operator": "<=",
+          "threshold": 50,
+          "unit": "ms",
+          "condition_role": "VERIFICATION",
+          "mandatory": true,
+          "requires_visual_evidence": false,
+          "expected_status": "INCONCLUSIVE",
+          "evidence": [
+            {
+              "document": "11_Nova_Safety_Cybersecurity_Assurance_Report.pdf",
+              "page": 2,
+              "block_type": "table",
+              "role": "adverse_or_unresolved",
+              "quote": "INCONCLUSIVE - Work was attempted for REQ-NVA-FSA-001, but incomplete scope or calibration prevents deciding: Independent watchdog resets the controller within 50 ms."
+            }
+          ]
+        }
+      ],
+      "document": "05_Nova_Functional_Safety_Requirements.pdf",
+      "source_page": 2,
+      "source_modality": "body_text",
+      "category": "Functional safety",
+      "clause": "REQ-NVA-FSA-001",
+      "expected_status": "UNKNOWN",
+      "expected_review_state": "Needs review"
+    },
+    {
+      "requirement_id": "REQ-NVA-FSA-002",
+      "title": "Sensor plausibility",
+      "requirement_text": "A disagreement greater than 8 deg C between redundant pack temperature channels shall set a diagnostic fault within 200 ms.",
+      "logic": {
+        "operator": "IF_THEN",
+        "condition_ids": [
+          "REQ-NVA-FSA-002-C1",
+          "REQ-NVA-FSA-002-C2"
+        ],
+        "if_condition_id": "REQ-NVA-FSA-002-C1",
+        "then_condition_ids": [
+          "REQ-NVA-FSA-002-C2"
+        ]
+      },
+      "conditions": [
+        {
+          "condition_id": "REQ-NVA-FSA-002-C1",
+          "description": "Redundant temperature-channel disagreement exceeds 8 deg C",
+          "parameter": "temperature_disagreement",
+          "operator": ">",
+          "threshold": 8,
+          "unit": "deg C",
+          "condition_role": "APPLICABILITY",
+          "mandatory": true,
+          "requires_visual_evidence": false,
+          "expected_status": "PROVEN",
+          "evidence": [
+            {
+              "document": "11_Nova_Safety_Cybersecurity_Assurance_Report.pdf",
+              "page": 2,
+              "block_type": "table",
+              "role": "supporting",
+              "quote": "PASS - Executed for REQ-NVA-FSA-002; the recorded result confirms: Redundant temperature-channel disagreement exceeds 8 deg C."
+            }
+          ]
+        },
+        {
+          "condition_id": "REQ-NVA-FSA-002-C2",
+          "description": "Diagnostic fault is set within 200 ms",
+          "parameter": "plausibility_fault_latency",
+          "operator": "<=",
+          "threshold": 200,
+          "unit": "ms",
+          "condition_role": "VERIFICATION",
+          "mandatory": true,
+          "requires_visual_evidence": false,
+          "expected_status": "PROVEN",
+          "evidence": [
+            {
+              "document": "11_Nova_Safety_Cybersecurity_Assurance_Report.pdf",
+              "page": 2,
+              "block_type": "table",
+              "role": "supporting",
+              "quote": "PASS - Executed for REQ-NVA-FSA-002; the recorded result confirms: Diagnostic fault is set within 200 ms."
+            }
+          ]
+        }
+      ],
+      "document": "05_Nova_Functional_Safety_Requirements.pdf",
+      "source_page": 2,
+      "source_modality": "two_column_text",
+      "category": "Functional safety",
+      "clause": "REQ-NVA-FSA-002",
+      "expected_status": "SUPPORTED",
+      "expected_review_state": "Reviewed"
+    },
+    {
+      "requirement_id": "REQ-NVA-FSA-003",
+      "title": "Torque inhibition",
+      "requirement_text": "While a charge connector is latched, commanded propulsion torque shall remain zero and vehicle displacement shall not exceed 150 mm.",
+      "logic": {
+        "operator": "IF_THEN",
+        "condition_ids": [
+          "REQ-NVA-FSA-003-C1",
+          "REQ-NVA-FSA-003-C2",
+          "REQ-NVA-FSA-003-C3"
+        ],
+        "if_condition_id": "REQ-NVA-FSA-003-C1",
+        "then_condition_ids": [
+          "REQ-NVA-FSA-003-C2",
+          "REQ-NVA-FSA-003-C3"
+        ]
+      },
+      "conditions": [
+        {
+          "condition_id": "REQ-NVA-FSA-003-C1",
+          "description": "Charge connector is latched",
+          "parameter": "charge_connector_latched",
+          "operator": "==",
+          "threshold": true,
+          "unit": null,
+          "condition_role": "APPLICABILITY",
+          "mandatory": true,
+          "requires_visual_evidence": false,
+          "expected_status": "PROVEN",
+          "evidence": [
+            {
+              "document": "11_Nova_Safety_Cybersecurity_Assurance_Report.pdf",
+              "page": 2,
+              "block_type": "table",
+              "role": "supporting",
+              "quote": "PASS - Executed for REQ-NVA-FSA-003; the recorded result confirms: Charge connector is latched."
+            }
+          ]
+        },
+        {
+          "condition_id": "REQ-NVA-FSA-003-C2",
+          "description": "Commanded propulsion torque remains zero",
+          "parameter": "propulsion_torque",
+          "operator": "==",
+          "threshold": 0,
+          "unit": "Nm",
+          "condition_role": "VERIFICATION",
+          "mandatory": true,
+          "requires_visual_evidence": false,
+          "expected_status": "PENDING",
+          "evidence": [
+            {
+              "document": "11_Nova_Safety_Cybersecurity_Assurance_Report.pdf",
+              "page": 2,
+              "block_type": "table",
+              "role": "adverse_or_unresolved",
+              "quote": "IN PROGRESS - Partial execution exists for REQ-NVA-FSA-003, but verification is not complete: Commanded propulsion torque remains zero."
+            }
+          ]
+        },
+        {
+          "condition_id": "REQ-NVA-FSA-003-C3",
+          "description": "Vehicle displacement does not exceed 150 mm",
+          "parameter": "vehicle_displacement",
+          "operator": "<=",
+          "threshold": 150,
+          "unit": "mm",
+          "condition_role": "VERIFICATION",
+          "mandatory": true,
+          "requires_visual_evidence": false,
+          "expected_status": "UNTESTED",
+          "evidence": [
+            {
+              "document": "11_Nova_Safety_Cybersecurity_Assurance_Report.pdf",
+              "page": 2,
+              "block_type": "table",
+              "role": "adverse_or_unresolved",
+              "quote": "NOT TESTED - No test or inspection was performed for REQ-NVA-FSA-003: Vehicle displacement does not exceed 150 mm."
+            }
+          ]
+        }
+      ],
+      "document": "05_Nova_Functional_Safety_Requirements.pdf",
+      "source_page": 2,
+      "source_modality": "two_column_text",
+      "category": "Functional safety",
+      "clause": "REQ-NVA-FSA-003",
+      "expected_status": "PARTIAL",
+      "expected_review_state": "Needs review"
+    },
+    {
+      "requirement_id": "REQ-NVA-FSA-004",
+      "title": "Safe-state persistence",
+      "requirement_text": "After a crash latch is set, the controller shall hold both contactors open, suppress automatic restart, and preserve the latch across a 12 V power cycle.",
+      "logic": {
+        "operator": "IF_THEN",
+        "condition_ids": [
+          "REQ-NVA-FSA-004-C1",
+          "REQ-NVA-FSA-004-C2",
+          "REQ-NVA-FSA-004-C3",
+          "REQ-NVA-FSA-004-C4"
+        ],
+        "if_condition_id": "REQ-NVA-FSA-004-C1",
+        "then_condition_ids": [
+          "REQ-NVA-FSA-004-C2",
+          "REQ-NVA-FSA-004-C3",
+          "REQ-NVA-FSA-004-C4"
+        ]
+      },
+      "conditions": [
+        {
+          "condition_id": "REQ-NVA-FSA-004-C1",
+          "description": "Crash latch is set",
+          "parameter": "crash_latch_set",
+          "operator": "==",
+          "threshold": true,
+          "unit": null,
+          "condition_role": "APPLICABILITY",
+          "mandatory": true,
+          "requires_visual_evidence": false,
+          "expected_status": "PROVEN",
+          "evidence": [
+            {
+              "document": "11_Nova_Safety_Cybersecurity_Assurance_Report.pdf",
+              "page": 2,
+              "block_type": "table",
+              "role": "supporting",
+              "quote": "PASS - Executed for REQ-NVA-FSA-004; the recorded result confirms: Crash latch is set."
+            }
+          ]
+        },
+        {
+          "condition_id": "REQ-NVA-FSA-004-C2",
+          "description": "Both contactors remain open",
+          "parameter": "contactors_held_open",
+          "operator": "==",
+          "threshold": true,
+          "unit": null,
+          "condition_role": "VERIFICATION",
+          "mandatory": true,
+          "requires_visual_evidence": false,
+          "expected_status": "PROVEN",
+          "evidence": [
+            {
+              "document": "11_Nova_Safety_Cybersecurity_Assurance_Report.pdf",
+              "page": 2,
+              "block_type": "table",
+              "role": "supporting",
+              "quote": "PASS - Executed for REQ-NVA-FSA-004; the recorded result confirms: Both contactors remain open."
+            }
+          ]
+        },
+        {
+          "condition_id": "REQ-NVA-FSA-004-C3",
+          "description": "Automatic restart is suppressed",
+          "parameter": "automatic_restart_suppressed",
+          "operator": "==",
+          "threshold": true,
+          "unit": null,
+          "condition_role": "VERIFICATION",
+          "mandatory": true,
+          "requires_visual_evidence": false,
+          "expected_status": "PROVEN",
+          "evidence": [
+            {
+              "document": "11_Nova_Safety_Cybersecurity_Assurance_Report.pdf",
+              "page": 2,
+              "block_type": "table",
+              "role": "supporting",
+              "quote": "PASS - Executed for REQ-NVA-FSA-004; the recorded result confirms: Automatic restart is suppressed."
+            }
+          ]
+        },
+        {
+          "condition_id": "REQ-NVA-FSA-004-C4",
+          "description": "Crash latch persists across a 12 V power cycle",
+          "parameter": "crash_latch_persistent",
+          "operator": "==",
+          "threshold": true,
+          "unit": null,
+          "condition_role": "VERIFICATION",
+          "mandatory": true,
+          "requires_visual_evidence": false,
+          "expected_status": "FAILED",
+          "evidence": [
+            {
+              "document": "11_Nova_Safety_Cybersecurity_Assurance_Report.pdf",
+              "page": 2,
+              "block_type": "table",
+              "role": "adverse_or_unresolved",
+              "quote": "FAIL - Executed for REQ-NVA-FSA-004; the observed result does not satisfy: Crash latch persists across a 12 V power cycle."
+            }
+          ]
+        }
+      ],
+      "document": "05_Nova_Functional_Safety_Requirements.pdf",
+      "source_page": 3,
+      "source_modality": "table",
+      "category": "Functional safety",
+      "clause": "REQ-NVA-FSA-004",
+      "expected_status": "CONFLICT",
+      "expected_review_state": "Reviewed"
+    },
+    {
+      "requirement_id": "REQ-NVA-FSA-005",
+      "title": "Fault logging",
+      "requirement_text": "Each ASIL-D safety reaction shall store the fault code, the first-failure timestamp with 10 ms resolution, and 2 seconds of pre-trigger sensor history.",
+      "logic": {
+        "operator": "IF_THEN",
+        "condition_ids": [
+          "REQ-NVA-FSA-005-C1",
+          "REQ-NVA-FSA-005-C2",
+          "REQ-NVA-FSA-005-C3",
+          "REQ-NVA-FSA-005-C4"
+        ],
+        "if_condition_id": "REQ-NVA-FSA-005-C1",
+        "then_condition_ids": [
+          "REQ-NVA-FSA-005-C2",
+          "REQ-NVA-FSA-005-C3",
+          "REQ-NVA-FSA-005-C4"
+        ]
+      },
+      "conditions": [
+        {
+          "condition_id": "REQ-NVA-FSA-005-C1",
+          "description": "The reaction is an ASIL-D safety reaction",
+          "parameter": "safety_reaction_asil",
+          "operator": "==",
+          "threshold": "ASIL-D",
+          "unit": null,
+          "condition_role": "APPLICABILITY",
+          "mandatory": true,
+          "requires_visual_evidence": false,
+          "expected_status": "UNTESTED",
+          "evidence": [
+            {
+              "document": "11_Nova_Safety_Cybersecurity_Assurance_Report.pdf",
+              "page": 3,
+              "block_type": "table",
+              "role": "adverse_or_unresolved",
+              "quote": "NOT TESTED - No test or inspection was performed for REQ-NVA-FSA-005: The reaction is an ASIL-D safety reaction."
+            }
+          ]
+        },
+        {
+          "condition_id": "REQ-NVA-FSA-005-C2",
+          "description": "Safety reaction stores its fault code",
+          "parameter": "fault_code_stored",
+          "operator": "==",
+          "threshold": true,
+          "unit": null,
+          "condition_role": "VERIFICATION",
+          "mandatory": true,
+          "requires_visual_evidence": false,
+          "expected_status": "UNTESTED",
+          "evidence": [
+            {
+              "document": "11_Nova_Safety_Cybersecurity_Assurance_Report.pdf",
+              "page": 3,
+              "block_type": "table",
+              "role": "adverse_or_unresolved",
+              "quote": "NOT TESTED - No test or inspection was performed for REQ-NVA-FSA-005: Safety reaction stores its fault code."
+            }
+          ]
+        },
+        {
+          "condition_id": "REQ-NVA-FSA-005-C3",
+          "description": "First-failure timestamp resolution is 10 ms or better",
+          "parameter": "timestamp_resolution",
+          "operator": "<=",
+          "threshold": 10,
+          "unit": "ms",
+          "condition_role": "VERIFICATION",
+          "mandatory": true,
+          "requires_visual_evidence": false,
+          "expected_status": "UNTESTED",
+          "evidence": [
+            {
+              "document": "11_Nova_Safety_Cybersecurity_Assurance_Report.pdf",
+              "page": 3,
+              "block_type": "table",
+              "role": "adverse_or_unresolved",
+              "quote": "NOT TESTED - No test or inspection was performed for REQ-NVA-FSA-005: First-failure timestamp resolution is 10 ms or better."
+            }
+          ]
+        },
+        {
+          "condition_id": "REQ-NVA-FSA-005-C4",
+          "description": "At least 2 seconds of pre-trigger sensor history is stored",
+          "parameter": "pretrigger_history",
+          "operator": ">=",
+          "threshold": 2,
+          "unit": "s",
+          "condition_role": "VERIFICATION",
+          "mandatory": true,
+          "requires_visual_evidence": false,
+          "expected_status": "UNTESTED",
+          "evidence": [
+            {
+              "document": "11_Nova_Safety_Cybersecurity_Assurance_Report.pdf",
+              "page": 3,
+              "block_type": "table",
+              "role": "adverse_or_unresolved",
+              "quote": "NOT TESTED - No test or inspection was performed for REQ-NVA-FSA-005: At least 2 seconds of pre-trigger sensor history is stored."
+            }
+          ]
+        }
+      ],
+      "document": "05_Nova_Functional_Safety_Requirements.pdf",
+      "source_page": 3,
+      "source_modality": "table",
+      "category": "Functional safety",
+      "clause": "REQ-NVA-FSA-005",
+      "expected_status": "MISSING",
+      "expected_review_state": "Needs review"
+    },
+    {
+      "requirement_id": "REQ-NVA-FSA-006",
+      "title": "Redundant shutdown path",
+      "requirement_text": "Either the primary safety MCU or the independent hardware comparator shall de-energize the contactor coils within 25 ms, as shown by the alternative paths in the safety diagram.",
+      "logic": {
+        "operator": "ANY_OF",
+        "condition_ids": [
+          "REQ-NVA-FSA-006-C1",
+          "REQ-NVA-FSA-006-C2"
+        ]
+      },
+      "conditions": [
+        {
+          "condition_id": "REQ-NVA-FSA-006-C1",
+          "description": "Primary safety MCU de-energizes the coils within 25 ms",
+          "parameter": "primary_shutdown_latency",
+          "operator": "<=",
+          "threshold": 25,
+          "unit": "ms",
+          "condition_role": "VERIFICATION",
+          "mandatory": true,
+          "requires_visual_evidence": true,
+          "expected_status": "INCONCLUSIVE",
+          "evidence": [
+            {
+              "document": "11_Nova_Safety_Cybersecurity_Assurance_Report.pdf",
+              "page": 5,
+              "block_type": "figure",
+              "role": "adverse_or_unresolved",
+              "quote": "INCONCLUSIVE - Work was attempted for REQ-NVA-FSA-006, but incomplete scope or calibration prevents deciding: Primary safety MCU de-energizes the coils within 25 ms."
+            }
+          ]
+        },
+        {
+          "condition_id": "REQ-NVA-FSA-006-C2",
+          "description": "Independent comparator de-energizes the coils within 25 ms",
+          "parameter": "backup_shutdown_latency",
+          "operator": "<=",
+          "threshold": 25,
+          "unit": "ms",
+          "condition_role": "VERIFICATION",
+          "mandatory": true,
+          "requires_visual_evidence": true,
+          "expected_status": "INCONCLUSIVE",
+          "evidence": [
+            {
+              "document": "11_Nova_Safety_Cybersecurity_Assurance_Report.pdf",
+              "page": 5,
+              "block_type": "figure",
+              "role": "adverse_or_unresolved",
+              "quote": "INCONCLUSIVE - Work was attempted for REQ-NVA-FSA-006, but incomplete scope or calibration prevents deciding: Independent comparator de-energizes the coils within 25 ms."
+            }
+          ]
+        }
+      ],
+      "document": "05_Nova_Functional_Safety_Requirements.pdf",
+      "source_page": 4,
+      "source_modality": "figure",
+      "category": "Functional safety",
+      "clause": "REQ-NVA-FSA-006",
+      "expected_status": "UNKNOWN",
+      "expected_review_state": "Needs review"
+    },
+    {
+      "requirement_id": "REQ-NVA-CYS-001",
+      "title": "Secure boot",
+      "requirement_text": "At every startup, the controller shall verify the application signature before executing application code.",
+      "logic": {
+        "operator": "ALL_OF",
+        "condition_ids": [
+          "REQ-NVA-CYS-001-C1",
+          "REQ-NVA-CYS-001-C2"
+        ]
+      },
+      "conditions": [
+        {
+          "condition_id": "REQ-NVA-CYS-001-C1",
+          "description": "Signature verification occurs at every startup",
+          "parameter": "signature_checked_each_start",
+          "operator": "==",
+          "threshold": true,
+          "unit": null,
+          "condition_role": "VERIFICATION",
+          "mandatory": true,
+          "requires_visual_evidence": false,
+          "expected_status": "PROVEN",
+          "evidence": [
+            {
+              "document": "11_Nova_Safety_Cybersecurity_Assurance_Report.pdf",
+              "page": 3,
+              "block_type": "table",
+              "role": "supporting",
+              "quote": "PASS - Executed for REQ-NVA-CYS-001; the recorded result confirms: Signature verification occurs at every startup."
+            }
+          ]
+        },
+        {
+          "condition_id": "REQ-NVA-CYS-001-C2",
+          "description": "Application code executes only after successful verification",
+          "parameter": "execution_after_verification",
+          "operator": "==",
+          "threshold": true,
+          "unit": null,
+          "condition_role": "VERIFICATION",
+          "mandatory": true,
+          "requires_visual_evidence": false,
+          "expected_status": "PROVEN",
+          "evidence": [
+            {
+              "document": "11_Nova_Safety_Cybersecurity_Assurance_Report.pdf",
+              "page": 3,
+              "block_type": "table",
+              "role": "supporting",
+              "quote": "PASS - Executed for REQ-NVA-CYS-001; the recorded result confirms: Application code executes only after successful verification."
+            }
+          ]
+        }
+      ],
+      "document": "06_Nova_Cybersecurity_Requirements.pdf",
+      "source_page": 2,
+      "source_modality": "scanned_text",
+      "category": "Cybersecurity",
+      "clause": "REQ-NVA-CYS-001",
+      "expected_status": "SUPPORTED",
+      "expected_review_state": "Reviewed"
+    },
+    {
+      "requirement_id": "REQ-NVA-CYS-002",
+      "title": "Authentication lockout",
+      "requirement_text": "After five consecutive invalid authentication attempts, diagnostic security access shall be locked for 15 minutes.",
+      "logic": {
+        "operator": "IF_THEN",
+        "condition_ids": [
+          "REQ-NVA-CYS-002-C1",
+          "REQ-NVA-CYS-002-C2"
+        ],
+        "if_condition_id": "REQ-NVA-CYS-002-C1",
+        "then_condition_ids": [
+          "REQ-NVA-CYS-002-C2"
+        ]
+      },
+      "conditions": [
+        {
+          "condition_id": "REQ-NVA-CYS-002-C1",
+          "description": "Five consecutive invalid authentication attempts occur",
+          "parameter": "invalid_auth_attempts",
+          "operator": "==",
+          "threshold": 5,
+          "unit": "count",
+          "condition_role": "APPLICABILITY",
+          "mandatory": true,
+          "requires_visual_evidence": false,
+          "expected_status": "PROVEN",
+          "evidence": [
+            {
+              "document": "11_Nova_Safety_Cybersecurity_Assurance_Report.pdf",
+              "page": 3,
+              "block_type": "table",
+              "role": "supporting",
+              "quote": "PASS - Executed for REQ-NVA-CYS-002; the recorded result confirms: Five consecutive invalid authentication attempts occur."
+            }
+          ]
+        },
+        {
+          "condition_id": "REQ-NVA-CYS-002-C2",
+          "description": "Security access is locked for at least 15 minutes",
+          "parameter": "security_lockout",
+          "operator": ">=",
+          "threshold": 15,
+          "unit": "min",
+          "condition_role": "VERIFICATION",
+          "mandatory": true,
+          "requires_visual_evidence": false,
+          "expected_status": "PENDING",
+          "evidence": [
+            {
+              "document": "11_Nova_Safety_Cybersecurity_Assurance_Report.pdf",
+              "page": 3,
+              "block_type": "table",
+              "role": "adverse_or_unresolved",
+              "quote": "IN PROGRESS - Partial execution exists for REQ-NVA-CYS-002, but verification is not complete: Security access is locked for at least 15 minutes."
+            }
+          ]
+        }
+      ],
+      "document": "06_Nova_Cybersecurity_Requirements.pdf",
+      "source_page": 2,
+      "source_modality": "scanned_text",
+      "category": "Cybersecurity",
+      "clause": "REQ-NVA-CYS-002",
+      "expected_status": "PARTIAL",
+      "expected_review_state": "Needs review"
+    },
+    {
+      "requirement_id": "REQ-NVA-CYS-003",
+      "title": "Update freshness",
+      "requirement_text": "The bootloader shall reject a correctly signed software image when its security version is lower than the installed version.",
+      "logic": {
+        "operator": "IF_THEN",
+        "condition_ids": [
+          "REQ-NVA-CYS-003-C1",
+          "REQ-NVA-CYS-003-C2"
+        ],
+        "if_condition_id": "REQ-NVA-CYS-003-C1",
+        "then_condition_ids": [
+          "REQ-NVA-CYS-003-C2"
+        ]
+      },
+      "conditions": [
+        {
+          "condition_id": "REQ-NVA-CYS-003-C1",
+          "description": "Candidate image has a valid signature but a lower security version",
+          "parameter": "rollback_candidate",
+          "operator": "==",
+          "threshold": true,
+          "unit": null,
+          "condition_role": "APPLICABILITY",
+          "mandatory": true,
+          "requires_visual_evidence": false,
+          "expected_status": "PROVEN",
+          "evidence": [
+            {
+              "document": "11_Nova_Safety_Cybersecurity_Assurance_Report.pdf",
+              "page": 3,
+              "block_type": "table",
+              "role": "supporting",
+              "quote": "PASS - Executed for REQ-NVA-CYS-003; the recorded result confirms: Candidate image has a valid signature but a lower security version."
+            }
+          ]
+        },
+        {
+          "condition_id": "REQ-NVA-CYS-003-C2",
+          "description": "Bootloader rejects the rollback image",
+          "parameter": "rollback_rejected",
+          "operator": "==",
+          "threshold": true,
+          "unit": null,
+          "condition_role": "VERIFICATION",
+          "mandatory": true,
+          "requires_visual_evidence": false,
+          "expected_status": "FAILED",
+          "evidence": [
+            {
+              "document": "11_Nova_Safety_Cybersecurity_Assurance_Report.pdf",
+              "page": 3,
+              "block_type": "table",
+              "role": "adverse_or_unresolved",
+              "quote": "FAIL - Executed for REQ-NVA-CYS-003; the observed result does not satisfy: Bootloader rejects the rollback image."
+            }
+          ]
+        }
+      ],
+      "document": "06_Nova_Cybersecurity_Requirements.pdf",
+      "source_page": 2,
+      "source_modality": "scanned_text",
+      "category": "Cybersecurity",
+      "clause": "REQ-NVA-CYS-003",
+      "expected_status": "CONFLICT",
+      "expected_review_state": "Reviewed"
+    },
+    {
+      "requirement_id": "REQ-NVA-CYS-004",
+      "title": "SecOC verification",
+      "requirement_text": "For protected CAN messages, the receiver shall verify freshness and message authentication before releasing the payload, and shall increment the intrusion counter after a failed check.",
+      "logic": {
+        "operator": "IF_THEN",
+        "condition_ids": [
+          "REQ-NVA-CYS-004-C1",
+          "REQ-NVA-CYS-004-C2",
+          "REQ-NVA-CYS-004-C3",
+          "REQ-NVA-CYS-004-C4"
+        ],
+        "if_condition_id": "REQ-NVA-CYS-004-C1",
+        "then_condition_ids": [
+          "REQ-NVA-CYS-004-C2",
+          "REQ-NVA-CYS-004-C3",
+          "REQ-NVA-CYS-004-C4"
+        ]
+      },
+      "conditions": [
+        {
+          "condition_id": "REQ-NVA-CYS-004-C1",
+          "description": "The CAN message is protected",
+          "parameter": "protected_can_message",
+          "operator": "==",
+          "threshold": true,
+          "unit": null,
+          "condition_role": "APPLICABILITY",
+          "mandatory": true,
+          "requires_visual_evidence": false,
+          "expected_status": "UNTESTED",
+          "evidence": [
+            {
+              "document": "11_Nova_Safety_Cybersecurity_Assurance_Report.pdf",
+              "page": 4,
+              "block_type": "table",
+              "role": "adverse_or_unresolved",
+              "quote": "NOT TESTED - No test or inspection was performed for REQ-NVA-CYS-004: The CAN message is protected."
+            }
+          ]
+        },
+        {
+          "condition_id": "REQ-NVA-CYS-004-C2",
+          "description": "Freshness value is verified",
+          "parameter": "freshness_verified",
+          "operator": "==",
+          "threshold": true,
+          "unit": null,
+          "condition_role": "VERIFICATION",
+          "mandatory": true,
+          "requires_visual_evidence": false,
+          "expected_status": "UNTESTED",
+          "evidence": [
+            {
+              "document": "11_Nova_Safety_Cybersecurity_Assurance_Report.pdf",
+              "page": 4,
+              "block_type": "table",
+              "role": "adverse_or_unresolved",
+              "quote": "NOT TESTED - No test or inspection was performed for REQ-NVA-CYS-004: Freshness value is verified."
+            }
+          ]
+        },
+        {
+          "condition_id": "REQ-NVA-CYS-004-C3",
+          "description": "Message authentication is verified before payload release",
+          "parameter": "mac_verified_before_release",
+          "operator": "==",
+          "threshold": true,
+          "unit": null,
+          "condition_role": "VERIFICATION",
+          "mandatory": true,
+          "requires_visual_evidence": false,
+          "expected_status": "UNTESTED",
+          "evidence": [
+            {
+              "document": "11_Nova_Safety_Cybersecurity_Assurance_Report.pdf",
+              "page": 4,
+              "block_type": "table",
+              "role": "adverse_or_unresolved",
+              "quote": "NOT TESTED - No test or inspection was performed for REQ-NVA-CYS-004: Message authentication is verified before payload release."
+            }
+          ]
+        },
+        {
+          "condition_id": "REQ-NVA-CYS-004-C4",
+          "description": "Failed verification increments the intrusion counter",
+          "parameter": "intrusion_counter_incremented",
+          "operator": "==",
+          "threshold": true,
+          "unit": null,
+          "condition_role": "VERIFICATION",
+          "mandatory": true,
+          "requires_visual_evidence": false,
+          "expected_status": "UNTESTED",
+          "evidence": [
+            {
+              "document": "11_Nova_Safety_Cybersecurity_Assurance_Report.pdf",
+              "page": 4,
+              "block_type": "table",
+              "role": "adverse_or_unresolved",
+              "quote": "NOT TESTED - No test or inspection was performed for REQ-NVA-CYS-004: Failed verification increments the intrusion counter."
+            }
+          ]
+        }
+      ],
+      "document": "06_Nova_Cybersecurity_Requirements.pdf",
+      "source_page": 3,
+      "source_modality": "table",
+      "category": "Cybersecurity",
+      "clause": "REQ-NVA-CYS-004",
+      "expected_status": "MISSING",
+      "expected_review_state": "Needs review"
+    },
+    {
+      "requirement_id": "REQ-NVA-CYS-005",
+      "title": "Key handling",
+      "requirement_text": "Production private keys shall be generated inside the hardware security module, shall never be exported in plaintext, and shall be erased when ownership transfer is authorized.",
+      "logic": {
+        "operator": "IF_THEN",
+        "condition_ids": [
+          "REQ-NVA-CYS-005-C1",
+          "REQ-NVA-CYS-005-C2",
+          "REQ-NVA-CYS-005-C3",
+          "REQ-NVA-CYS-005-C4"
+        ],
+        "if_condition_id": "REQ-NVA-CYS-005-C1",
+        "then_condition_ids": [
+          "REQ-NVA-CYS-005-C2",
+          "REQ-NVA-CYS-005-C3",
+          "REQ-NVA-CYS-005-C4"
+        ]
+      },
+      "conditions": [
+        {
+          "condition_id": "REQ-NVA-CYS-005-C1",
+          "description": "Keys are production private keys",
+          "parameter": "production_private_key",
+          "operator": "==",
+          "threshold": true,
+          "unit": null,
+          "condition_role": "APPLICABILITY",
+          "mandatory": true,
+          "requires_visual_evidence": false,
+          "expected_status": "INCONCLUSIVE",
+          "evidence": [
+            {
+              "document": "11_Nova_Safety_Cybersecurity_Assurance_Report.pdf",
+              "page": 4,
+              "block_type": "table",
+              "role": "adverse_or_unresolved",
+              "quote": "INCONCLUSIVE - Work was attempted for REQ-NVA-CYS-005, but incomplete scope or calibration prevents deciding: Keys are production private keys."
+            }
+          ]
+        },
+        {
+          "condition_id": "REQ-NVA-CYS-005-C2",
+          "description": "Production private keys are generated inside the HSM",
+          "parameter": "keys_generated_in_hsm",
+          "operator": "==",
+          "threshold": true,
+          "unit": null,
+          "condition_role": "VERIFICATION",
+          "mandatory": true,
+          "requires_visual_evidence": false,
+          "expected_status": "INCONCLUSIVE",
+          "evidence": [
+            {
+              "document": "11_Nova_Safety_Cybersecurity_Assurance_Report.pdf",
+              "page": 4,
+              "block_type": "table",
+              "role": "adverse_or_unresolved",
+              "quote": "INCONCLUSIVE - Work was attempted for REQ-NVA-CYS-005, but incomplete scope or calibration prevents deciding: Production private keys are generated inside the HSM."
+            }
+          ]
+        },
+        {
+          "condition_id": "REQ-NVA-CYS-005-C3",
+          "description": "Private keys are never exported in plaintext",
+          "parameter": "plaintext_key_export",
+          "operator": "==",
+          "threshold": false,
+          "unit": null,
+          "condition_role": "VERIFICATION",
+          "mandatory": true,
+          "requires_visual_evidence": false,
+          "expected_status": "INCONCLUSIVE",
+          "evidence": [
+            {
+              "document": "11_Nova_Safety_Cybersecurity_Assurance_Report.pdf",
+              "page": 4,
+              "block_type": "table",
+              "role": "adverse_or_unresolved",
+              "quote": "INCONCLUSIVE - Work was attempted for REQ-NVA-CYS-005, but incomplete scope or calibration prevents deciding: Private keys are never exported in plaintext."
+            }
+          ]
+        },
+        {
+          "condition_id": "REQ-NVA-CYS-005-C4",
+          "description": "Keys are erased after authorized ownership transfer",
+          "parameter": "keys_erased_on_transfer",
+          "operator": "==",
+          "threshold": true,
+          "unit": null,
+          "condition_role": "VERIFICATION",
+          "mandatory": true,
+          "requires_visual_evidence": false,
+          "expected_status": "INCONCLUSIVE",
+          "evidence": [
+            {
+              "document": "11_Nova_Safety_Cybersecurity_Assurance_Report.pdf",
+              "page": 4,
+              "block_type": "table",
+              "role": "adverse_or_unresolved",
+              "quote": "INCONCLUSIVE - Work was attempted for REQ-NVA-CYS-005, but incomplete scope or calibration prevents deciding: Keys are erased after authorized ownership transfer."
+            }
+          ]
+        }
+      ],
+      "document": "06_Nova_Cybersecurity_Requirements.pdf",
+      "source_page": 3,
+      "source_modality": "table",
+      "category": "Cybersecurity",
+      "clause": "REQ-NVA-CYS-005",
+      "expected_status": "UNKNOWN",
+      "expected_review_state": "Needs review"
+    },
+    {
+      "requirement_id": "REQ-NVA-CYS-006",
+      "title": "Debug-port state",
+      "requirement_text": "In production mode the external debug connector shall be physically unpopulated, the debug fuse shall read disabled, and the secure-state indicator shall appear green as shown in the board view.",
+      "logic": {
+        "operator": "IF_THEN",
+        "condition_ids": [
+          "REQ-NVA-CYS-006-C1",
+          "REQ-NVA-CYS-006-C2",
+          "REQ-NVA-CYS-006-C3",
+          "REQ-NVA-CYS-006-C4"
+        ],
+        "if_condition_id": "REQ-NVA-CYS-006-C1",
+        "then_condition_ids": [
+          "REQ-NVA-CYS-006-C2",
+          "REQ-NVA-CYS-006-C3",
+          "REQ-NVA-CYS-006-C4"
+        ]
+      },
+      "conditions": [
+        {
+          "condition_id": "REQ-NVA-CYS-006-C1",
+          "description": "Controller is in production mode",
+          "parameter": "production_mode",
+          "operator": "==",
+          "threshold": true,
+          "unit": null,
+          "condition_role": "APPLICABILITY",
+          "mandatory": true,
+          "requires_visual_evidence": true,
+          "expected_status": "PROVEN",
+          "evidence": [
+            {
+              "document": "11_Nova_Safety_Cybersecurity_Assurance_Report.pdf",
+              "page": 5,
+              "block_type": "figure",
+              "role": "supporting",
+              "quote": "PASS - Executed for REQ-NVA-CYS-006; the recorded result confirms: Controller is in production mode."
+            }
+          ]
+        },
+        {
+          "condition_id": "REQ-NVA-CYS-006-C2",
+          "description": "External debug connector is physically unpopulated",
+          "parameter": "debug_connector_populated",
+          "operator": "==",
+          "threshold": false,
+          "unit": null,
+          "condition_role": "VERIFICATION",
+          "mandatory": true,
+          "requires_visual_evidence": true,
+          "expected_status": "PROVEN",
+          "evidence": [
+            {
+              "document": "11_Nova_Safety_Cybersecurity_Assurance_Report.pdf",
+              "page": 5,
+              "block_type": "figure",
+              "role": "supporting",
+              "quote": "PASS - Executed for REQ-NVA-CYS-006; the recorded result confirms: External debug connector is physically unpopulated."
+            }
+          ]
+        },
+        {
+          "condition_id": "REQ-NVA-CYS-006-C3",
+          "description": "Debug fuse reports disabled",
+          "parameter": "debug_fuse_enabled",
+          "operator": "==",
+          "threshold": false,
+          "unit": null,
+          "condition_role": "VERIFICATION",
+          "mandatory": true,
+          "requires_visual_evidence": true,
+          "expected_status": "PROVEN",
+          "evidence": [
+            {
+              "document": "11_Nova_Safety_Cybersecurity_Assurance_Report.pdf",
+              "page": 5,
+              "block_type": "figure",
+              "role": "supporting",
+              "quote": "PASS - Executed for REQ-NVA-CYS-006; the recorded result confirms: Debug fuse reports disabled."
+            }
+          ]
+        },
+        {
+          "condition_id": "REQ-NVA-CYS-006-C4",
+          "description": "Secure-state indicator appears green",
+          "parameter": "secure_indicator",
+          "operator": "==",
+          "threshold": "green",
+          "unit": null,
+          "condition_role": "VERIFICATION",
+          "mandatory": true,
+          "requires_visual_evidence": true,
+          "expected_status": "PROVEN",
+          "evidence": [
+            {
+              "document": "11_Nova_Safety_Cybersecurity_Assurance_Report.pdf",
+              "page": 5,
+              "block_type": "figure",
+              "role": "supporting",
+              "quote": "PASS - Executed for REQ-NVA-CYS-006; the recorded result confirms: Secure-state indicator appears green."
+            }
+          ]
+        }
+      ],
+      "document": "06_Nova_Cybersecurity_Requirements.pdf",
+      "source_page": 4,
+      "source_modality": "figure",
+      "category": "Cybersecurity",
+      "clause": "REQ-NVA-CYS-006",
+      "expected_status": "SUPPORTED",
+      "expected_review_state": "Reviewed"
+    },
+    {
+      "requirement_id": "REQ-NVA-CHG-001",
+      "title": "AC input range",
+      "requirement_text": "The onboard charger shall deliver rated power from 180 V AC through 264 V AC at 45 Hz through 65 Hz.",
+      "logic": {
+        "operator": "ALL_OF",
+        "condition_ids": [
+          "REQ-NVA-CHG-001-C1",
+          "REQ-NVA-CHG-001-C2",
+          "REQ-NVA-CHG-001-C3",
+          "REQ-NVA-CHG-001-C4"
+        ]
+      },
+      "conditions": [
+        {
+          "condition_id": "REQ-NVA-CHG-001-C1",
+          "description": "Rated power is delivered at 180 V AC",
+          "parameter": "ac_input_voltage_lower",
+          "operator": "<=",
+          "threshold": 180,
+          "unit": "V",
+          "condition_role": "VERIFICATION",
+          "mandatory": true,
+          "requires_visual_evidence": false,
+          "expected_status": "PROVEN",
+          "evidence": [
+            {
+              "document": "12_Nova_Charging_Manufacturing_Acceptance_Report.pdf",
+              "page": 2,
+              "block_type": "table",
+              "role": "supporting",
+              "quote": "PASS - Executed for REQ-NVA-CHG-001; the recorded result confirms: Rated power is delivered at 180 V AC."
+            }
+          ]
+        },
+        {
+          "condition_id": "REQ-NVA-CHG-001-C2",
+          "description": "Rated power is delivered at 264 V AC",
+          "parameter": "ac_input_voltage_upper",
+          "operator": ">=",
+          "threshold": 264,
+          "unit": "V",
+          "condition_role": "VERIFICATION",
+          "mandatory": true,
+          "requires_visual_evidence": false,
+          "expected_status": "UNTESTED",
+          "evidence": [
+            {
+              "document": "12_Nova_Charging_Manufacturing_Acceptance_Report.pdf",
+              "page": 2,
+              "block_type": "table",
+              "role": "adverse_or_unresolved",
+              "quote": "NOT TESTED - No test or inspection was performed for REQ-NVA-CHG-001: Rated power is delivered at 264 V AC."
+            }
+          ]
+        },
+        {
+          "condition_id": "REQ-NVA-CHG-001-C3",
+          "description": "Rated power is delivered at 45 Hz",
+          "parameter": "ac_input_frequency_lower",
+          "operator": "<=",
+          "threshold": 45,
+          "unit": "Hz",
+          "condition_role": "VERIFICATION",
+          "mandatory": true,
+          "requires_visual_evidence": false,
+          "expected_status": "UNTESTED",
+          "evidence": [
+            {
+              "document": "12_Nova_Charging_Manufacturing_Acceptance_Report.pdf",
+              "page": 2,
+              "block_type": "table",
+              "role": "adverse_or_unresolved",
+              "quote": "NOT TESTED - No test or inspection was performed for REQ-NVA-CHG-001: Rated power is delivered at 45 Hz."
+            }
+          ]
+        },
+        {
+          "condition_id": "REQ-NVA-CHG-001-C4",
+          "description": "Rated power is delivered at 65 Hz",
+          "parameter": "ac_input_frequency_upper",
+          "operator": ">=",
+          "threshold": 65,
+          "unit": "Hz",
+          "condition_role": "VERIFICATION",
+          "mandatory": true,
+          "requires_visual_evidence": false,
+          "expected_status": "UNTESTED",
+          "evidence": [
+            {
+              "document": "12_Nova_Charging_Manufacturing_Acceptance_Report.pdf",
+              "page": 2,
+              "block_type": "table",
+              "role": "adverse_or_unresolved",
+              "quote": "NOT TESTED - No test or inspection was performed for REQ-NVA-CHG-001: Rated power is delivered at 65 Hz."
+            }
+          ]
+        }
+      ],
+      "document": "07_Nova_Charging_Power_Requirements.pdf",
+      "source_page": 2,
+      "source_modality": "body_text",
+      "category": "Charging",
+      "clause": "REQ-NVA-CHG-001",
+      "expected_status": "PARTIAL",
+      "expected_review_state": "Needs review"
+    },
+    {
+      "requirement_id": "REQ-NVA-CHG-002",
+      "title": "Conversion efficiency",
+      "requirement_text": "At 400 V battery voltage and 11 kW output, charger efficiency shall be at least 94 percent.",
+      "logic": {
+        "operator": "IF_THEN",
+        "condition_ids": [
+          "REQ-NVA-CHG-002-C1",
+          "REQ-NVA-CHG-002-C2",
+          "REQ-NVA-CHG-002-C3"
+        ],
+        "if_condition_id": "REQ-NVA-CHG-002-C1",
+        "then_condition_ids": [
+          "REQ-NVA-CHG-002-C2",
+          "REQ-NVA-CHG-002-C3"
+        ]
+      },
+      "conditions": [
+        {
+          "condition_id": "REQ-NVA-CHG-002-C1",
+          "description": "Battery voltage is 400 V",
+          "parameter": "battery_voltage",
+          "operator": "==",
+          "threshold": 400,
+          "unit": "V",
+          "condition_role": "APPLICABILITY",
+          "mandatory": true,
+          "requires_visual_evidence": false,
+          "expected_status": "PROVEN",
+          "evidence": [
+            {
+              "document": "12_Nova_Charging_Manufacturing_Acceptance_Report.pdf",
+              "page": 2,
+              "block_type": "table",
+              "role": "supporting",
+              "quote": "PASS - Executed for REQ-NVA-CHG-002; the recorded result confirms: Battery voltage is 400 V."
+            }
+          ]
+        },
+        {
+          "condition_id": "REQ-NVA-CHG-002-C2",
+          "description": "Charger output power is 11 kW",
+          "parameter": "charger_output_power",
+          "operator": "==",
+          "threshold": 11,
+          "unit": "kW",
+          "condition_role": "APPLICABILITY",
+          "mandatory": true,
+          "requires_visual_evidence": false,
+          "expected_status": "PROVEN",
+          "evidence": [
+            {
+              "document": "12_Nova_Charging_Manufacturing_Acceptance_Report.pdf",
+              "page": 2,
+              "block_type": "table",
+              "role": "supporting",
+              "quote": "PASS - Executed for REQ-NVA-CHG-002; the recorded result confirms: Charger output power is 11 kW."
+            }
+          ]
+        },
+        {
+          "condition_id": "REQ-NVA-CHG-002-C3",
+          "description": "Charger efficiency is at least 94 percent",
+          "parameter": "charger_efficiency",
+          "operator": ">=",
+          "threshold": 94,
+          "unit": "%",
+          "condition_role": "VERIFICATION",
+          "mandatory": true,
+          "requires_visual_evidence": false,
+          "expected_status": "FAILED",
+          "evidence": [
+            {
+              "document": "12_Nova_Charging_Manufacturing_Acceptance_Report.pdf",
+              "page": 2,
+              "block_type": "table",
+              "role": "adverse_or_unresolved",
+              "quote": "FAIL - Executed for REQ-NVA-CHG-002; the observed result does not satisfy: Charger efficiency is at least 94 percent."
+            }
+          ]
+        }
+      ],
+      "document": "07_Nova_Charging_Power_Requirements.pdf",
+      "source_page": 2,
+      "source_modality": "two_column_text",
+      "category": "Charging",
+      "clause": "REQ-NVA-CHG-002",
+      "expected_status": "CONFLICT",
+      "expected_review_state": "Reviewed"
+    },
+    {
+      "requirement_id": "REQ-NVA-CHG-003",
+      "title": "Power factor",
+      "requirement_text": "At loads from 50 percent to rated output, input power factor shall be at least 0.99.",
+      "logic": {
+        "operator": "IF_THEN",
+        "condition_ids": [
+          "REQ-NVA-CHG-003-C1",
+          "REQ-NVA-CHG-003-C2",
+          "REQ-NVA-CHG-003-C3"
+        ],
+        "if_condition_id": "REQ-NVA-CHG-003-C1",
+        "then_condition_ids": [
+          "REQ-NVA-CHG-003-C2",
+          "REQ-NVA-CHG-003-C3"
+        ]
+      },
+      "conditions": [
+        {
+          "condition_id": "REQ-NVA-CHG-003-C1",
+          "description": "Charger load is at least 50 percent",
+          "parameter": "charger_load_lower",
+          "operator": ">=",
+          "threshold": 50,
+          "unit": "%",
+          "condition_role": "APPLICABILITY",
+          "mandatory": true,
+          "requires_visual_evidence": false,
+          "expected_status": "UNTESTED",
+          "evidence": [
+            {
+              "document": "12_Nova_Charging_Manufacturing_Acceptance_Report.pdf",
+              "page": 2,
+              "block_type": "table",
+              "role": "adverse_or_unresolved",
+              "quote": "NOT TESTED - No test or inspection was performed for REQ-NVA-CHG-003: Charger load is at least 50 percent."
+            }
+          ]
+        },
+        {
+          "condition_id": "REQ-NVA-CHG-003-C2",
+          "description": "Charger load does not exceed rated output",
+          "parameter": "charger_load_upper",
+          "operator": "<=",
+          "threshold": 100,
+          "unit": "%",
+          "condition_role": "APPLICABILITY",
+          "mandatory": true,
+          "requires_visual_evidence": false,
+          "expected_status": "UNTESTED",
+          "evidence": [
+            {
+              "document": "12_Nova_Charging_Manufacturing_Acceptance_Report.pdf",
+              "page": 2,
+              "block_type": "table",
+              "role": "adverse_or_unresolved",
+              "quote": "NOT TESTED - No test or inspection was performed for REQ-NVA-CHG-003: Charger load does not exceed rated output."
+            }
+          ]
+        },
+        {
+          "condition_id": "REQ-NVA-CHG-003-C3",
+          "description": "Input power factor is at least 0.99",
+          "parameter": "input_power_factor",
+          "operator": ">=",
+          "threshold": 0.99,
+          "unit": null,
+          "condition_role": "VERIFICATION",
+          "mandatory": true,
+          "requires_visual_evidence": false,
+          "expected_status": "UNTESTED",
+          "evidence": [
+            {
+              "document": "12_Nova_Charging_Manufacturing_Acceptance_Report.pdf",
+              "page": 2,
+              "block_type": "table",
+              "role": "adverse_or_unresolved",
+              "quote": "NOT TESTED - No test or inspection was performed for REQ-NVA-CHG-003: Input power factor is at least 0.99."
+            }
+          ]
+        }
+      ],
+      "document": "07_Nova_Charging_Power_Requirements.pdf",
+      "source_page": 2,
+      "source_modality": "two_column_text",
+      "category": "Charging",
+      "clause": "REQ-NVA-CHG-003",
+      "expected_status": "MISSING",
+      "expected_review_state": "Needs review"
+    },
+    {
+      "requirement_id": "REQ-NVA-CHG-004",
+      "title": "Connector temperature",
+      "requirement_text": "During a 200 A DC charging session, no connector terminal shall exceed 90 deg C, the left-to-right terminal spread shall remain within 8 deg C, and charging shall continue for 20 minutes.",
+      "logic": {
+        "operator": "IF_THEN",
+        "condition_ids": [
+          "REQ-NVA-CHG-004-C1",
+          "REQ-NVA-CHG-004-C2",
+          "REQ-NVA-CHG-004-C3",
+          "REQ-NVA-CHG-004-C4"
+        ],
+        "if_condition_id": "REQ-NVA-CHG-004-C1",
+        "then_condition_ids": [
+          "REQ-NVA-CHG-004-C2",
+          "REQ-NVA-CHG-004-C3",
+          "REQ-NVA-CHG-004-C4"
+        ]
+      },
+      "conditions": [
+        {
+          "condition_id": "REQ-NVA-CHG-004-C1",
+          "description": "DC charging current is 200 A",
+          "parameter": "charging_current",
+          "operator": "==",
+          "threshold": 200,
+          "unit": "A",
+          "condition_role": "APPLICABILITY",
+          "mandatory": true,
+          "requires_visual_evidence": false,
+          "expected_status": "INCONCLUSIVE",
+          "evidence": [
+            {
+              "document": "12_Nova_Charging_Manufacturing_Acceptance_Report.pdf",
+              "page": 2,
+              "block_type": "table",
+              "role": "adverse_or_unresolved",
+              "quote": "INCONCLUSIVE - Work was attempted for REQ-NVA-CHG-004, but incomplete scope or calibration prevents deciding: DC charging current is 200 A."
+            }
+          ]
+        },
+        {
+          "condition_id": "REQ-NVA-CHG-004-C2",
+          "description": "Maximum connector terminal temperature is 90 deg C or less",
+          "parameter": "terminal_temperature",
+          "operator": "<=",
+          "threshold": 90,
+          "unit": "deg C",
+          "condition_role": "VERIFICATION",
+          "mandatory": true,
+          "requires_visual_evidence": false,
+          "expected_status": "INCONCLUSIVE",
+          "evidence": [
+            {
+              "document": "12_Nova_Charging_Manufacturing_Acceptance_Report.pdf",
+              "page": 2,
+              "block_type": "table",
+              "role": "adverse_or_unresolved",
+              "quote": "INCONCLUSIVE - Work was attempted for REQ-NVA-CHG-004, but incomplete scope or calibration prevents deciding: Maximum connector terminal temperature is 90 deg C or less."
+            }
+          ]
+        },
+        {
+          "condition_id": "REQ-NVA-CHG-004-C3",
+          "description": "Terminal temperature spread is 8 deg C or less",
+          "parameter": "terminal_temperature_spread",
+          "operator": "<=",
+          "threshold": 8,
+          "unit": "deg C",
+          "condition_role": "VERIFICATION",
+          "mandatory": true,
+          "requires_visual_evidence": false,
+          "expected_status": "INCONCLUSIVE",
+          "evidence": [
+            {
+              "document": "12_Nova_Charging_Manufacturing_Acceptance_Report.pdf",
+              "page": 2,
+              "block_type": "table",
+              "role": "adverse_or_unresolved",
+              "quote": "INCONCLUSIVE - Work was attempted for REQ-NVA-CHG-004, but incomplete scope or calibration prevents deciding: Terminal temperature spread is 8 deg C or less."
+            }
+          ]
+        },
+        {
+          "condition_id": "REQ-NVA-CHG-004-C4",
+          "description": "Charging continues for 20 minutes",
+          "parameter": "charging_duration",
+          "operator": ">=",
+          "threshold": 20,
+          "unit": "min",
+          "condition_role": "VERIFICATION",
+          "mandatory": true,
+          "requires_visual_evidence": false,
+          "expected_status": "INCONCLUSIVE",
+          "evidence": [
+            {
+              "document": "12_Nova_Charging_Manufacturing_Acceptance_Report.pdf",
+              "page": 2,
+              "block_type": "table",
+              "role": "adverse_or_unresolved",
+              "quote": "INCONCLUSIVE - Work was attempted for REQ-NVA-CHG-004, but incomplete scope or calibration prevents deciding: Charging continues for 20 minutes."
+            }
+          ]
+        }
+      ],
+      "document": "07_Nova_Charging_Power_Requirements.pdf",
+      "source_page": 3,
+      "source_modality": "table",
+      "category": "Charging",
+      "clause": "REQ-NVA-CHG-004",
+      "expected_status": "UNKNOWN",
+      "expected_review_state": "Needs review"
+    },
+    {
+      "requirement_id": "REQ-NVA-CHG-005",
+      "title": "Isolation-fault response",
+      "requirement_text": "When charging isolation falls below 100 kohm, the charger shall stop transferring energy within 100 ms, open the input relays, and report diagnostic CHG-ISO-01.",
+      "logic": {
+        "operator": "IF_THEN",
+        "condition_ids": [
+          "REQ-NVA-CHG-005-C1",
+          "REQ-NVA-CHG-005-C2",
+          "REQ-NVA-CHG-005-C3",
+          "REQ-NVA-CHG-005-C4"
+        ],
+        "if_condition_id": "REQ-NVA-CHG-005-C1",
+        "then_condition_ids": [
+          "REQ-NVA-CHG-005-C2",
+          "REQ-NVA-CHG-005-C3",
+          "REQ-NVA-CHG-005-C4"
+        ]
+      },
+      "conditions": [
+        {
+          "condition_id": "REQ-NVA-CHG-005-C1",
+          "description": "Charging isolation falls below 100 kohm",
+          "parameter": "charging_isolation",
+          "operator": "<",
+          "threshold": 100,
+          "unit": "kohm",
+          "condition_role": "APPLICABILITY",
+          "mandatory": true,
+          "requires_visual_evidence": false,
+          "expected_status": "PROVEN",
+          "evidence": [
+            {
+              "document": "12_Nova_Charging_Manufacturing_Acceptance_Report.pdf",
+              "page": 3,
+              "block_type": "table",
+              "role": "supporting",
+              "quote": "PASS - Executed for REQ-NVA-CHG-005; the recorded result confirms: Charging isolation falls below 100 kohm."
+            }
+          ]
+        },
+        {
+          "condition_id": "REQ-NVA-CHG-005-C2",
+          "description": "Energy transfer stops within 100 ms",
+          "parameter": "isolation_stop_latency",
+          "operator": "<=",
+          "threshold": 100,
+          "unit": "ms",
+          "condition_role": "VERIFICATION",
+          "mandatory": true,
+          "requires_visual_evidence": false,
+          "expected_status": "PROVEN",
+          "evidence": [
+            {
+              "document": "12_Nova_Charging_Manufacturing_Acceptance_Report.pdf",
+              "page": 3,
+              "block_type": "table",
+              "role": "supporting",
+              "quote": "PASS - Executed for REQ-NVA-CHG-005; the recorded result confirms: Energy transfer stops within 100 ms."
+            }
+          ]
+        },
+        {
+          "condition_id": "REQ-NVA-CHG-005-C3",
+          "description": "Input relays open",
+          "parameter": "input_relays_open",
+          "operator": "==",
+          "threshold": true,
+          "unit": null,
+          "condition_role": "VERIFICATION",
+          "mandatory": true,
+          "requires_visual_evidence": false,
+          "expected_status": "PROVEN",
+          "evidence": [
+            {
+              "document": "12_Nova_Charging_Manufacturing_Acceptance_Report.pdf",
+              "page": 3,
+              "block_type": "table",
+              "role": "supporting",
+              "quote": "PASS - Executed for REQ-NVA-CHG-005; the recorded result confirms: Input relays open."
+            }
+          ]
+        },
+        {
+          "condition_id": "REQ-NVA-CHG-005-C4",
+          "description": "Diagnostic CHG-ISO-01 is reported",
+          "parameter": "isolation_diagnostic",
+          "operator": "==",
+          "threshold": "CHG-ISO-01",
+          "unit": null,
+          "condition_role": "VERIFICATION",
+          "mandatory": true,
+          "requires_visual_evidence": false,
+          "expected_status": "PROVEN",
+          "evidence": [
+            {
+              "document": "12_Nova_Charging_Manufacturing_Acceptance_Report.pdf",
+              "page": 3,
+              "block_type": "table",
+              "role": "supporting",
+              "quote": "PASS - Executed for REQ-NVA-CHG-005; the recorded result confirms: Diagnostic CHG-ISO-01 is reported."
+            }
+          ]
+        }
+      ],
+      "document": "07_Nova_Charging_Power_Requirements.pdf",
+      "source_page": 3,
+      "source_modality": "table",
+      "category": "Charging",
+      "clause": "REQ-NVA-CHG-005",
+      "expected_status": "SUPPORTED",
+      "expected_review_state": "Reviewed"
+    },
+    {
+      "requirement_id": "REQ-NVA-CHG-006",
+      "title": "Interlock sequence",
+      "requirement_text": "The charge port shall close the proximity switch before energizing the pilot, energize the pilot before closing the power contactors, and display each completed step on the sequence diagram.",
+      "logic": {
+        "operator": "ALL_OF",
+        "condition_ids": [
+          "REQ-NVA-CHG-006-C1",
+          "REQ-NVA-CHG-006-C2",
+          "REQ-NVA-CHG-006-C3"
+        ]
+      },
+      "conditions": [
+        {
+          "condition_id": "REQ-NVA-CHG-006-C1",
+          "description": "Proximity switch closes before pilot energization",
+          "parameter": "proximity_before_pilot",
+          "operator": "==",
+          "threshold": true,
+          "unit": null,
+          "condition_role": "VERIFICATION",
+          "mandatory": true,
+          "requires_visual_evidence": true,
+          "expected_status": "PROVEN",
+          "evidence": [
+            {
+              "document": "12_Nova_Charging_Manufacturing_Acceptance_Report.pdf",
+              "page": 5,
+              "block_type": "figure",
+              "role": "supporting",
+              "quote": "PASS - Executed for REQ-NVA-CHG-006; the recorded result confirms: Proximity switch closes before pilot energization."
+            }
+          ]
+        },
+        {
+          "condition_id": "REQ-NVA-CHG-006-C2",
+          "description": "Pilot energizes before power contactors close",
+          "parameter": "pilot_before_contactors",
+          "operator": "==",
+          "threshold": true,
+          "unit": null,
+          "condition_role": "VERIFICATION",
+          "mandatory": true,
+          "requires_visual_evidence": true,
+          "expected_status": "UNTESTED",
+          "evidence": [
+            {
+              "document": "12_Nova_Charging_Manufacturing_Acceptance_Report.pdf",
+              "page": 5,
+              "block_type": "figure",
+              "role": "adverse_or_unresolved",
+              "quote": "NOT TESTED - No test or inspection was performed for REQ-NVA-CHG-006: Pilot energizes before power contactors close."
+            }
+          ]
+        },
+        {
+          "condition_id": "REQ-NVA-CHG-006-C3",
+          "description": "Every completed step is displayed",
+          "parameter": "sequence_steps_displayed",
+          "operator": "==",
+          "threshold": true,
+          "unit": null,
+          "condition_role": "VERIFICATION",
+          "mandatory": true,
+          "requires_visual_evidence": true,
+          "expected_status": "UNTESTED",
+          "evidence": [
+            {
+              "document": "12_Nova_Charging_Manufacturing_Acceptance_Report.pdf",
+              "page": 5,
+              "block_type": "figure",
+              "role": "adverse_or_unresolved",
+              "quote": "NOT TESTED - No test or inspection was performed for REQ-NVA-CHG-006: Every completed step is displayed."
+            }
+          ]
+        }
+      ],
+      "document": "07_Nova_Charging_Power_Requirements.pdf",
+      "source_page": 4,
+      "source_modality": "figure",
+      "category": "Charging",
+      "clause": "REQ-NVA-CHG-006",
+      "expected_status": "PARTIAL",
+      "expected_review_state": "Needs review"
+    },
+    {
+      "requirement_id": "REQ-NVA-QLT-001",
+      "title": "Instrument calibration",
+      "requirement_text": "Every instrument used for acceptance measurements shall show its serial number and a calibration expiry date later than the test date.",
+      "logic": {
+        "operator": "ALL_OF",
+        "condition_ids": [
+          "REQ-NVA-QLT-001-C1",
+          "REQ-NVA-QLT-001-C2"
+        ]
+      },
+      "conditions": [
+        {
+          "condition_id": "REQ-NVA-QLT-001-C1",
+          "description": "Every acceptance instrument is identified by serial number",
+          "parameter": "instrument_serial_present",
+          "operator": "==",
+          "threshold": true,
+          "unit": null,
+          "condition_role": "VERIFICATION",
+          "mandatory": true,
+          "requires_visual_evidence": false,
+          "expected_status": "PROVEN",
+          "evidence": [
+            {
+              "document": "12_Nova_Charging_Manufacturing_Acceptance_Report.pdf",
+              "page": 3,
+              "block_type": "table",
+              "role": "supporting",
+              "quote": "PASS - Executed for REQ-NVA-QLT-001; the recorded result confirms: Every acceptance instrument is identified by serial number."
+            }
+          ]
+        },
+        {
+          "condition_id": "REQ-NVA-QLT-001-C2",
+          "description": "Calibration expiry is later than the test date",
+          "parameter": "calibration_valid",
+          "operator": "==",
+          "threshold": true,
+          "unit": null,
+          "condition_role": "VERIFICATION",
+          "mandatory": true,
+          "requires_visual_evidence": false,
+          "expected_status": "FAILED",
+          "evidence": [
+            {
+              "document": "12_Nova_Charging_Manufacturing_Acceptance_Report.pdf",
+              "page": 3,
+              "block_type": "table",
+              "role": "adverse_or_unresolved",
+              "quote": "FAIL - Executed for REQ-NVA-QLT-001; the observed result does not satisfy: Calibration expiry is later than the test date."
+            }
+          ]
+        }
+      ],
+      "document": "08_Nova_Manufacturing_Quality_Requirements.pdf",
+      "source_page": 2,
+      "source_modality": "body_text",
+      "category": "Manufacturing quality",
+      "clause": "REQ-NVA-QLT-001",
+      "expected_status": "CONFLICT",
+      "expected_review_state": "Reviewed"
+    },
+    {
+      "requirement_id": "REQ-NVA-QLT-002",
+      "title": "Software traceability",
+      "requirement_text": "Each released controller shall record a software part number and a build hash that match the approved release manifest.",
+      "logic": {
+        "operator": "ALL_OF",
+        "condition_ids": [
+          "REQ-NVA-QLT-002-C1",
+          "REQ-NVA-QLT-002-C2"
+        ]
+      },
+      "conditions": [
+        {
+          "condition_id": "REQ-NVA-QLT-002-C1",
+          "description": "Released controller records a software part number",
+          "parameter": "software_part_number_recorded",
+          "operator": "==",
+          "threshold": true,
+          "unit": null,
+          "condition_role": "VERIFICATION",
+          "mandatory": true,
+          "requires_visual_evidence": false,
+          "expected_status": "UNTESTED",
+          "evidence": [
+            {
+              "document": "12_Nova_Charging_Manufacturing_Acceptance_Report.pdf",
+              "page": 3,
+              "block_type": "table",
+              "role": "adverse_or_unresolved",
+              "quote": "NOT TESTED - No test or inspection was performed for REQ-NVA-QLT-002: Released controller records a software part number."
+            }
+          ]
+        },
+        {
+          "condition_id": "REQ-NVA-QLT-002-C2",
+          "description": "Recorded build hash matches the approved manifest",
+          "parameter": "build_hash_matches_manifest",
+          "operator": "==",
+          "threshold": true,
+          "unit": null,
+          "condition_role": "VERIFICATION",
+          "mandatory": true,
+          "requires_visual_evidence": false,
+          "expected_status": "UNTESTED",
+          "evidence": [
+            {
+              "document": "12_Nova_Charging_Manufacturing_Acceptance_Report.pdf",
+              "page": 3,
+              "block_type": "table",
+              "role": "adverse_or_unresolved",
+              "quote": "NOT TESTED - No test or inspection was performed for REQ-NVA-QLT-002: Recorded build hash matches the approved manifest."
+            }
+          ]
+        }
+      ],
+      "document": "08_Nova_Manufacturing_Quality_Requirements.pdf",
+      "source_page": 2,
+      "source_modality": "two_column_text",
+      "category": "Manufacturing quality",
+      "clause": "REQ-NVA-QLT-002",
+      "expected_status": "MISSING",
+      "expected_review_state": "Needs review"
+    },
+    {
+      "requirement_id": "REQ-NVA-QLT-003",
+      "title": "Sampling records",
+      "requirement_text": "For every production lot, the inspection record shall identify the lot, state the sample size, and name the sampling plan.",
+      "logic": {
+        "operator": "ALL_OF",
+        "condition_ids": [
+          "REQ-NVA-QLT-003-C1",
+          "REQ-NVA-QLT-003-C2",
+          "REQ-NVA-QLT-003-C3"
+        ]
+      },
+      "conditions": [
+        {
+          "condition_id": "REQ-NVA-QLT-003-C1",
+          "description": "Inspection record identifies the production lot",
+          "parameter": "production_lot_identified",
+          "operator": "==",
+          "threshold": true,
+          "unit": null,
+          "condition_role": "VERIFICATION",
+          "mandatory": true,
+          "requires_visual_evidence": false,
+          "expected_status": "INCONCLUSIVE",
+          "evidence": [
+            {
+              "document": "12_Nova_Charging_Manufacturing_Acceptance_Report.pdf",
+              "page": 3,
+              "block_type": "table",
+              "role": "adverse_or_unresolved",
+              "quote": "INCONCLUSIVE - Work was attempted for REQ-NVA-QLT-003, but incomplete scope or calibration prevents deciding: Inspection record identifies the production lot."
+            }
+          ]
+        },
+        {
+          "condition_id": "REQ-NVA-QLT-003-C2",
+          "description": "Inspection record states the sample size",
+          "parameter": "sample_size_present",
+          "operator": "==",
+          "threshold": true,
+          "unit": null,
+          "condition_role": "VERIFICATION",
+          "mandatory": true,
+          "requires_visual_evidence": false,
+          "expected_status": "INCONCLUSIVE",
+          "evidence": [
+            {
+              "document": "12_Nova_Charging_Manufacturing_Acceptance_Report.pdf",
+              "page": 3,
+              "block_type": "table",
+              "role": "adverse_or_unresolved",
+              "quote": "INCONCLUSIVE - Work was attempted for REQ-NVA-QLT-003, but incomplete scope or calibration prevents deciding: Inspection record states the sample size."
+            }
+          ]
+        },
+        {
+          "condition_id": "REQ-NVA-QLT-003-C3",
+          "description": "Inspection record names the sampling plan",
+          "parameter": "sampling_plan_present",
+          "operator": "==",
+          "threshold": true,
+          "unit": null,
+          "condition_role": "VERIFICATION",
+          "mandatory": true,
+          "requires_visual_evidence": false,
+          "expected_status": "INCONCLUSIVE",
+          "evidence": [
+            {
+              "document": "12_Nova_Charging_Manufacturing_Acceptance_Report.pdf",
+              "page": 3,
+              "block_type": "table",
+              "role": "adverse_or_unresolved",
+              "quote": "INCONCLUSIVE - Work was attempted for REQ-NVA-QLT-003, but incomplete scope or calibration prevents deciding: Inspection record names the sampling plan."
+            }
+          ]
+        }
+      ],
+      "document": "08_Nova_Manufacturing_Quality_Requirements.pdf",
+      "source_page": 2,
+      "source_modality": "two_column_text",
+      "category": "Manufacturing quality",
+      "clause": "REQ-NVA-QLT-003",
+      "expected_status": "UNKNOWN",
+      "expected_review_state": "Needs review"
+    },
+    {
+      "requirement_id": "REQ-NVA-QLT-004",
+      "title": "Weld acceptance",
+      "requirement_text": "Every inspected busbar weld shall have an effective diameter of at least 4.5 mm, porosity below 8 percent, and no crack visible at 10x magnification.",
+      "logic": {
+        "operator": "IF_THEN",
+        "condition_ids": [
+          "REQ-NVA-QLT-004-C1",
+          "REQ-NVA-QLT-004-C2",
+          "REQ-NVA-QLT-004-C3",
+          "REQ-NVA-QLT-004-C4"
+        ],
+        "if_condition_id": "REQ-NVA-QLT-004-C1",
+        "then_condition_ids": [
+          "REQ-NVA-QLT-004-C2",
+          "REQ-NVA-QLT-004-C3",
+          "REQ-NVA-QLT-004-C4"
+        ]
+      },
+      "conditions": [
+        {
+          "condition_id": "REQ-NVA-QLT-004-C1",
+          "description": "Every inspected busbar weld is evaluated",
+          "parameter": "all_inspected_welds_covered",
+          "operator": "==",
+          "threshold": true,
+          "unit": null,
+          "condition_role": "APPLICABILITY",
+          "mandatory": true,
+          "requires_visual_evidence": false,
+          "expected_status": "PROVEN",
+          "evidence": [
+            {
+              "document": "12_Nova_Charging_Manufacturing_Acceptance_Report.pdf",
+              "page": 4,
+              "block_type": "table",
+              "role": "supporting",
+              "quote": "PASS - Executed for REQ-NVA-QLT-004; the recorded result confirms: Every inspected busbar weld is evaluated."
+            }
+          ]
+        },
+        {
+          "condition_id": "REQ-NVA-QLT-004-C2",
+          "description": "Effective weld diameter is at least 4.5 mm",
+          "parameter": "weld_diameter",
+          "operator": ">=",
+          "threshold": 4.5,
+          "unit": "mm",
+          "condition_role": "VERIFICATION",
+          "mandatory": true,
+          "requires_visual_evidence": false,
+          "expected_status": "PROVEN",
+          "evidence": [
+            {
+              "document": "12_Nova_Charging_Manufacturing_Acceptance_Report.pdf",
+              "page": 4,
+              "block_type": "table",
+              "role": "supporting",
+              "quote": "PASS - Executed for REQ-NVA-QLT-004; the recorded result confirms: Effective weld diameter is at least 4.5 mm."
+            }
+          ]
+        },
+        {
+          "condition_id": "REQ-NVA-QLT-004-C3",
+          "description": "Weld porosity is below 8 percent",
+          "parameter": "weld_porosity",
+          "operator": "<",
+          "threshold": 8,
+          "unit": "%",
+          "condition_role": "VERIFICATION",
+          "mandatory": true,
+          "requires_visual_evidence": false,
+          "expected_status": "PROVEN",
+          "evidence": [
+            {
+              "document": "12_Nova_Charging_Manufacturing_Acceptance_Report.pdf",
+              "page": 4,
+              "block_type": "table",
+              "role": "supporting",
+              "quote": "PASS - Executed for REQ-NVA-QLT-004; the recorded result confirms: Weld porosity is below 8 percent."
+            }
+          ]
+        },
+        {
+          "condition_id": "REQ-NVA-QLT-004-C4",
+          "description": "No crack is visible at 10x magnification",
+          "parameter": "weld_crack_visible",
+          "operator": "==",
+          "threshold": false,
+          "unit": null,
+          "condition_role": "VERIFICATION",
+          "mandatory": true,
+          "requires_visual_evidence": false,
+          "expected_status": "PROVEN",
+          "evidence": [
+            {
+              "document": "12_Nova_Charging_Manufacturing_Acceptance_Report.pdf",
+              "page": 4,
+              "block_type": "table",
+              "role": "supporting",
+              "quote": "PASS - Executed for REQ-NVA-QLT-004; the recorded result confirms: No crack is visible at 10x magnification."
+            }
+          ]
+        }
+      ],
+      "document": "08_Nova_Manufacturing_Quality_Requirements.pdf",
+      "source_page": 3,
+      "source_modality": "table",
+      "category": "Manufacturing quality",
+      "clause": "REQ-NVA-QLT-004",
+      "expected_status": "SUPPORTED",
+      "expected_review_state": "Reviewed"
+    },
+    {
+      "requirement_id": "REQ-NVA-QLT-005",
+      "title": "Label content",
+      "requirement_text": "The product label shall include the hardware revision, software revision, and a machine-readable serial number matching the human-readable serial number.",
+      "logic": {
+        "operator": "ALL_OF",
+        "condition_ids": [
+          "REQ-NVA-QLT-005-C1",
+          "REQ-NVA-QLT-005-C2",
+          "REQ-NVA-QLT-005-C3",
+          "REQ-NVA-QLT-005-C4"
+        ]
+      },
+      "conditions": [
+        {
+          "condition_id": "REQ-NVA-QLT-005-C1",
+          "description": "Product label includes hardware revision",
+          "parameter": "hardware_revision_present",
+          "operator": "==",
+          "threshold": true,
+          "unit": null,
+          "condition_role": "VERIFICATION",
+          "mandatory": true,
+          "requires_visual_evidence": false,
+          "expected_status": "PROVEN",
+          "evidence": [
+            {
+              "document": "12_Nova_Charging_Manufacturing_Acceptance_Report.pdf",
+              "page": 4,
+              "block_type": "table",
+              "role": "supporting",
+              "quote": "PASS - Executed for REQ-NVA-QLT-005; the recorded result confirms: Product label includes hardware revision."
+            }
+          ]
+        },
+        {
+          "condition_id": "REQ-NVA-QLT-005-C2",
+          "description": "Product label includes software revision",
+          "parameter": "software_revision_present",
+          "operator": "==",
+          "threshold": true,
+          "unit": null,
+          "condition_role": "VERIFICATION",
+          "mandatory": true,
+          "requires_visual_evidence": false,
+          "expected_status": "UNTESTED",
+          "evidence": [
+            {
+              "document": "12_Nova_Charging_Manufacturing_Acceptance_Report.pdf",
+              "page": 4,
+              "block_type": "table",
+              "role": "adverse_or_unresolved",
+              "quote": "NOT TESTED - No test or inspection was performed for REQ-NVA-QLT-005: Product label includes software revision."
+            }
+          ]
+        },
+        {
+          "condition_id": "REQ-NVA-QLT-005-C3",
+          "description": "Product label includes a machine-readable serial number",
+          "parameter": "machine_serial_present",
+          "operator": "==",
+          "threshold": true,
+          "unit": null,
+          "condition_role": "VERIFICATION",
+          "mandatory": true,
+          "requires_visual_evidence": false,
+          "expected_status": "UNTESTED",
+          "evidence": [
+            {
+              "document": "12_Nova_Charging_Manufacturing_Acceptance_Report.pdf",
+              "page": 4,
+              "block_type": "table",
+              "role": "adverse_or_unresolved",
+              "quote": "NOT TESTED - No test or inspection was performed for REQ-NVA-QLT-005: Product label includes a machine-readable serial number."
+            }
+          ]
+        },
+        {
+          "condition_id": "REQ-NVA-QLT-005-C4",
+          "description": "Machine-readable and human-readable serial numbers match",
+          "parameter": "serial_numbers_match",
+          "operator": "==",
+          "threshold": true,
+          "unit": null,
+          "condition_role": "VERIFICATION",
+          "mandatory": true,
+          "requires_visual_evidence": false,
+          "expected_status": "UNTESTED",
+          "evidence": [
+            {
+              "document": "12_Nova_Charging_Manufacturing_Acceptance_Report.pdf",
+              "page": 4,
+              "block_type": "table",
+              "role": "adverse_or_unresolved",
+              "quote": "NOT TESTED - No test or inspection was performed for REQ-NVA-QLT-005: Machine-readable and human-readable serial numbers match."
+            }
+          ]
+        }
+      ],
+      "document": "08_Nova_Manufacturing_Quality_Requirements.pdf",
+      "source_page": 3,
+      "source_modality": "table",
+      "category": "Manufacturing quality",
+      "clause": "REQ-NVA-QLT-005",
+      "expected_status": "PARTIAL",
+      "expected_review_state": "Needs review"
+    },
+    {
+      "requirement_id": "REQ-NVA-QLT-006",
+      "title": "Sealant inspection",
+      "requirement_text": "The blue sealant bead shall form a continuous closed loop, remain between the two red tolerance boundaries, and show no gap wider than 0.5 mm in the inspection image.",
+      "logic": {
+        "operator": "ALL_OF",
+        "condition_ids": [
+          "REQ-NVA-QLT-006-C1",
+          "REQ-NVA-QLT-006-C2",
+          "REQ-NVA-QLT-006-C3"
+        ]
+      },
+      "conditions": [
+        {
+          "condition_id": "REQ-NVA-QLT-006-C1",
+          "description": "Blue sealant bead forms a continuous closed loop",
+          "parameter": "sealant_loop_closed",
+          "operator": "==",
+          "threshold": true,
+          "unit": null,
+          "condition_role": "VERIFICATION",
+          "mandatory": true,
+          "requires_visual_evidence": true,
+          "expected_status": "PROVEN",
+          "evidence": [
+            {
+              "document": "12_Nova_Charging_Manufacturing_Acceptance_Report.pdf",
+              "page": 5,
+              "block_type": "figure",
+              "role": "supporting",
+              "quote": "PASS - Executed for REQ-NVA-QLT-006; the recorded result confirms: Blue sealant bead forms a continuous closed loop."
+            }
+          ]
+        },
+        {
+          "condition_id": "REQ-NVA-QLT-006-C2",
+          "description": "Sealant remains between both red tolerance boundaries",
+          "parameter": "sealant_within_boundaries",
+          "operator": "==",
+          "threshold": true,
+          "unit": null,
+          "condition_role": "VERIFICATION",
+          "mandatory": true,
+          "requires_visual_evidence": true,
+          "expected_status": "PROVEN",
+          "evidence": [
+            {
+              "document": "12_Nova_Charging_Manufacturing_Acceptance_Report.pdf",
+              "page": 5,
+              "block_type": "figure",
+              "role": "supporting",
+              "quote": "PASS - Executed for REQ-NVA-QLT-006; the recorded result confirms: Sealant remains between both red tolerance boundaries."
+            }
+          ]
+        },
+        {
+          "condition_id": "REQ-NVA-QLT-006-C3",
+          "description": "No sealant gap exceeds 0.5 mm",
+          "parameter": "sealant_gap",
+          "operator": "<=",
+          "threshold": 0.5,
+          "unit": "mm",
+          "condition_role": "VERIFICATION",
+          "mandatory": true,
+          "requires_visual_evidence": true,
+          "expected_status": "FAILED",
+          "evidence": [
+            {
+              "document": "12_Nova_Charging_Manufacturing_Acceptance_Report.pdf",
+              "page": 5,
+              "block_type": "figure",
+              "role": "adverse_or_unresolved",
+              "quote": "FAIL - Executed for REQ-NVA-QLT-006; the observed result does not satisfy: No sealant gap exceeds 0.5 mm."
+            }
+          ]
+        }
+      ],
+      "document": "08_Nova_Manufacturing_Quality_Requirements.pdf",
+      "source_page": 4,
+      "source_modality": "figure",
+      "category": "Manufacturing quality",
+      "clause": "REQ-NVA-QLT-006",
+      "expected_status": "CONFLICT",
+      "expected_review_state": "Reviewed"
+    }
+  ],
+  "evidence_documents": [
+    {
+      "filename": "09_Nova_Electrical_Thermal_Verification_Report.pdf",
+      "title": "Nova Electrical and Thermal Verification Report",
+      "domains": [
+        "Electrical safety",
+        "Thermal control"
+      ],
+      "doc_type": "Test report",
+      "expected_role": "TEST_REPORT",
+      "expected_verification_basis": "physical_test",
+      "expected_pages": 5,
+      "expected_tables": 3,
+      "expected_figures": 1
+    },
+    {
+      "filename": "10_Nova_Network_Environmental_Qualification_Report.pdf",
+      "title": "Nova Network and Environmental Qualification Report",
+      "domains": [
+        "Communications",
+        "Environmental qualification"
+      ],
+      "doc_type": "Test report",
+      "expected_role": "TEST_REPORT",
+      "expected_verification_basis": "physical_test",
+      "expected_pages": 5,
+      "expected_tables": 3,
+      "expected_figures": 1
+    },
+    {
+      "filename": "11_Nova_Safety_Cybersecurity_Assurance_Report.pdf",
+      "title": "Nova Safety and Cybersecurity Assurance Report",
+      "domains": [
+        "Functional safety",
+        "Cybersecurity"
+      ],
+      "doc_type": "Test report",
+      "expected_role": "TEST_REPORT",
+      "expected_verification_basis": "physical_test",
+      "expected_pages": 5,
+      "expected_tables": 3,
+      "expected_figures": 1
+    },
+    {
+      "filename": "12_Nova_Charging_Manufacturing_Acceptance_Report.pdf",
+      "title": "Nova Charging and Manufacturing Acceptance Report",
+      "domains": [
+        "Charging",
+        "Manufacturing quality"
+      ],
+      "doc_type": "Test report",
+      "expected_role": "TEST_REPORT",
+      "expected_verification_basis": "physical_test",
+      "expected_pages": 5,
+      "expected_tables": 3,
+      "expected_figures": 1
+    }
+  ]
+}

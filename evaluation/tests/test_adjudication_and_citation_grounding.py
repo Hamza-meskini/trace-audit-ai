@@ -132,7 +132,10 @@ class TestSecondaryAdjudicator(unittest.IsolatedAsyncioTestCase):
         ])
         mocked = AsyncMock(return_value=response)
 
-        with patch("app.services.verification_reasoner.generate_structured", new=mocked):
+        with patch("app.services.verification_reasoner.generate_structured", new=mocked), patch(
+            "app.services.verification_reasoner.settings.SECONDARY_ADJUDICATOR_MODEL",
+            "test-independent-model",
+        ):
             results, diagnostics = await _apply_secondary_adjudication(
                 contract(),
                 [{"content": "The endpoint was not measured."}],

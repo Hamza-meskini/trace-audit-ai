@@ -37,6 +37,9 @@ class AtomicConditionContract(BaseModel):
     condition_id: str
     condition_role: ConditionRole = "VERIFICATION"
     description: Optional[str] = None
+    source_span: Optional[str] = None
+    source_parameter: Optional[str] = None
+    canonical_parameter: Optional[str] = None
     parameter: Optional[str] = None
     operator: Optional[str] = None  # ">=", "<=", "==", "between", ">", "<", "in"
     threshold: Optional[Union[float, str, bool]] = None
@@ -47,11 +50,24 @@ class AtomicConditionContract(BaseModel):
     mandatory: bool = True
     verification_method: Optional[str] = None  # "physical_test", "simulation", "calculation", "inspection"
     requires_visual_evidence: bool = False
+    clause_ids: list[str] = Field(default_factory=list)
+
+
+class SemanticClauseContract(BaseModel):
+    """Grounded semantic proposition created before atomic construction."""
+
+    clause_id: str
+    clause_type: Literal["APPLICABILITY", "VERIFICATION", "QUALIFIER"] = "VERIFICATION"
+    source_span: str
+    subject: Optional[str] = None
+    predicate: Optional[str] = None
+    relationship: Optional[str] = None
 
 
 class ClauseCoverageContract(BaseModel):
     """Trace one obligation-bearing source clause to its atomic conditions."""
 
+    clause_id: Optional[str] = None
     clause: str
     condition_ids: list[str] = Field(default_factory=list)
 
@@ -76,12 +92,17 @@ class RequirementContract(BaseModel):
     conditions: list[str] = Field(default_factory=list)
     atomic_conditions: list[AtomicConditionContract] = Field(default_factory=list)
     logic: RequirementLogicContract = Field(default_factory=RequirementLogicContract)
+    logic_tree: Optional[dict[str, Any]] = None
+    semantic_clauses: list[SemanticClauseContract] = Field(default_factory=list)
     clause_coverage: list[ClauseCoverageContract] = Field(default_factory=list)
     unmapped_obligations: list[str] = Field(default_factory=list)
     # None preserves compatibility for legacy/manually-created contracts that
     # pre-date extraction completeness reporting. New LLM extractions always
     # provide an explicit boolean.
     contract_complete: Optional[bool] = None
+    decomposition_confidence: Optional[float] = None
+    ambiguities: list[str] = Field(default_factory=list)
+    validation_issues: list[str] = Field(default_factory=list)
     verification_method: Optional[str] = None  # "physical_test", "calculation", "simulation", "inspection"
     scope: Optional[str] = None  # "BCU", "ASIC", "Pack", "Inverter", "System"
     mandatory: bool = True
@@ -165,10 +186,15 @@ def parse_requirement_contract(
     description: Optional[str] = None,
     category: str = "General",
     structured_conditions: Optional[list[dict[str, Any]]] = None,
+    semantic_clauses: Optional[list[dict[str, Any]]] = None,
     clause_coverage: Optional[list[dict[str, Any]]] = None,
     unmapped_obligations: Optional[list[str]] = None,
     contract_complete: Optional[bool] = None,
     logic: Optional[dict[str, Any]] = None,
+    logic_tree: Optional[dict[str, Any]] = None,
+    decomposition_confidence: Optional[float] = None,
+    ambiguities: Optional[list[str]] = None,
+    validation_issues: Optional[list[str]] = None,
 ) -> RequirementContract:
     """Build a structured RequirementContract from requirement text deterministically.
     
@@ -204,6 +230,10 @@ def parse_requirement_contract(
         verification_method=v_method,
         scope=scope,
         raw_text=full_text,
+        semantic_clauses=[
+            SemanticClauseContract.model_validate(item)
+            for item in (semantic_clauses or [])
+        ],
         clause_coverage=[
             ClauseCoverageContract.model_validate(item)
             for item in (clause_coverage or [])
@@ -211,6 +241,10 @@ def parse_requirement_contract(
         unmapped_obligations=list(unmapped_obligations or []),
         contract_complete=contract_complete,
         logic=RequirementLogicContract.model_validate(logic or {}),
+        logic_tree=logic_tree,
+        decomposition_confidence=decomposition_confidence,
+        ambiguities=list(ambiguities or []),
+        validation_issues=list(validation_issues or []),
     )
 
     # A structured condition tree is canonical whenever the caller has one.
@@ -236,6 +270,9 @@ def parse_requirement_contract(
                 condition_id=condition_id,
                 condition_role=raw.get("condition_role", "VERIFICATION"),
                 description=raw.get("description"),
+                source_span=raw.get("source_span"),
+                source_parameter=raw.get("source_parameter"),
+                canonical_parameter=raw.get("canonical_parameter") or raw.get("parameter"),
                 parameter=raw.get("parameter"),
                 operator=operator,
                 threshold=threshold,
@@ -246,6 +283,7 @@ def parse_requirement_contract(
                 mandatory=bool(raw.get("mandatory", True)),
                 verification_method=raw.get("verification_method") or v_method,
                 requires_visual_evidence=bool(raw.get("requires_visual_evidence", False)),
+                clause_ids=list(raw.get("clause_ids") or []),
             ))
 
         first = contract.atomic_conditions[0]

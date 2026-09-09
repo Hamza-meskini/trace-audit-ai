@@ -863,6 +863,80 @@ class TestObservedComplexBenchmarkFailures(unittest.TestCase):
         self.assertEqual(validated.condition_results[0].status, "PENDING")
         self.assertEqual(validated.condition_results[0].validation_state, "CONTRADICTED")
 
+    def test_not_executed_failed_result_is_normalized_to_untested(self):
+        contract = contract_for("REQ-AUT-009")
+        result = VerificationAnalysisResult(
+            status="CONFLICT",
+            confidence=80,
+            condition_results=[ConditionVerificationResult(
+                condition_id=contract.atomic_conditions[0].condition_id,
+                status="FAILED",
+                execution_state="NOT_EXECUTED",
+                evidence_value_role="NOT_ADDRESSED",
+                relationship="VIOLATES",
+                reason="The endpoint was not tested.",
+            )],
+            reason="Failed.",
+        )
+
+        validated = _audit_llm_condition_metadata(contract, result)
+
+        condition = validated.condition_results[0]
+        self.assertEqual(condition.status, "UNTESTED")
+        self.assertEqual(condition.relationship, "NOT_ADDRESSED")
+        self.assertIn("NOT_EXECUTED", " ".join(condition.validation_notes))
+
+    def test_partial_execution_alias_preserves_pending_condition(self):
+        contract = contract_for("REQ-AUT-009")
+        condition = ConditionVerificationResult(
+            condition_id=contract.atomic_conditions[0].condition_id,
+            status="PENDING",
+            execution_state="PART_EXECUTED",
+            evidence_value_role="PARTIAL_COVERAGE",
+            relationship="PARTIAL_COVERAGE",
+            evidence_ids=["E1"],
+            quote="Three of five planned operating points were completed.",
+            reason="Qualified empirical work covers only part of the required envelope.",
+        )
+        result = VerificationAnalysisResult(
+            status="PARTIAL",
+            confidence=80,
+            condition_results=[condition],
+            reason="Partial empirical coverage.",
+        )
+
+        validated = _audit_llm_condition_metadata(contract, result)
+
+        self.assertEqual(condition.execution_state, "PARTIALLY_EXECUTED")
+        self.assertEqual(condition.evidence_value_role, "STATUS_ONLY")
+        self.assertEqual(validated.condition_results[0].status, "PENDING")
+        self.assertNotIn(
+            "Normalized impossible",
+            " ".join(validated.condition_results[0].validation_notes),
+        )
+
+    def test_not_executed_pending_result_is_normalized_to_untested(self):
+        contract = contract_for("REQ-AUT-009")
+        result = VerificationAnalysisResult(
+            status="PARTIAL",
+            confidence=80,
+            condition_results=[ConditionVerificationResult(
+                condition_id=contract.atomic_conditions[0].condition_id,
+                status="PENDING",
+                execution_state="NOT_EXECUTED",
+                evidence_value_role="REQUIRED_OR_PLANNED",
+                relationship="PARTIAL_COVERAGE",
+                reason="The test is planned but has not started.",
+            )],
+            reason="Pending.",
+        )
+
+        validated = _audit_llm_condition_metadata(contract, result)
+
+        condition = validated.condition_results[0]
+        self.assertEqual(condition.status, "UNTESTED")
+        self.assertEqual(condition.relationship, "NOT_ADDRESSED")
+
     def test_invalid_batch_response_retries_only_missing_item_through_llm(self):
         from app.services.verification_reasoner import evaluate_batch_verification
 

@@ -3,7 +3,7 @@
  * Typed HTTP client connecting frontend to the FastAPI backend.
  */
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:8000/api";
+const API_BASE_URL = import.meta.env["VITE_API_URL"] || "http://localhost:8000/api";
 
 export interface ApiProject {
   id: string;
@@ -54,6 +54,102 @@ export interface ApiEvidenceItem {
   status: "Supports requirement" | "Potential conflict" | "Supporting evidence";
   label: string;
   highlight?: string | null;
+  document_id?: string | null;
+  chunk_id?: string | null;
+  metadata?: BlockMetadata;
+}
+
+export interface BlockMetadata {
+  block_type?: string;
+  section_path?: string[];
+  table?: { caption?: string; headers?: string[]; row_count?: number };
+  visual_analysis?: {
+    status?: string;
+    description?: string;
+    caption?: string;
+    reason?: string;
+    provider?: string;
+  };
+}
+export interface DocumentBlock {
+  id: string;
+  document_id: string;
+  page_number: number | null;
+  content: string;
+  metadata: BlockMetadata;
+}
+export interface DocumentInspection {
+  document: ApiDocument;
+  is_pdf: boolean;
+  available_pages: number[];
+  profile: Record<string, unknown>;
+  diagnostics: Record<string, unknown>;
+  blocks: DocumentBlock[];
+  counts: { blocks: number; tables: number; figures: number };
+}
+export interface AtomicCondition {
+  condition_id: string;
+  description?: string | null;
+  parameter?: string | null;
+  operator?: string | null;
+  threshold?: string | number | boolean | null;
+  unit?: string | null;
+  min_value?: number | null;
+  max_value?: number | null;
+  condition_role?: string;
+  requires_visual_evidence?: boolean;
+}
+export interface ConditionResult {
+  condition_id: string;
+  description?: string | null;
+  status: string;
+  reason?: string | null;
+  validation_state: string;
+  validation_notes: string[];
+  observed_value?: string | null;
+  observed_min_value?: number | null;
+  observed_max_value?: number | null;
+  observed_unit?: string | null;
+  execution_state?: string;
+  subject_identity?: string;
+  coverage_scope?: string;
+  evidence_ids: string[];
+  quote?: string | null;
+  evidence_spans?: {
+    evidence_id: string;
+    exact_quote: string;
+    start_offset: number;
+    end_offset: number;
+    document_name?: string;
+    page_number?: number;
+  }[];
+}
+export interface ReviewEvent {
+  id: string;
+  action: string;
+  reviewer: string;
+  comment: string;
+  created_at: string;
+  ai_verdict: string;
+}
+export interface ReviewRequest {
+  action: "Approved" | "Rejected" | "Reviewed" | "Needs review" | "Comment";
+  reviewer: string;
+  comment: string;
+}
+export interface AuditProgress {
+  run_id: string;
+  project_id: string;
+  model: string | null;
+  status: "queued" | "running" | "complete" | "failed" | "interrupted";
+  stage: string;
+  completed: number;
+  total: number;
+  message: string;
+  started_at: string;
+  updated_at: string;
+  error: string | null;
+  events: { stage: string; completed: number; total: number; message: string; at: string }[];
 }
 
 export interface ApiRequirement {
@@ -62,7 +158,14 @@ export interface ApiRequirement {
   req_code: string;
   title: string;
   description: string | null;
-  category: "Electrical" | "Safety" | "Environmental" | "Mechanical" | "Cybersecurity" | "Documentation" | string;
+  category:
+    | "Electrical"
+    | "Safety"
+    | "Environmental"
+    | "Mechanical"
+    | "Cybersecurity"
+    | "Documentation"
+    | string;
   source_document: string | null;
   sources_count: number;
   coverage_status: "Supported" | "Partial" | "Missing" | "Conflict" | "Unknown";
@@ -74,6 +177,35 @@ export interface ApiRequirement {
   evidence: ApiEvidenceItem[];
   created_at: string;
   updated_at: string;
+  contract?: {
+    conditions?: AtomicCondition[];
+    logic?: {
+      operator: string;
+      condition_ids?: string[];
+      if_condition_id?: string;
+      then_condition_ids?: string[];
+    };
+    contract_complete?: boolean;
+    unmapped_obligations?: string[];
+    clause_coverage?: Record<string, unknown>[];
+  };
+  condition_results?: ConditionResult[];
+  diagnostics?: {
+    review_gate?: { required: boolean; auto_close_eligible: boolean; reasons: string[] };
+    model?: string;
+    secondary_adjudication_resolved_ids?: string[];
+    evidence_catalog?: {
+      evidence_id: string;
+      chunk_id: string;
+      document_id: string;
+      document_name: string;
+      page_number: number | null;
+    }[];
+    [key: string]: unknown;
+  };
+  source_document_id?: string | null;
+  source_blocks?: DocumentBlock[];
+  review_history?: ReviewEvent[];
 }
 
 export interface ApiFinding {
@@ -113,7 +245,7 @@ export interface AuditRunResponse {
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const url = `${API_BASE_URL}${path}`;
   const headers = new Headers(options.headers || {});
-  
+
   if (!(options.body instanceof FormData)) {
     headers.set("Content-Type", "application/json");
   }
@@ -156,11 +288,32 @@ export interface ApiAiSettings {
 }
 
 export const api = {
+  inspectDocument: (projectId: string, docId: string, page = 1) =>
+    request<DocumentInspection>(
+      `/projects/${projectId}/documents/${docId}/inspection?page=${page}`,
+    ),
+  documentUrl: (projectId: string, docId: string) =>
+    `${API_BASE_URL}/projects/${encodeURIComponent(projectId)}/documents/${encodeURIComponent(docId)}/file`,
+  pageUrl: (projectId: string, docId: string, page: number) =>
+    `${API_BASE_URL}/projects/${encodeURIComponent(projectId)}/documents/${encodeURIComponent(docId)}/pages/${page}.png`,
+  saveReview: (projectId: string, reqId: string, data: ReviewRequest) =>
+    request<ReviewEvent>(`/projects/${projectId}/requirements/${reqId}/reviews`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+  getAuditProgress: (projectId: string) =>
+    request<AuditProgress | null>(`/projects/${projectId}/audit`),
   // Projects
   getProjects: () => request<ApiProject[]>("/projects"),
   getProject: (id: string) => request<ApiProject>(`/projects/${id}`),
   getProjectStats: (id: string) => request<ApiProjectStats>(`/projects/${id}/stats`),
-  createProject: (data: { name: string; product_name: string; product_category?: string; company?: string; description?: string }) =>
+  createProject: (data: {
+    name: string;
+    product_name: string;
+    product_category?: string;
+    company?: string;
+    description?: string;
+  }) =>
     request<ApiProject>("/projects", {
       method: "POST",
       body: JSON.stringify(data),
@@ -177,19 +330,23 @@ export const api = {
 
   // Documents
   getDocuments: (projectId: string) => request<ApiDocument[]>(`/projects/${projectId}/documents`),
-  getDocument: (projectId: string, docId: string) => request<ApiDocument>(`/projects/${projectId}/documents/${docId}`),
+  getDocument: (projectId: string, docId: string) =>
+    request<ApiDocument>(`/projects/${projectId}/documents/${docId}`),
   uploadDocument: (projectId: string, file: File, docType = "", version = "v1.0") => {
     const formData = new FormData();
     formData.append("file", file);
     if (docType) formData.append("doc_type", docType);
     if (version) formData.append("version", version);
-    return request<{ id: string; filename: string; original_filename: string; doc_type: string; processing_status: string }>(
-      `/projects/${projectId}/documents`,
-      {
-        method: "POST",
-        body: formData,
-      }
-    );
+    return request<{
+      id: string;
+      filename: string;
+      original_filename: string;
+      doc_type: string;
+      processing_status: string;
+    }>(`/projects/${projectId}/documents`, {
+      method: "POST",
+      body: formData,
+    });
   },
   deleteDocument: (projectId: string, docId: string) =>
     request<void>(`/projects/${projectId}/documents/${docId}`, {
@@ -199,12 +356,14 @@ export const api = {
   // Requirements
   getRequirements: (
     projectId: string,
-    filters?: { category?: string; status?: string; severity?: string; review?: string }
+    filters?: { category?: string; status?: string; severity?: string; review?: string },
   ) => {
     const params = new URLSearchParams();
-    if (filters?.category && filters.category !== "all") params.append("category", filters.category);
+    if (filters?.category && filters.category !== "all")
+      params.append("category", filters.category);
     if (filters?.status && filters.status !== "All") params.append("status", filters.status);
-    if (filters?.severity && filters.severity !== "all") params.append("severity", filters.severity);
+    if (filters?.severity && filters.severity !== "all")
+      params.append("severity", filters.severity);
     if (filters?.review && filters.review !== "all") params.append("review", filters.review);
 
     const query = params.toString() ? `?${params.toString()}` : "";
@@ -212,7 +371,10 @@ export const api = {
   },
   getRequirement: (projectId: string, reqId: string) =>
     request<ApiRequirement>(`/projects/${projectId}/requirements/${reqId}`),
-  createRequirement: (projectId: string, data: { req_code: string; title: string; category?: string; severity?: string }) =>
+  createRequirement: (
+    projectId: string,
+    data: { req_code: string; title: string; category?: string; severity?: string },
+  ) =>
     request<ApiRequirement>(`/projects/${projectId}/requirements`, {
       method: "POST",
       body: JSON.stringify(data),
@@ -221,18 +383,31 @@ export const api = {
   // Findings
   getFindings: (
     projectId: string,
-    filters?: { severity?: string; finding_type?: string; review_state?: string; category?: string }
+    filters?: {
+      severity?: string;
+      finding_type?: string;
+      review_state?: string;
+      category?: string;
+    },
   ) => {
     const params = new URLSearchParams();
-    if (filters?.severity && filters.severity !== "all") params.append("severity", filters.severity);
-    if (filters?.finding_type && filters.finding_type !== "all") params.append("finding_type", filters.finding_type);
-    if (filters?.review_state && filters.review_state !== "all") params.append("review_state", filters.review_state);
-    if (filters?.category && filters.category !== "all") params.append("category", filters.category);
+    if (filters?.severity && filters.severity !== "all")
+      params.append("severity", filters.severity);
+    if (filters?.finding_type && filters.finding_type !== "all")
+      params.append("finding_type", filters.finding_type);
+    if (filters?.review_state && filters.review_state !== "all")
+      params.append("review_state", filters.review_state);
+    if (filters?.category && filters.category !== "all")
+      params.append("category", filters.category);
 
     const query = params.toString() ? `?${params.toString()}` : "";
     return request<ApiFinding[]>(`/projects/${projectId}/findings${query}`);
   },
-  updateFinding: (projectId: string, findingId: string, data: { review_state?: string; assigned_to?: string; severity?: string }) =>
+  updateFinding: (
+    projectId: string,
+    findingId: string,
+    data: { review_state?: string; assigned_to?: string; severity?: string },
+  ) =>
     request<ApiFinding>(`/projects/${projectId}/findings/${findingId}`, {
       method: "PATCH",
       body: JSON.stringify(data),
@@ -240,7 +415,7 @@ export const api = {
 
   // Audit Pipeline
   triggerAudit: (projectId: string, options?: { model?: string; thinking_level?: string }) =>
-    request<AuditRunResponse>(`/projects/${projectId}/audit`, {
+    request<AuditProgress>(`/projects/${projectId}/audit`, {
       method: "POST",
       body: JSON.stringify({
         model: options?.model || undefined,

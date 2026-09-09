@@ -35,8 +35,7 @@
       "logic": {
         "operator": "ALL_OF",
         "condition_ids": [
-          "MM-001-C1",
-          "MM-001-C2"
+          "MM-001-C1"
         ]
       },
       "expected_status": "SUPPORTED",
@@ -44,7 +43,7 @@
       "conditions": [
         {
           "condition_id": "MM-001-C1",
-          "description": "Monitoring coverage includes a lower bound at or below 400 V",
+          "description": "Pack-voltage monitoring covers the complete 400 V to 800 V DC range",
           "mandatory": true,
           "expected_status": "PROVEN",
           "evidence": [
@@ -54,19 +53,7 @@
               "block_type": "table",
               "role": "supporting",
               "quote": "380 V | 380.3 V | Below 400 V lower bound"
-            }
-          ],
-          "parameter": "pack_voltage_lower_bound",
-          "operator": "<=",
-          "threshold": 400,
-          "unit": "V"
-        },
-        {
-          "condition_id": "MM-001-C2",
-          "description": "Monitoring coverage includes an upper bound at or above 800 V",
-          "mandatory": true,
-          "expected_status": "PROVEN",
-          "evidence": [
+            },
             {
               "document": "02_Aquila_Design_Validation_Test_Report.pdf",
               "page": 2,
@@ -75,9 +62,10 @@
               "quote": "820 V | 819.6 V | Above 800 V upper bound"
             }
           ],
-          "parameter": "pack_voltage_upper_bound",
-          "operator": ">=",
-          "threshold": 800,
+          "parameter": "pack_voltage_monitoring_range",
+          "operator": "between",
+          "min_value": 400,
+          "max_value": 800,
           "unit": "V"
         }
       ]
