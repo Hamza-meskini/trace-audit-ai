@@ -35,6 +35,7 @@ from typing import Any, Optional
 
 from app.schemas.contract import RequirementContract, AtomicConditionContract
 from app.schemas.claim import EvidenceClaim
+from app.services.taxonomy import condition_to_verdict
 from app.schemas.verification_result import (
     ConditionVerificationResult,
     VerificationAnalysisResult,
@@ -536,14 +537,7 @@ def _aggregate_logic_tree_node(
         result = by_id.get(str(node.get("condition_id") or ""))
         if result is None:
             return None
-        return {
-            "PROVEN": "SUPPORTED",
-            "FAILED": "CONFLICT",
-            "PENDING": "PARTIAL",
-            "UNTESTED": "MISSING",
-            "INCONCLUSIVE": "UNKNOWN",
-            "NOT_APPLICABLE": "NOT_APPLICABLE",
-        }.get((result.status or "UNTESTED").upper())
+        return condition_to_verdict(result.status or "UNTESTED")
     if operator in {"ALL_OF", "ANY_OF"}:
         children = node.get("children") or []
         if not children or (operator == "ANY_OF" and len(children) < 2):
@@ -640,6 +634,11 @@ def aggregate_condition_statuses(
                 "Mechanical IF_THEN aggregation: the antecedent is not applicable, so the conditional obligation is satisfied.",
             )
         if antecedent_status == "UNTESTED":
+            if any(result.status == "INCONCLUSIVE" for result in aligned):
+                return (
+                    "UNKNOWN", 80.0,
+                    "Mechanical IF_THEN aggregation: applicability is untested and supplied evidence is inconclusive.",
+                )
             return (
                 "MISSING", 90.0,
                 "Mechanical IF_THEN aggregation: the antecedent was not tested.",

@@ -30,12 +30,16 @@ class Settings(BaseSettings):
     GEMINI_API_KEY: str = ""
     GOOGLE_API_KEY: str = ""
     OPENAI_API_KEY: str = ""
+    DASHSCOPE_API_KEY: str = ""
+    OPENROUTER_API_KEY: str = ""
     GROQ_API_KEY: str = ""
     HF_TOKEN: str = ""
     HUGGINGFACE_TOKEN: str = ""
 
-    # On-demand technical-figure description cascade. Gemini remains primary;
-    # Groq and Hugging Face are used only when the preceding provider fails.
+    # On-demand technical-figure description cascade. OpenRouter is tried
+    # first; Gemini, Groq, and Hugging Face remain bounded fallbacks.
+    OPENROUTER_VISION_MODEL: str = "openrouter/free"
+    GEMINI_VISION_MODEL: str = "models/gemini-3.6-flash"
     GROQ_VISION_MODEL: str = "qwen/qwen3.6-27b"
     GROQ_TEXT_MODEL: str = "qwen/qwen3.8-27b"
     HF_VISION_MODEL: str = "Qwen/Qwen2.5-VL-3B-Instruct"
@@ -62,12 +66,21 @@ class Settings(BaseSettings):
     DATABRICKS_TOKEN: str = ""
     DATABRICKS_BASE_URL: str = ""  # e.g. "https://<workspace-id>.cloud.databricks.com/ai-gateway/mlflow/v1"
     DATABRICKS_MODEL: str = "system.ai.llama-4-maverick"
+    DATABRICKS_VISION_MODEL: str = "system.ai.llama-4-maverick"
     DATABRICKS_FALLBACK_MODELS: list[str] = []
+    DATABRICKS_REASONING_TIMEOUT_SECONDS: float = 300.0
 
     # TokenRouter Settings (Multi-Model OpenAI-Compatible Gateway)
     TOKENROUTER_API_KEY: str = ""
     TOKENROUTER_BASE_URL: str = "https://api.tokenrouter.com/v1"
     TOKENROUTER_MODEL: str = "z-ai/glm-5.3-free"
+
+    # Alibaba Cloud Model Studio (OpenAI Responses-compatible endpoint)
+    DASHSCOPE_BASE_URL: str = "https://dashscope-intl.aliyuncs.com/api/v2/apps/protocols/compatible-mode/v1"
+    DASHSCOPE_MODEL: str = "qwen3.8-flash"
+
+    # OpenRouter (vision only; the free router chooses an image-capable model)
+    OPENROUTER_BASE_URL: str = "https://openrouter.ai/api/v1"
 
     # OpenAI-compatible Base URL
     OPENAI_BASE_URL: str = "https://api.openai.com/v1"
@@ -127,6 +140,26 @@ class Settings(BaseSettings):
         return url.rstrip("/")
 
     @property
+    def effective_dashscope_api_key(self) -> str:
+        """Return the DashScope key without exposing it to diagnostics."""
+        return self.DASHSCOPE_API_KEY or os.environ.get("DASHSCOPE_API_KEY", "")
+
+    @property
+    def effective_openrouter_api_key(self) -> str:
+        """Return the OpenRouter credential used only by the vision cascade."""
+        return self.OPENROUTER_API_KEY or os.environ.get("OPENROUTER_API_KEY", "")
+
+    @property
+    def effective_dashscope_base_url(self) -> str:
+        """Return the DashScope Responses-compatible base URL."""
+        url = (
+            self.DASHSCOPE_BASE_URL
+            or os.environ.get("DASHSCOPE_BASE_URL", "")
+            or "https://dashscope-intl.aliyuncs.com/api/v2/apps/protocols/compatible-mode/v1"
+        )
+        return url.rstrip("/")
+
+    @property
     def effective_groq_api_key(self) -> str:
         """Return the active Groq API key without exposing it to diagnostics."""
         return self.GROQ_API_KEY or os.environ.get("GROQ_API_KEY", "")
@@ -151,6 +184,15 @@ settings = Settings()
 
 # Supported models list for UI and API validation
 SUPPORTED_MODELS = [
+    {
+        "id": "qwen3.8-flash",
+        "name": "Qwen 3.8 Flash (DashScope)",
+        "provider": "dashscope",
+        "thinking_supported": True,
+        "default_thinking": "MEDIUM",
+        "description": "Alibaba Cloud Model Studio Responses endpoint with thinking enabled for structured reasoning.",
+        "is_default": False,
+    },
     {
         "id": "gemini-3.8-flash",
         "name": "Gemini 3.8 Flash",
@@ -199,6 +241,15 @@ SUPPORTED_MODELS = [
         "provider": "databricks",
         "thinking_supported": False,
         "description": "Databricks 122B parameter technical reasoning model for dense verification.",
+        "is_default": False,
+    },
+    {
+        "id": "system.ai.gpt-oss-120b",
+        "name": "Databricks GPT-OSS 120B",
+        "provider": "databricks",
+        "thinking_supported": True,
+        "default_thinking": "MEDIUM",
+        "description": "Reasoning model for atomic contract construction and evidence verification.",
         "is_default": False,
     },
     {

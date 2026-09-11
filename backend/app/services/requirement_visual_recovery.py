@@ -13,11 +13,20 @@ from collections import defaultdict
 from typing import Any
 
 from app.models.document import EvidenceChunk
+from app.config import settings
 from app.services.llm_client import call_vision_with_fallback
 
 
 logger = logging.getLogger("traceaudit.requirement_visual_recovery")
-PROMPT_VERSION = "requirement-recovery-v2"
+PROMPT_VERSION = "requirement-recovery-v3"
+
+
+def _valid_transcription(text: str) -> bool:
+    if not text or text.startswith(("{", "[")):
+        return False
+    if text.upper().rstrip(".") in {"NO_MISSING_REQUIREMENTS", "NO_VISIBLE_REQUIREMENTS"}:
+        return True
+    return len(text.split()) >= 4 and text.lower().strip(" .") not in {"no issues found"}
 
 
 def _render_page_png(file_path: str, page_number: int) -> bytes | None:
@@ -52,9 +61,16 @@ def candidate_requirement_pages(chunks: list[dict[str, Any]]) -> dict[int, list[
 def _cached_recovery(page_chunks: list[dict[str, Any]]) -> dict[str, Any] | None:
     for chunk in page_chunks:
         cached = (chunk.get("metadata") or {}).get("requirement_visual_recovery")
-        if cached and cached.get("prompt_version") == PROMPT_VERSION and cached.get("status") == "complete":
+        if (cached and cached.get("prompt_version") == PROMPT_VERSION
+                and cached.get("vision_models") == _vision_models()
+                and cached.get("status") == "complete"):
             return dict(cached)
     return None
+
+
+def _vision_models() -> list[str]:
+    return [settings.DATABRICKS_VISION_MODEL, settings.OPENROUTER_VISION_MODEL, settings.GEMINI_VISION_MODEL,
+            settings.GROQ_VISION_MODEL, settings.HF_VISION_MODEL]
 
 
 async def recover_requirement_text_from_pages(
@@ -74,7 +90,7 @@ async def recover_requirement_text_from_pages(
     candidates = candidate_requirement_pages(chunks)
     selected = list(candidates.items())[:max_pages]
     semaphore = asyncio.Semaphore(max_concurrency)
-    active_vision_model = model if "gemini" in model.lower() else "models/gemini-3.6-flash"
+    active_vision_model = settings.GEMINI_VISION_MODEL
     disabled_providers: set[str] = set()
     recovered_sections: list[tuple[int, str]] = []
     page_results: list[dict[str, Any]] = []
@@ -144,6 +160,25 @@ its visible source identifier when one exists."""
                 skip_providers=disabled_providers,
             )
         text = str(response.get("text") or "").strip()
+        # Moderation labels/JSON are not source prose. Retry another provider
+        # rather than caching a nonempty but unusable transcription.
+        invalid = bool(text) and not _valid_transcription(text)
+        if invalid:
+            rejected_provider = str(response.get("provider") or "")
+            rejected_attempts = list(response.get("attempted", []))
+            if rejected_provider:
+                async with semaphore:
+                    response = await call_vision_with_fallback(
+                        prompt, gemini_model=active_vision_model, max_output_tokens=1400,
+                        image_bytes=png, image_mime_type="image/png",
+                        skip_providers=disabled_providers | {rejected_provider},
+                    )
+                response["attempted"] = rejected_attempts + list(response.get("attempted", []))
+                text = str(response.get("text") or "").strip()
+            else:
+                text = ""
+        if not _valid_transcription(text):
+            text = ""
         attempted = response.get("attempted", [])
         selected_provider = str(response.get("provider") or "")
         for attempt in attempted:
@@ -157,6 +192,7 @@ its visible source identifier when one exists."""
             "prompt_version": PROMPT_VERSION,
             "status": status,
             "provider": selected_provider,
+            "vision_models": _vision_models(),
             "model": response.get("model", ""),
             "attempted_providers": attempted,
             "recovered_text": recovered,

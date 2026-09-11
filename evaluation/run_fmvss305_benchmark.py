@@ -16,10 +16,13 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import copy
+import hashlib
 import json
 import re
 import sys
 import time
+from datetime import datetime, timezone
 from collections import Counter
 from pathlib import Path
 from types import SimpleNamespace
@@ -33,7 +36,10 @@ SAMPLE_DIR = REPO_ROOT / "sample_documents"
 RESULTS_DIR = REPO_ROOT / "evaluation" / "results"
 RESULTS_DIR.mkdir(parents=True, exist_ok=True)
 
+sys.path.insert(0, str(REPO_ROOT))
 sys.path.insert(0, str(BACKEND_DIR))
+
+from evaluation.atomic_evaluation import POLICY, decomposition, verification_metrics
 
 from app.config import settings
 from app.schemas.contract import parse_requirement_contract
@@ -108,7 +114,7 @@ def _normal_final(value: Any) -> str:
 
 
 def _normal_atomic(value: Any) -> str:
-    status = str(value or "UNTESTED").strip().upper().replace(" ", "_")
+    status = str(value or "INVALID_STATUS").strip().upper().replace(" ", "_")
     aliases = {
         "PASS": "PROVEN",
         "PASSED": "PROVEN",
@@ -119,7 +125,7 @@ def _normal_atomic(value: Any) -> str:
         "NA": "NOT_APPLICABLE",
     }
     status = aliases.get(status, status)
-    return status if status in ATOMIC_CLASSES else "UNTESTED"
+    return status if status in ATOMIC_CLASSES else "INVALID_STATUS"
 
 
 def _tokens(value: str) -> list[str]:
@@ -527,11 +533,21 @@ def _retrieval_metrics(
 def _prediction_for_condition(
     expected: dict[str, Any],
     predictions: Iterable[Any],
+    *, strict: bool = False,
 ) -> tuple[Optional[Any], Optional[str]]:
     predictions = list(predictions or [])
+    if strict:
+        # Lexical overlap alone must not erase a changed bound or negation.
+        def signature(text: str) -> tuple:
+            text = str(text or "").lower()
+            return (tuple(sorted(re.findall(r"\d+(?:\.\d+)?", text))),
+                    tuple(sorted(set(re.findall(r"\b(?:not|no|never|without)\b|[<>]=?", text)))))
+        expected_signature = signature(expected.get("description", ""))
+        predictions = [item for item in predictions
+                       if signature(_field(item, "description", "")) == expected_signature]
     expected_id = expected.get("condition_id")
     direct = next((item for item in predictions if _field(item, "condition_id") == expected_id), None)
-    if direct is not None:
+    if direct is not None and not strict:
         return direct, "exact_id"
     normalized_id = _normalize_condition_id(expected_id)
     canonical = next(
@@ -541,7 +557,7 @@ def _prediction_for_condition(
         ),
         None,
     )
-    if canonical is not None:
+    if canonical is not None and not strict:
         return canonical, "canonical_id"
     scored = [
         (
@@ -556,7 +572,7 @@ def _prediction_for_condition(
     if score >= 0.50:
         return item, "semantic_description"
     expected_ordinal = _condition_ordinal(expected_id)
-    if expected_ordinal is not None:
+    if expected_ordinal is not None and not strict:
         ordinal = next(
             (
                 item for item in predictions
@@ -572,6 +588,7 @@ def _prediction_for_condition(
 def _atomic_metrics(
     requirements: list[dict[str, Any]],
     results_by_requirement: dict[str, Iterable[Any]],
+    *, strict: bool = False,
 ) -> dict[str, Any]:
     correct = 0
     total_expected = 0
@@ -586,9 +603,10 @@ def _atomic_metrics(
         for index, expected in enumerate(expected_conditions):
             total_expected += 1
             available = [item for item in predictions if id(item) not in used_prediction_ids]
-            prediction, alignment_method = _prediction_for_condition(expected, available)
+            prediction, alignment_method = _prediction_for_condition(expected, available, strict=strict)
             if (
                 prediction is None
+                and not strict
                 and len(predictions) == len(expected_conditions)
                 and index < len(predictions)
                 and id(predictions[index]) not in used_prediction_ids
@@ -750,10 +768,10 @@ def _report_markdown(results: dict[str, Any]) -> str:
         f"| Source qualification | Authoritative qualification rate | {authority['authoritative_qualification_rate']:.2f}% |",
         f"| Visual evidence | Retrieved figures analyzed | {visual.get('vision_analyzed', 0)} |",
         f"| Visual evidence | Retrieved figures unavailable | {visual.get('vision_unavailable', 0)} |",
-        f"| LLM reasoning | Raw atomic aligned accuracy | {raw_atomic['aligned_accuracy']:.2f}% |",
+        f"| LLM reasoning | Raw atomic aligned accuracy | {raw_atomic['aligned_accuracy']}% |",
         f"| LLM reasoning | Raw condition alignment coverage | {raw_atomic['alignment_coverage']:.2f}% |",
         f"| LLM reasoning | Raw atomic end-to-end accuracy | {raw_atomic['end_to_end_accuracy']:.2f}% |",
-        f"| Pipeline output | Final atomic aligned accuracy | {final_atomic['aligned_accuracy']:.2f}% |",
+        f"| Pipeline output | Final atomic aligned accuracy | {final_atomic['aligned_accuracy']}% |",
         f"| Pipeline output | Final condition alignment coverage | {final_atomic['alignment_coverage']:.2f}% |",
         f"| Pipeline output | Final atomic end-to-end accuracy | {final_atomic['end_to_end_accuracy']:.2f}% |",
         f"| Regulatory logic | ANY_OF / IF_THEN accuracy | {logic['accuracy']:.2f}% |",
@@ -780,7 +798,10 @@ def _report_markdown(results: dict[str, Any]) -> str:
         "The oracle-contract modes isolate retrieval and verification from requirement extraction. "
         "The oracle-evidence modes additionally inject the manually annotated test-report passages plus only their immediate structural context, "
         "isolating source qualification, condition reasoning, regulatory logic, and aggregation. "
-        "Use `end-to-end` for the product-level result and compare it with the other modes to locate regressions.",
+        "End-to-end verifies all extracted clauses; scores cover only the annotated subset. "
+        "Atomic matches require structured agreement under scoring policy v3; unresolved representations require review. "
+        "Combined atomic accuracy includes extraction failures, while aligned status accuracy covers only eligible atoms. "
+        "The ANY_OF/IF_THEN verdict metric is not proof of logic-tree equivalence.",
         "",
     ])
     return "\n".join(lines)
@@ -791,6 +812,8 @@ async def run_benchmark(
     model: Optional[str],
     thinking_level: Optional[str],
     batch_size: int,
+    provider: Optional[str] = None,
+    allow_rule_fallback: bool = True,
 ) -> dict[str, Any]:
     if mode not in MODES:
         raise ValueError(f"Unsupported mode {mode!r}; choose one of {', '.join(MODES)}")
@@ -804,8 +827,21 @@ async def run_benchmark(
     truth_by_id = {item["requirement_id"]: item for item in requirements}
     requirements_path, evidence_path = _document_paths(dataset)
     active_model = model or settings.LLM_MODEL
+    if provider:
+        settings.LLM_PROVIDER = provider
+    settings.LLM_MODEL = active_model
+    settings.ATOMIC_DECOMPOSITION_MODEL = active_model
+    settings.ATOMIC_DECOMPOSITION_FALLBACK_MODEL = ""
+    if settings.LLM_PROVIDER == "databricks":
+        settings.DATABRICKS_VISION_MODEL = active_model
+        settings.DATABRICKS_FALLBACK_MODELS = []
+    # No separate adjudication model is included in this single-model benchmark.
+    settings.SECONDARY_ADJUDICATOR_ENABLED = False
     active_thinking = thinking_level or settings.GEMINI_THINKING_LEVEL
     started = time.time()
+    run_id = "fmvss305-" + datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S.%fZ")
+    archive = RESULTS_DIR / "runs" / run_id
+    archive.mkdir(parents=True, exist_ok=False)
 
     print("=" * 74)
     print("TRACEAUDIT FMVSS 305 PUBLIC-DOCUMENT BENCHMARK")
@@ -854,8 +890,26 @@ async def run_benchmark(
             doc_name=requirements_path.name,
             model=active_model,
             thinking_level=active_thinking,
+            atomic_model=active_model,
+            atomic_thinking_level=active_thinking,
+            atomic_fallback_model="",
+            allow_rule_fallback=allow_rule_fallback,
+            allow_model_fallback=False,
         )
-        contract_items, extraction_metrics = _extracted_contracts(requirements, extracted)
+        # All model outputs reach verification, independent of annotated clauses.
+        contract_items = [{
+            "req_code": c.req_code, "title": c.title,
+            "description": c.description or c.title, "category": c.category,
+            "conditions": [v.model_dump(exclude_none=True) for v in c.conditions],
+            "clause_coverage": [v.model_dump(exclude_none=True) for v in c.clause_coverage],
+            "unmapped_obligations": list(c.unmapped_obligations),
+            "contract_complete": c.contract_complete, "logic": c.logic.model_dump(),
+        } for c in extracted]
+        _, extraction_metrics = _extracted_contracts(requirements, extracted)
+    evaluated_contracts = copy.deepcopy(contract_items)
+    if len({c["req_code"] for c in contract_items}) != len(contract_items):
+        raise ValueError("Duplicate extracted requirement IDs would overwrite verification results")
+    (archive / "contracts.json").write_text(json.dumps(evaluated_contracts, indent=2), encoding="utf-8")
     print(
         f"  Selected-clause recall {extraction_metrics['selected_clause_recall']:.2f}% "
         f"({extraction_metrics['matched_selected_clauses']}/{extraction_metrics['selected_clauses']})."
@@ -890,16 +944,19 @@ async def run_benchmark(
             "document_profile": value.document_profile,
             "metadata": value.metadata,
         } for value in retrieved]
-    retrieval_metrics = _retrieval_metrics(requirements, retrieved_by_id)
+    retrieval_source_ids = ({r["requirement_id"]: r["requirement_id"] for r in requirements}
+                            if oracle_contracts else extraction_metrics["matches"])
+    retrieval_metrics = _retrieval_metrics(requirements, {rid: retrieved_by_id.get(sid, []) for rid, sid in retrieval_source_ids.items()})
     print(f"  Evidence page Recall@3: {retrieval_metrics['recall_at_3']:.2f}%.")
 
     print("[4/5] Measuring source authority and running condition verification...")
     authority_metrics = _authority_metrics(requirements, evidence_chunks)
     req_items = []
     for item in contract_items:
+        oracle_truth = next((r for r in requirements if _normalize_clause(r["clause"]) == _normalize_clause(item["req_code"]) or r["requirement_id"] == item["req_code"]), None)
         candidate_chunks = (
-            _oracle_evidence(truth_by_id[item["req_code"]], evidence_chunks)
-            if oracle_evidence
+            _oracle_evidence(oracle_truth, evidence_chunks)
+            if oracle_evidence and oracle_truth
             else retrieved_by_id.get(item["req_code"], [])
         )
         req_items.append({**item, "candidate_chunks": candidate_chunks})
@@ -923,7 +980,16 @@ async def run_benchmark(
     )
 
     print("[5/5] Scoring stage-by-stage outputs...")
-    matrix = {expected: {predicted: 0 for predicted in FINAL_CLASSES} for expected in FINAL_CLASSES}
+    # Reference IDs map to extracted clause IDs only inside the evaluator.
+    source_ids = ({r["requirement_id"]: r["requirement_id"] for r in requirements}
+                  if oracle_contracts else extraction_metrics["matches"])
+    scored_contracts = [{**c, "req_code": rid} for rid, sid in source_ids.items()
+                        for c in evaluated_contracts if c["req_code"] == sid]
+    atomic_alignment = decomposition(requirements, scored_contracts)
+    extraction_metrics["atomic_condition_recall"] = atomic_alignment["recall"]
+    extraction_metrics["matched_atomic_conditions"] = atomic_alignment["correct"]
+    retrieval_metrics = _retrieval_metrics(requirements, {rid: retrieved_by_id.get(sid, []) for rid, sid in source_ids.items()})
+    matrix = {expected: {predicted: 0 for predicted in [*FINAL_CLASSES, "NOT_EXTRACTED"]} for expected in FINAL_CLASSES}
     final_condition_results: dict[str, Iterable[Any]] = {}
     raw_condition_results: dict[str, Iterable[Any]] = {}
     rows: list[dict[str, Any]] = []
@@ -935,9 +1001,10 @@ async def run_benchmark(
 
     for truth in requirements:
         req_id = truth["requirement_id"]
-        assessment = assessments.get(req_id)
+        source_id = source_ids.get(req_id)
+        assessment = assessments.get(source_id) if source_id else None
         expected = truth["expected_status"]
-        predicted = _normal_final(_field(assessment, "coverage_status")) if assessment else "UNKNOWN"
+        predicted = _normal_final(_field(assessment, "coverage_status")) if assessment else "NOT_EXTRACTED"
         matrix[expected][predicted] += 1
         review_state = _field(assessment, "review_state", "Needs review") if assessment else "Needs review"
         review_matches = review_state.lower() == truth["expected_review_state"].lower()
@@ -969,7 +1036,8 @@ async def run_benchmark(
             "review_correct": review_matches,
             "confidence": _field(assessment, "confidence", 0.0) if assessment else 0.0,
             "ai_analysis": _field(assessment, "ai_analysis", "Extraction did not produce this selected clause.") if assessment else "Extraction did not produce this selected clause.",
-            "retrieved_pages": [item.get("page_number") for item in retrieved_by_id.get(req_id, [])],
+            "extracted_req_code": source_id,
+            "retrieved_pages": [item.get("page_number") for item in retrieved_by_id.get(source_id, [])],
             "raw_llm_condition_results": raw_results,
             "final_condition_results": [
                 item.model_dump() if hasattr(item, "model_dump") else item for item in final_results
@@ -988,12 +1056,23 @@ async def run_benchmark(
         "predicted_distribution": dict(Counter(item["predicted_status"] for item in rows)),
     }
     metrics = {
+        "structured_decomposition": atomic_alignment,
+        "integrity": {
+            "scoring_version": 3, "scoring_policy": POLICY,
+            "gold_contracts_supplied": oracle_contracts, "gold_evidence_selection": oracle_evidence,
+            "source_rule_fallback_enabled": allow_rule_fallback,
+            "model_fallback_enabled": False,
+            "scorer_sha256": hashlib.sha256((REPO_ROOT / "evaluation/atomic_evaluation.py").read_bytes()).hexdigest(),
+            "ground_truth_sha256": hashlib.sha256((BENCHMARK_DIR / "ground_truth.json").read_bytes()).hexdigest(),
+            "scope": "Selected annotated clauses only. Other extracted clauses are verified but unlabelled, not counted as hallucinations.",
+            "unlabelled_extracted_ids": [c["req_code"] for c in contract_items if c["req_code"] not in set(source_ids.values())],
+        },
         "extraction": extraction_metrics,
         "retrieval": retrieval_metrics,
         "source_authority": authority_metrics,
         "visual_evidence": visual_metrics,
-        "raw_llm_atomic": _atomic_metrics(requirements, raw_condition_results),
-        "final_atomic": _atomic_metrics(requirements, final_condition_results),
+        "raw_llm_atomic": verification_metrics(requirements, raw_condition_results, atomic_alignment),
+        "final_atomic": verification_metrics(requirements, final_condition_results, atomic_alignment),
         "regulatory_logic": {
             "accuracy": _percent(logic_correct, logic_total),
             "correct": logic_correct,
@@ -1007,6 +1086,14 @@ async def run_benchmark(
         },
     }
     results = {
+        "run_id": run_id,
+        "provider": settings.LLM_PROVIDER,
+        "atomic_model": active_model, "verification_model": active_model,
+        "vision_model": settings.DATABRICKS_VISION_MODEL if settings.LLM_PROVIDER == "databricks" else None,
+        "evaluated_contracts": evaluated_contracts,
+        "scoring_contracts": scored_contracts,
+        "extraction_predictions": [] if oracle_contracts else [c.model_dump() for c in extracted],
+        "all_assessments": {key: value.model_dump() if hasattr(value, "model_dump") else value for key, value in assessments.items()},
         "benchmark_id": dataset["benchmark_id"],
         "benchmark_version": dataset["version"],
         "mode": mode,
@@ -1025,6 +1112,8 @@ async def run_benchmark(
 
     json_path = RESULTS_DIR / f"fmvss305_{mode}_results.json"
     report_path = RESULTS_DIR / f"fmvss305_{mode}_report.md"
+    (archive / "results.json").write_text(json.dumps(results, indent=2, ensure_ascii=False, default=str), encoding="utf-8")
+    (archive / "report.md").write_text(_report_markdown(results), encoding="utf-8")
     json_path.write_text(json.dumps(results, indent=2, ensure_ascii=False, default=str), encoding="utf-8")
     report_path.write_text(_report_markdown(results), encoding="utf-8")
 
@@ -1032,6 +1121,8 @@ async def run_benchmark(
     print(f"  Final accuracy: {final_metrics['accuracy']:.2f}%")
     print(f"  Raw LLM atomic accuracy: {metrics['raw_llm_atomic']['accuracy']:.2f}%")
     print(f"  Final atomic accuracy: {metrics['final_atomic']['accuracy']:.2f}%")
+    print(f"  Eligible atom status accuracy: {metrics['final_atomic']['aligned_accuracy']}% (coverage {metrics['final_atomic']['alignment_coverage']:.2f}%)")
+    print(f"  Immutable run: {archive}")
     print(f"  Authority accuracy: {authority_metrics['authority_accuracy']:.2f}%")
     print(f"  Unsafe false auto-closes: {unsafe_auto_close}")
     print(f"  JSON: {json_path}")
@@ -1043,6 +1134,8 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--mode", choices=sorted(MODES), default="oracle-contracts")
     parser.add_argument("--model", default=None, help="LLM model override; defaults to backend settings.")
+    parser.add_argument("--provider", default=None)
+    parser.add_argument("--no-rule-fallback", action="store_true", help="Disable normal source-only extraction fallback (strict model-only diagnostic).")
     parser.add_argument("--thinking-level", default=None, help="Reasoning/thinking override.")
     parser.add_argument("--batch-size", type=int, default=3)
     parser.add_argument(
@@ -1062,6 +1155,8 @@ def main() -> None:
         model=args.model,
         thinking_level=args.thinking_level,
         batch_size=max(1, args.batch_size),
+        provider=args.provider,
+        allow_rule_fallback=not args.no_rule_fallback,
     ))
 
 

@@ -17,6 +17,7 @@ from app.services.llm_client import call_vision_with_fallback
 
 
 logger = logging.getLogger("traceaudit.visual_analysis")
+PROMPT_VERSION = "figure-evidence-v2"
 
 
 def _render_figure_png(
@@ -75,7 +76,7 @@ async def describe_figure_candidates(
         return stats
 
     semaphore = asyncio.Semaphore(max_concurrency)
-    active_model = model if "gemini" in model.lower() else "models/gemini-3.6-flash"
+    active_model = settings.GEMINI_VISION_MODEL
     disabled_providers: set[str] = set()
 
     async def enrich(chunk_id: str, views: list[dict[str, Any]]) -> None:
@@ -83,9 +84,25 @@ async def describe_figure_candidates(
         metadata = first.get("metadata") or {}
         visual = dict(metadata.get("visual_analysis") or {})
         description = str(visual.get("description") or "").strip()
-        if visual.get("status") == "complete" and description:
+        vision_models = [settings.DATABRICKS_VISION_MODEL, settings.OPENROUTER_VISION_MODEL, active_model, settings.GROQ_VISION_MODEL, settings.HF_VISION_MODEL]
+        cache_valid = (
+            visual.get("status") == "complete" and bool(description)
+            and visual.get("prompt_version") == PROMPT_VERSION
+            and visual.get("vision_models") == vision_models
+        )
+        if not cache_valid:
+            description = ""
+            visual.pop("description", None)
+            for view in views:
+                view["content"] = view.get("content", "").split("\nVISUAL DESCRIPTION:", 1)[0]
+            model_chunk = (chunk_models or {}).get(chunk_id)
+            if model_chunk is not None:
+                model_chunk.content = model_chunk.content.split("\nVISUAL DESCRIPTION:", 1)[0]
+        if cache_valid:
             stats["vision_cache_hits"] += 1
         elif not any((
+            settings.DATABRICKS_VISION_MODEL and settings.effective_databricks_token and settings.DATABRICKS_BASE_URL,
+            settings.effective_openrouter_api_key,
             settings.effective_gemini_api_key,
             settings.effective_groq_api_key,
             settings.effective_hf_token,
@@ -111,7 +128,11 @@ async def describe_figure_candidates(
                     "number, unit, legend, axis, callout, pass/fail result, and relationship. Do not claim "
                     "there are multiple panels, views, or photographs unless visible separators clearly show "
                     "them. Do not decide regulatory compliance, infer hidden facts, invent obscured text, or "
-                    "include private reasoning or <think> tags. Return concise observable facts only. "
+                    "include private reasoning or <think> tags. Transcribe any test-article identifier, "
+                    "execution statement, measurement scale, and test method explicitly shown. "
+                    "A photograph does not itself establish that the verification method was inspection. "
+                    "Do not estimate physical dimensions without an explicit readable scale. "
+                    "Return concise observable facts only. "
                     f"Caption/context: {visual.get('caption') or first.get('content', '')}"
                 )
                 async with semaphore:
@@ -135,7 +156,7 @@ async def describe_figure_candidates(
                                 disabled_providers.add(provider)
             if description:
                 visual.pop("reason", None)
-                visual.update({"status": "complete", "description": description})
+                visual.update({"status": "complete", "description": description, "prompt_version": PROMPT_VERSION, "vision_models": vision_models})
                 stats["vision_analyzed"] += 1
                 provider = str(visual.get("provider") or "cache")
                 counts = stats["vision_provider_counts"]

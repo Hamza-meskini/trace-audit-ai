@@ -9,6 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 from app.database import init_db, async_session
 from app.seed import seed_database
+from app.api.settings import load_persisted_settings
 
 from app.api.projects import router as projects_router
 from app.api.documents import router as documents_router
@@ -36,6 +37,7 @@ async def lifespan(app: FastAPI):
             logger.info("Database seeded with mock data.")
         else:
             logger.info("Database already contains data, skipping seed.")
+        await load_persisted_settings(db)
 
     yield
     # Shutdown (nothing to clean up for now)

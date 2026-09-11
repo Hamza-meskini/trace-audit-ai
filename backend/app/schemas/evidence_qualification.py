@@ -148,10 +148,13 @@ _SCOPE_FAMILY = {
 
 def normalize_entity_scope(text: str, doc_name: str = "") -> str:
     """Infer the entity scope (ASIC / BCU / Pack / ...) of a text or document."""
-    t = f"{text} {doc_name}".lower()
-    for scope, needles in _SCOPE_PATTERNS:
-        if any(n in t for n in needles):
-            return scope
+    # A report title describes its domain, not necessarily its test article.
+    # Match whole terms: 'pack' must not match 'packet', nor 'ecu' 'security'.
+    for source in (text, doc_name):
+        t = source.lower().replace("_", " ")
+        for scope, needles in _SCOPE_PATTERNS:
+            if any(re.search(r"\b" + re.escape(n.replace("_", " ")) + r"\b", t) for n in needles):
+                return scope
     return "System"
 
 

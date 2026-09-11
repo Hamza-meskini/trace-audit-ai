@@ -28,6 +28,8 @@ from app.services.ingestion import (
 from app.services.extraction import extract_requirements_from_text
 from app.services.retrieval import retrieve_candidate_evidence_hybrid, precompute_chunk_embeddings
 from app.services.classification import batch_assess_requirements
+from app.services.taxonomy import finding_type_for
+from app.config import settings
 from app.services.document_classifier import (
     ROLE_DISPLAY_NAMES,
     discover_specification_documents,
@@ -74,8 +76,8 @@ async def run_audit_pipeline(
     progress=None,
 ) -> dict:
     """Execute the full audit pipeline for a project."""
-    active_model = model or "gemini-3.7-flash"
-    active_thinking = thinking_level or "HIGH"
+    active_model = model or settings.LLM_MODEL
+    active_thinking = thinking_level or settings.GEMINI_THINKING_LEVEL
     pipeline_started = time.perf_counter()
     stage_timings: dict[str, float] = {}
     ingestion_diagnostics: list[dict] = []
@@ -489,18 +491,12 @@ async def run_audit_pipeline(
 
         # Generate a Finding if Partial, Missing, Conflict, or Unknown (inconclusive)
         if assessment.coverage_status in ("Partial", "Missing", "Conflict", "Unknown"):
-            finding_type_map = {
-                "Missing": "Missing evidence",
-                "Partial": "Partial evidence",
-                "Conflict": "Potential conflict",
-                "Unknown": "Inconclusive evidence",
-            }
             finding = Finding(
                 id=str(uuid.uuid4()),
                 project_id=project_id,
                 requirement_id=req.id,
                 finding_code=f"F-{finding_idx:03d}",
-                finding_type=finding_type_map.get(assessment.coverage_status, "Partial evidence"),
+                finding_type=finding_type_for(assessment.coverage_status),
                 severity=req.severity,
                 review_state=assessment.review_state,
                 category=req.category,

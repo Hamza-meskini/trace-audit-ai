@@ -83,6 +83,84 @@ def test_glm_model_auto_infers_tokenrouter(monkeypatch):
     tokenrouter.assert_awaited_once()
 
 
+def test_dashscope_qwen_model_routes_to_responses_adapter(monkeypatch):
+    monkeypatch.setattr(settings, "LLM_PROVIDER", "databricks")
+    monkeypatch.setattr(settings, "DASHSCOPE_API_KEY", "test-dashscope-key")
+    dashscope = AsyncMock(return_value='{"value":"qwen_ok"}')
+    databricks = AsyncMock(return_value=None)
+    monkeypatch.setattr(llm_client, "call_dashscope_responses", dashscope)
+    monkeypatch.setattr(llm_client, "call_databricks_chat_completions", databricks)
+
+    result = asyncio.run(llm_client.generate_structured(
+        prompt="Extract a value.",
+        response_model=ExampleResult,
+        model="qwen3.8-flash",
+        thinking_level="medium",
+        allow_model_fallback=False,
+    ))
+
+    assert result == ExampleResult(value="qwen_ok")
+    dashscope.assert_awaited_once()
+    assert dashscope.await_args.kwargs["model"] == "qwen3.8-flash"
+    assert dashscope.await_args.kwargs["thinking_level"] == "medium"
+    databricks.assert_not_awaited()
+
+
+def test_dashscope_qwen_never_routes_to_databricks_when_key_is_missing(monkeypatch):
+    monkeypatch.setattr(settings, "LLM_PROVIDER", "databricks")
+    monkeypatch.setattr(settings, "DASHSCOPE_API_KEY", "")
+    monkeypatch.delenv("DASHSCOPE_API_KEY", raising=False)
+    databricks = AsyncMock(return_value='{"value":"wrong-provider"}')
+    monkeypatch.setattr(llm_client, "call_databricks_chat_completions", databricks)
+
+    try:
+        asyncio.run(llm_client.generate_structured(
+            prompt="Extract a value.",
+            response_model=ExampleResult,
+            model="qwen3.8-flash",
+            allow_model_fallback=True,
+        ))
+    except RuntimeError as exc:
+        assert "DASHSCOPE_API_KEY" in str(exc)
+    else:
+        raise AssertionError("Expected missing DashScope credentials to fail explicitly")
+
+    databricks.assert_not_awaited()
+
+
+def test_dashscope_qwen_text_failure_does_not_fallback_to_databricks(monkeypatch):
+    monkeypatch.setattr(settings, "LLM_PROVIDER", "databricks")
+    monkeypatch.setattr(settings, "DASHSCOPE_API_KEY", "test-dashscope-key")
+    dashscope = AsyncMock(return_value=None)
+    databricks = AsyncMock(return_value="wrong-provider")
+    monkeypatch.setattr(llm_client, "call_dashscope_responses", dashscope)
+    monkeypatch.setattr(llm_client, "call_databricks_chat_completions", databricks)
+
+    result = asyncio.run(llm_client.generate_text(
+        prompt="Answer.",
+        model="qwen3.8-flash",
+        thinking_level="medium",
+    ))
+
+    assert result is None
+    dashscope.assert_awaited_once()
+    databricks.assert_not_awaited()
+
+
+def test_dashscope_response_parser_ignores_reasoning_and_reads_final_message():
+    payload = {
+        "output": [
+            {"type": "reasoning", "summary": [{"text": "hidden reasoning"}]},
+            {
+                "type": "message",
+                "content": [{"type": "output_text", "text": '{"value":"ok"}'}],
+            },
+        ],
+    }
+
+    assert llm_client._dashscope_response_text(payload) == '{"value":"ok"}'
+
+
 def test_gemini_three_uses_native_schema_and_no_temperature(monkeypatch):
     monkeypatch.setattr(llm_client.settings, "GEMINI_API_KEY", "test-gemini-key")
     response = MagicMock(status_code=200)

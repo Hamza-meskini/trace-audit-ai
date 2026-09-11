@@ -22,6 +22,7 @@ BENCHMARK = REPO / "evaluation" / "extraction_benchmark"
 DOCS = BENCHMARK / "documents"
 RESULTS = REPO / "evaluation" / "results"
 RESULTS.mkdir(parents=True, exist_ok=True)
+sys.path.insert(0, str(REPO))
 sys.path.insert(0, str(BACKEND))
 sys.path.insert(0, str(BENCHMARK))
 
@@ -33,7 +34,7 @@ from validate_extraction_benchmark import validate
 
 
 DEFAULT_MODEL = "system.ai.llama-4-maverick"
-EXTRACTION_CHECKPOINT_VERSION = "split-model-atomic-v3"
+EXTRACTION_CHECKPOINT_VERSION = "split-model-atomic-v6-logic-flatten"
 
 
 def extraction_checkpoint_path(
@@ -251,20 +252,9 @@ def condition_score(expected: dict[str, Any], actual: dict[str, Any]) -> float:
 
 
 def align_conditions(expected: list[dict[str, Any]], actual: list[dict[str, Any]]) -> list[tuple[int, int, float]]:
-    if not expected or not actual:
-        return []
-    best: tuple[float, tuple[int, ...]] = (-1.0, ())
-    # Atomic contracts in this benchmark have no more than three conditions.
-    if len(actual) >= len(expected):
-        for chosen in itertools.permutations(range(len(actual)), len(expected)):
-            score = sum(condition_score(expected[i], actual[j]) for i, j in enumerate(chosen))
-            if score > best[0]:
-                best = (score, chosen)
-        pairs = [(i, j, condition_score(expected[i], actual[j])) for i, j in enumerate(best[1])]
-    else:
-        inverse = align_conditions(actual, expected)
-        pairs = [(j, i, score) for i, j, score in inverse]
-    return [item for item in pairs if item[2] >= 0.30]
+    from evaluation.atomic_evaluation import align
+    return [(pair["expected_index"], pair["predicted_index"], pair["identity_score"])
+            for pair in align(expected, actual) if pair["equivalent"]]
 
 
 def source_visibility(
@@ -471,6 +461,15 @@ def extraction_metrics(dataset: dict[str, Any], predictions: dict[str, list[dict
             for name, values in sorted(modality.items())
         },
     }
+    from evaluation.atomic_evaluation import decomposition
+    structured = decomposition(dataset["requirements"], predicted_flat)
+    metrics["structured_decomposition"] = structured
+    metrics["atomic_decomposition"].update({
+        "recall": structured["recall"], "precision": structured["precision"], "f1": structured["f1"],
+        "aligned": structured["correct"], "predicted": structured["predicted"],
+        "scoring_version": 3,
+        "note": "Credit requires structured field agreement; identity alignment alone is not correctness.",
+    })
     return metrics, rows
 
 
@@ -655,10 +654,18 @@ async def run(
         for page in recovery.get("pages", []):
             recovered_by_page[spec["filename"]][int(page["page"])] = str(page.get("recovered_text") or "")
         augmented_text[spec["filename"]] = f"{base_text}\n\n{recovery.get('text', '')}".strip()
+        provider_counts = Counter(
+            str(page.get("provider") or "unavailable")
+            for page in recovery.get("pages", [])
+        )
+        provider_summary = ", ".join(
+            f"{provider}={count}"
+            for provider, count in sorted(provider_counts.items())
+        ) or "none"
         print(
             f"  [{index}/{len(selected_documents)}] {spec['filename']}: "
             f"{recovery['recovered_pages']}/{recovery['candidate_pages']} candidate pages recovered "
-            f"({recovery['cache_hits']} cache hits)"
+            f"({recovery['cache_hits']} cache hits; providers: {provider_summary})"
         )
 
     post_vision_visibility = source_visibility(scoped_dataset, parsed, recovered_by_page)
@@ -818,7 +825,7 @@ async def run(
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--model", default=None, help="Model identifier (defaults to DEFAULT_MODEL or LLM_MODEL)")
-    parser.add_argument("--provider", default=None, help="LLM provider: tokenrouter, databricks, gemini, groq, openai")
+    parser.add_argument("--provider", default=None, help="LLM provider: tokenrouter, dashscope, databricks, gemini, groq, openai")
     parser.add_argument("--base-url", default=None, help="Custom base URL for OpenAI/TokenRouter endpoint")
     parser.add_argument("--api-key", default=None, help="Custom API key for provider")
     parser.add_argument("--thinking-level", default=None)
@@ -866,6 +873,9 @@ def main() -> int:
         if target_provider == "tokenrouter":
             settings.TOKENROUTER_BASE_URL = args.base_url
             os.environ["TOKENROUTER_BASE_URL"] = args.base_url
+        elif target_provider == "dashscope":
+            settings.DASHSCOPE_BASE_URL = args.base_url
+            os.environ["DASHSCOPE_BASE_URL"] = args.base_url
         else:
             settings.OPENAI_BASE_URL = args.base_url
             os.environ["OPENAI_BASE_URL"] = args.base_url
@@ -876,6 +886,9 @@ def main() -> int:
         if target_provider == "tokenrouter":
             settings.TOKENROUTER_API_KEY = args.api_key
             os.environ["TOKENROUTER_API_KEY"] = args.api_key
+        elif target_provider == "dashscope":
+            settings.DASHSCOPE_API_KEY = args.api_key
+            os.environ["DASHSCOPE_API_KEY"] = args.api_key
         elif target_provider == "databricks":
             settings.DATABRICKS_TOKEN = args.api_key
             os.environ["DATABRICKS_TOKEN"] = args.api_key

@@ -184,7 +184,7 @@ def classify_passage_modality(
         "impact test", "rollover", "test date", "passed", "failed",
     )
     inspection_markers = (
-        "visual inspection", "photograph", "photo no.", "observed visually",
+        "visual inspection", "observed visually",
     )
     strong_simulation_markers = (
         "finite element", "matlab", "simulink", "cfd", "spice", "model predicts",

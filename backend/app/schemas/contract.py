@@ -218,7 +218,7 @@ def parse_requirement_contract(
         v_method = "inspection"
 
     # Determine scope / entity (single shared normalization path)
-    scope = normalize_entity_scope(f"{category} {full_text}")
+    scope = normalize_entity_scope(full_text, category or "")
 
     contract = RequirementContract(
         requirement_id=req_code,

@@ -292,17 +292,12 @@ def _focused_semantic_retry_prompt(
         + f"- Recheck condition IDs: {', '.join(target_ids)}\n"
         + f"- Previous findings: {previous}\n"
         + "Reconcile excerpts from the same document and page as one structured form/table before deciding. "
-          "A printed checklist question or its Pass/Fail option labels are not an observed answer unless the "
-          "selected state is unambiguous; prefer the explicit measured/result field. If no supplied passage "
-          "addresses a condition, use UNTESTED. Use INCONCLUSIVE only when relevant evidence addresses that "
-          "condition but remains ambiguous, incomplete, method-incompatible, or inadmissible. A test explicitly "
-          "recorded as not executed/not measured is UNTESTED, never FAILED. A qualified observed violation is "
-          "FAILED, not INCONCLUSIVE, even when another excerpt reports an earlier PASS; use INCONCLUSIVE only "
-          "when subject identity or applicability of that violation is genuinely uncertain. For visual evidence, "
-          "set subject_identity and coverage_scope explicitly: one unidentified photograph cannot prove the "
-          "controlled article or an every/all population claim. Never use implication, likelihood, or an unstated "
-          "installation assumption as proof. Return every declared condition exactly once with exact evidence "
-          "IDs and quotes. HARD OUTPUT CONSISTENCY CONSTRAINTS: execution_state=NOT_EXECUTED requires "
+        + _STATUS_DECISION_RULES
+        + " For visual evidence, set subject_identity and coverage_scope explicitly: "
+          "one unidentified photograph cannot prove the controlled article or an every/all population claim. "
+          "Never use implication, likelihood, or an unstated installation assumption as proof. Return every "
+          "declared condition exactly once with exact evidence IDs and quotes. HARD OUTPUT CONSISTENCY "
+          "CONSTRAINTS: execution_state=NOT_EXECUTED requires "
           "status=UNTESTED, evidence_value_role=NOT_ADDRESSED or REQUIRED_OR_PLANNED, and relationship="
           "NOT_ADDRESSED. It is invalid to return FAILED, VIOLATES, or OBSERVED for an unexecuted test or "
           "unmeasured endpoint. status=FAILED requires execution_state=EXECUTED plus an observed violating "
@@ -389,7 +384,9 @@ Binding label rules:
   execution_state=NOT_EXECUTED and relationship=NOT_ADDRESSED. Missing execution is never FAILED.
 - PENDING requires direct partial empirical coverage with relationship=PARTIAL_COVERAGE and
   execution_state=PARTIALLY_EXECUTED (or EXECUTED when a measured subset was completed).
-  A merely planned, scheduled, or not-started test is UNTESTED, never PENDING.
+  A merely planned, scheduled, or not-started test is UNTESTED, never PENDING. Work that was
+  attempted but cannot be decided because of incomplete scope, calibration, identity, method,
+  or authority gaps is INCONCLUSIVE, never PENDING.
 - UNTESTED means no supplied evidence establishes an execution or outcome for that condition.
 - INCONCLUSIVE means evidence directly addresses the condition but result, authority, identity,
   scope, method, or detail is insufficient to decide it.
@@ -820,7 +817,7 @@ def _audit_llm_condition_metadata(
         # condition_transitions for a fully auditable trace.
         if (
             result.execution_state == "NOT_EXECUTED"
-            and result.status not in ("UNTESTED", "NOT_APPLICABLE")
+            and result.status in ("PROVEN", "FAILED", "PENDING")
         ):
             previous_status = result.status
             result.status = "UNTESTED"
@@ -1005,6 +1002,77 @@ def _format_source_authority_tag(auth: SourceAuthority, doc_name: str) -> str:
     return tag_map.get(auth, "[SOURCE: UNCLASSIFIED DOCUMENT]")
 
 
+# ── Canonical verification rulebook ──────────────────────────────────────────
+# Single copy of the auditing rules shared by the single-requirement prompt,
+# the batch prompt, the focused semantic retry, and secondary adjudication.
+# Any rule change must be made here and nowhere else.
+
+_AUDIT_STEP1_RULES = """STEP 1: EVIDENCE ATTRIBUTION & RELEVANCE CHECK (Filter Similarity Noise)
+- For each requirement under evaluation, decide whether its retrieved excerpts provide DIRECT verification evidence for the target requirement and its specified entity/subsystem, or were fetched merely due to keyword/vector similarity.
+- Excerpts from the same document and page are parts of one structural evidence group. Reconcile table headers, rows, checkboxes, captions, footnotes, and neighboring text together before interpreting a value or verdict.
+- A printed checklist question and its possible Pass/Fail choices are not an observed result unless the selected state is unambiguous. Prefer an explicit measured value or completed result field; if the structure remains ambiguous, return INCONCLUSIVE instead of choosing an option.
+- HIERARCHICAL SCOPE vs COMPONENT CONTEXT:
+  * If an excerpt describes an internal component/sub-circuit rating from a component datasheet, while a primary System-Level Physical Test Report proves that the fully integrated system successfully operated across the entire required operational envelope, the internal component rating represents implementation detail and does NOT restrict or invalidate the verified integrated system capability.
+  * If an excerpt describes an intentional fault-injection or safety stress test (e.g., injecting an out-of-range stimulus or simulated fault to verify that protective shutdown/reaction mechanisms execute within required latency), this proves functional safety protective compliance, NOT a specification breach or contradiction."""
+
+_AUDIT_STEP2_RULES = """STEP 2: CONDITION EVALUATION & COMPLIANCE RULES
+1. NUMERIC OPERATING ENVELOPE (SUPERSET PROOF):
+   - When verifying an operating capability span [Rmin, Rmax], any empirical test envelope [Tmin, Tmax] where Tmin <= Rmin and Tmax >= Rmax (i.e. the tested range fully encompasses the required operational bounds) provides mathematical proof of capability and is PROVEN / SUPPORTED.
+   - A nominal target T with an explicit ± tolerance d is ONE composite interval [T-d, T+d]; do not require the observation to equal exactly T.
+2. DOCUMENT AUTHORITY & MODALITY DISCIPLINE:
+   - When a requirement mandates physical laboratory/bench testing ('physical_test'), theoretical simulations (MATLAB, SPICE, CFD, Simulink), analytical calculations (FMEDA, formulas), or architecture drawings provide 0% empirical proof.
+   - You must NOT mark conditions as 'PROVEN' or 'PENDING' based on simulation or calculation evidence when physical test is required. Relevant but method-incompatible evidence is 'INCONCLUSIVE' and the overall requirement is 'UNKNOWN' (NOT 'PARTIAL', NOT 'SUPPORTED').
+   - Reserve 'PARTIAL' strictly for when QUALIFIED empirical lab testing directly addressed the condition but covered an incomplete operating envelope or subset. A compliance matrix, design, simulation, or calculation alone is UNKNOWN, not PARTIAL.
+   - If the requirement explicitly permits or specifies verification by simulation/analysis, simulation evidence is acceptable.
+3. COMPLIANCE MATRIX STATUS:
+   - If an official compliance tracking matrix explicitly records 'NOT STARTED', 'MISSING', or 'TEST PENDING' for this requirement, the status is 'MISSING' (condition status: 'UNTESTED').
+4. COMPOUND CONDITIONS:
+   - Return every declared condition exactly once in `condition_results`, using its exact condition ID. Never omit a condition.
+   - Use exactly one state: PROVEN (qualified evidence establishes it), FAILED (qualified/relevant hard evidence contradicts it), PENDING (qualified empirical work directly covers only part of it), UNTESTED (no relevant verification evidence exists), NOT_APPLICABLE (an alternative path or conditional branch is genuinely inapplicable), or INCONCLUSIVE (relevant evidence exists but has insufficient authority, method, scope, parameter alignment, or detail).
+   - JUDGE EVERY CONDITION INDEPENDENTLY. A sibling condition's missing range, pending test, or failure changes the final requirement status but must never downgrade an independently satisfied condition.
+   - PENDING describes partial empirical coverage of THIS condition only. Never use PENDING merely because the overall requirement is PARTIAL. If this condition is fully satisfied by qualified evidence, return PROVEN even when another condition remains incomplete.
+   - PENDING vs INCONCLUSIVE decision rule: PENDING requires that a successfully measured subset of THIS condition exists (a partial empirical PASS) with only the remainder outstanding. Work that was merely attempted, started, scheduled, or whose outcome cannot be decided because of incomplete scope, calibration, identity, method, or authority gaps is INCONCLUSIVE. An attempted-but-undecidable verification (for example 'work was attempted but incomplete scope or calibration prevents deciding') is INCONCLUSIVE, never PENDING.
+   - For every condition, also return the exact observed parameter/value/unit, `evidence_value_role` (OBSERVED, REQUIRED_OR_PLANNED, STATUS_ONLY, NOT_ADDRESSED, or UNCLEAR), and `relationship` (SATISFIES, VIOLATES, PARTIAL_COVERAGE, NOT_ADDRESSED, or UNCLEAR).
+   - Also return `execution_state` (EXECUTED, PARTIALLY_EXECUTED, NOT_EXECUTED, NOT_ADDRESSED, UNKNOWN), `subject_identity` (CONFIRMED, UNCONFIRMED, NOT_REQUIRED, UNKNOWN), and `coverage_scope` (ALL_REQUIRED, SAMPLE, SINGLE_ITEM, NOT_APPLICABLE, UNKNOWN) for every condition.
+   - A required, target, planned, scheduled, pending, or not-yet-tested value is NOT an observation. Never use it as measured proof. Set `evidence_value_role` to REQUIRED_OR_PLANNED.
+   - FAILED requires an executed observation that violates the condition. If the report says the test, endpoint, or measurement was not executed, set execution_state=NOT_EXECUTED and status=UNTESTED; absence of a test is not a failed test.
+   - PENDING requires direct evidence that this condition was partly performed or empirically covered. Set execution_state=PARTIALLY_EXECUTED (or EXECUTED when a measured subset was completed), relationship=PARTIAL_COVERAGE, and evidence_value_role=OBSERVED or STATUS_ONLY. A merely planned, scheduled, or not-started test is UNTESTED, not PENDING.
+   - Use `observed_min_value` and `observed_max_value` for an observed range. Use `observed_value` for a scalar, boolean, or categorical observation. Copy the observed unit exactly.
+   - Apply the stated Regulatory Logic. ALL_OF requires every applicable condition. ANY_OF is satisfied when at least one alternative path is PROVEN; mark genuinely unused alternatives NOT_APPLICABLE. For IF_THEN, first decide the antecedent and evaluate every consequent when it applies.
+   - A figure caption or image placeholder without an actual visual description cannot prove a visual condition. Return INCONCLUSIVE, not UNTESTED, because relevant visual evidence exists but has not been interpreted.
+   - A close-up/example image of a label can establish only the visible appearance shown. It cannot prove that the marking is installed on every required device, barrier, or location unless the image or accompanying text explicitly establishes that scope.
+   - Visual proof is PROVEN only when the depicted subject is linked to the controlled/tested article (subject_identity=CONFIRMED). If identity is missing, use INCONCLUSIVE. For words such as every/all/each, PROVEN additionally requires coverage_scope=ALL_REQUIRED; a single image or sample is INCONCLUSIVE.
+   - UNTESTED means no supplied evidence addresses execution or outcome for THIS condition, even when the same report proves sibling conditions. INCONCLUSIVE means an excerpt directly addresses THIS condition but its result, authority, method, scope, or detail cannot establish a conclusion.
+   - Never mark PROVEN because evidence merely implies, suggests, likely satisfies, or is assumed to satisfy a condition. If the required fact is not explicit or directly observable, use UNTESTED or INCONCLUSIVE as defined above.
+   - Derive relational conditions from observed table operands. If a table gives A and B, compare them directly; do not require a separate sentence spelling out A >= B. PDF labels may separate subscripts or primes (for example `V = 1` means V1 and `V ’ = 1` means V1-prime).
+   - Every PROVEN, FAILED, or PENDING condition MUST include at least one evidence ID (E1, E2, ...) and a verbatim quote from that evidence. Never return an attributed condition status without both fields.
+   - A qualified local failure, violation, leakage, exceeded limit, or lower achieved rating dominates an earlier PASS word across the supplied evidence set when both concern the same subject and condition. Do not average a demonstrated violation into INCONCLUSIVE."""
+
+_AUDIT_RULEBOOK = (
+    "Auditing Protocol & Verification Rules:\n\n"
+    + _AUDIT_STEP1_RULES
+    + "\n\n"
+    + _AUDIT_STEP2_RULES
+)
+
+# Compact status definitions reused by the focused retry and secondary
+# adjudication prompts so the taxonomy wording stays identical everywhere.
+_STATUS_DECISION_RULES = (
+    "If no supplied passage addresses a condition, use UNTESTED. "
+    "Use INCONCLUSIVE only when relevant evidence directly addresses that "
+    "condition but remains ambiguous, incomplete, method-incompatible, or "
+    "inadmissible — including work that was attempted but cannot be decided "
+    "because of incomplete scope, calibration, identity, method, or authority "
+    "gaps. An attempted-but-undecidable verification is INCONCLUSIVE, never "
+    "PENDING. PENDING requires a successfully completed measured subset (a "
+    "partial empirical PASS) with only the remainder outstanding. A test "
+    "explicitly recorded as not executed/not measured is UNTESTED, never "
+    "FAILED. A qualified observed violation is FAILED, not INCONCLUSIVE, even "
+    "when another excerpt reports an earlier PASS; use INCONCLUSIVE only when "
+    "subject identity or applicability of that violation is genuinely uncertain."
+)
+
+
 def build_verification_prompt(
     contract: RequirementContract,
     evidence_chunks: list[dict[str, Any]],
@@ -1059,47 +1127,7 @@ def build_verification_prompt(
 Retrieved Technical Evidence:
 {evidence_block}
 
-Auditing Protocol & Verification Rules:
-
-STEP 1: EVIDENCE ATTRIBUTION & RELEVANCE CHECK (Filter Similarity Noise)
-- For each retrieved excerpt, evaluate whether it provides DIRECT verification evidence for the target requirement and its specified entity/subsystem, or if it was fetched merely due to keyword/vector similarity.
-- Excerpts from the same document and page are parts of one structural evidence group. Reconcile table headers, rows, checkboxes, captions, footnotes, and neighboring text together before interpreting a value or verdict.
-- A printed checklist question and its possible Pass/Fail choices are not an observed result unless the selected state is unambiguous. Prefer an explicit measured value or completed result field; if the structure remains ambiguous, return INCONCLUSIVE instead of choosing an option.
-- HIERARCHICAL SCOPE vs COMPONENT CONTEXT:
-  * If an excerpt describes an internal component/sub-circuit rating from a component datasheet, while a primary System-Level Physical Test Report proves that the fully integrated system successfully operated across the entire required operational envelope, the internal component rating represents implementation detail and does NOT restrict or invalidate the verified integrated system capability.
-  * If an excerpt describes an intentional fault-injection or safety stress test (e.g., injecting an out-of-range stimulus or simulated fault to verify that protective shutdown/reaction mechanisms execute within required latency), this proves functional safety protective compliance, NOT a specification breach or contradiction.
-
-STEP 2: CONDITION EVALUATION & COMPLIANCE RULES
-1. NUMERIC OPERATING ENVELOPE (SUPERSET PROOF):
-   - When verifying an operating capability span [Rmin, Rmax], any empirical test envelope [Tmin, Tmax] where Tmin <= Rmin and Tmax >= Rmax (i.e. the tested range fully encompasses the required operational bounds) provides mathematical proof of capability and is PROVEN / SUPPORTED.
-   - A nominal target T with an explicit ± tolerance d is ONE composite interval [T-d, T+d]; do not require the observation to equal exactly T.
-2. DOCUMENT AUTHORITY & MODALITY DISCIPLINE:
-   - When a requirement mandates physical laboratory/bench testing ('physical_test'), theoretical simulations (MATLAB, SPICE, CFD, Simulink), analytical calculations (FMEDA, formulas), or architecture drawings provide 0% empirical proof.
-   - You must NOT mark conditions as 'PROVEN' or 'PENDING' based on simulation or calculation evidence when physical test is required. Relevant but method-incompatible evidence is 'INCONCLUSIVE' and the overall requirement is 'UNKNOWN' (NOT 'PARTIAL', NOT 'SUPPORTED').
-   - Reserve 'PARTIAL' strictly for when QUALIFIED empirical lab testing directly addressed the condition but covered an incomplete operating envelope or subset. A compliance matrix, design, simulation, or calculation alone is UNKNOWN, not PARTIAL.
-   - If the requirement explicitly permits or specifies verification by simulation/analysis, simulation evidence is acceptable.
-3. COMPLIANCE MATRIX STATUS:
-   - If an official compliance tracking matrix explicitly records 'NOT STARTED', 'MISSING', or 'TEST PENDING' for this requirement, the status is 'MISSING' (condition status: 'UNTESTED').
-4. COMPOUND CONDITIONS:
-   - Return every declared condition exactly once in `condition_results`, using its exact condition ID. Never omit a condition.
-   - Use exactly one state: PROVEN (qualified evidence establishes it), FAILED (qualified/relevant hard evidence contradicts it), PENDING (qualified empirical work directly covers only part of it), UNTESTED (no relevant verification evidence exists), NOT_APPLICABLE (an alternative path or conditional branch is genuinely inapplicable), or INCONCLUSIVE (relevant evidence exists but has insufficient authority, method, scope, parameter alignment, or detail).
-   - JUDGE EVERY CONDITION INDEPENDENTLY. A sibling condition's missing range, pending test, or failure changes the final requirement status but must never downgrade an independently satisfied condition.
-   - PENDING describes partial empirical coverage of THIS condition only. Never use PENDING merely because the overall requirement is PARTIAL. If this condition is fully satisfied by qualified evidence, return PROVEN even when another condition remains incomplete.
-   - For every condition, also return the exact observed parameter/value/unit, `evidence_value_role` (OBSERVED, REQUIRED_OR_PLANNED, STATUS_ONLY, NOT_ADDRESSED, or UNCLEAR), and `relationship` (SATISFIES, VIOLATES, PARTIAL_COVERAGE, NOT_ADDRESSED, or UNCLEAR).
-   - Also return `execution_state` (EXECUTED, PARTIALLY_EXECUTED, NOT_EXECUTED, NOT_ADDRESSED, UNKNOWN), `subject_identity` (CONFIRMED, UNCONFIRMED, NOT_REQUIRED, UNKNOWN), and `coverage_scope` (ALL_REQUIRED, SAMPLE, SINGLE_ITEM, NOT_APPLICABLE, UNKNOWN) for every condition.
-   - A required, target, planned, scheduled, pending, or not-yet-tested value is NOT an observation. Never use it as measured proof. Set `evidence_value_role` to REQUIRED_OR_PLANNED.
-   - FAILED requires an executed observation that violates the condition. If the report says the test, endpoint, or measurement was not executed, set execution_state=NOT_EXECUTED and status=UNTESTED; absence of a test is not a failed test.
-   - PENDING requires direct evidence that this condition was partly performed or empirically covered. Set execution_state=PARTIALLY_EXECUTED (or EXECUTED when a measured subset was completed), relationship=PARTIAL_COVERAGE, and evidence_value_role=OBSERVED or STATUS_ONLY. A merely planned, scheduled, or not-started test is UNTESTED, not PENDING.
-   - Use `observed_min_value` and `observed_max_value` for an observed range. Use `observed_value` for a scalar, boolean, or categorical observation. Copy the observed unit exactly.
-   - Apply the stated Regulatory Logic. ALL_OF requires every applicable condition. ANY_OF is satisfied when at least one alternative path is PROVEN; mark genuinely unused alternatives NOT_APPLICABLE. For IF_THEN, first decide the antecedent and evaluate every consequent when it applies.
-   - A figure caption or image placeholder without an actual visual description cannot prove a visual condition. Return INCONCLUSIVE, not UNTESTED, because relevant visual evidence exists but has not been interpreted.
-   - A close-up/example image of a label can establish only the visible appearance shown. It cannot prove that the marking is installed on every required device, barrier, or location unless the image or accompanying text explicitly establishes that scope.
-   - Visual proof is PROVEN only when the depicted subject is linked to the controlled/tested article (subject_identity=CONFIRMED). If identity is missing, use INCONCLUSIVE. For words such as every/all/each, PROVEN additionally requires coverage_scope=ALL_REQUIRED; a single image or sample is INCONCLUSIVE.
-   - UNTESTED means no supplied evidence addresses execution or outcome for THIS condition, even when the same report proves sibling conditions. INCONCLUSIVE means an excerpt directly addresses THIS condition but its result, authority, method, scope, or detail cannot establish a conclusion.
-   - Never mark PROVEN because evidence merely implies, suggests, likely satisfies, or is assumed to satisfy a condition. If the required fact is not explicit or directly observable, use UNTESTED or INCONCLUSIVE as defined above.
-   - Derive relational conditions from observed table operands. If a table gives A and B, compare them directly; do not require a separate sentence spelling out A >= B. PDF labels may separate subscripts or primes (for example `V = 1` means V1 and `V ’ = 1` means V1-prime).
-   - Every PROVEN, FAILED, or PENDING condition MUST include at least one evidence ID (E1, E2, ...) and a verbatim quote from that evidence. Never return an attributed condition status without both fields.
-   - A qualified local failure, violation, leakage, exceeded limit, or lower achieved rating dominates an earlier PASS word across the supplied evidence set when both concern the same subject and condition. Do not average a demonstrated violation into INCONCLUSIVE.
+{_AUDIT_RULEBOOK}
 
 Return your evaluation strictly as a valid JSON object matching the VerificationAnalysisResult schema.
 """
@@ -1267,46 +1295,7 @@ def build_batch_verification_prompt(
 
 {"\n".join(req_blocks)}
 
-Auditing Protocol & Verification Rules for each requirement:
-
-STEP 1: EVIDENCE ATTRIBUTION & RELEVANCE CHECK (Filter Similarity Noise)
-- For each requirement, evaluate whether retrieved excerpts provide DIRECT verification evidence for the target requirement and its specified entity/subsystem, or if fetched merely due to keyword/vector similarity.
-- Treat excerpts from the same document and page as one structural evidence group. Reconcile headers, rows, checkboxes, captions, footnotes, and neighboring text before deciding.
-- Printed checklist questions and their possible Pass/Fail option labels are not observed answers unless selection is unambiguous. Prefer explicit measured/result fields; unresolved structure is INCONCLUSIVE.
-- HIERARCHICAL SCOPE vs COMPONENT CONTEXT:
-  * If an excerpt describes an internal component/sub-circuit rating from a component datasheet, while a primary System-Level Physical Test Report proves that the fully integrated system successfully operated across the entire required operational envelope, the internal component rating represents implementation detail and does NOT restrict or invalidate the verified integrated system capability.
-  * If an excerpt describes an intentional fault-injection or safety stress test (e.g., injecting an out-of-range stimulus or simulated fault to verify that protective shutdown/reaction mechanisms execute within required latency), this proves functional safety protective compliance, NOT a specification breach or contradiction.
-
-STEP 2: CONDITION EVALUATION & COMPLIANCE RULES
-1. NUMERIC OPERATING ENVELOPE (SUPERSET PROOF):
-   - When verifying an operating capability span [Rmin, Rmax], any empirical test envelope [Tmin, Tmax] where Tmin <= Rmin and Tmax >= Rmax (i.e. the tested range fully encompasses the required operational bounds) provides mathematical proof of capability and is PROVEN / SUPPORTED.
-   - A nominal target T with an explicit ± tolerance d is ONE composite interval [T-d, T+d]; do not require the observation to equal exactly T.
-2. DOCUMENT AUTHORITY & MODALITY DISCIPLINE:
-   - When a requirement mandates physical laboratory/bench testing ('physical_test'), theoretical simulations (MATLAB, SPICE, CFD, Simulink), analytical calculations (FMEDA, formulas), or architecture drawings provide 0% empirical proof.
-   - You must NOT mark conditions as 'PROVEN' or 'PENDING' based on simulation or calculation evidence when physical test is required. Relevant but method-incompatible evidence is 'INCONCLUSIVE' and the overall requirement is 'UNKNOWN' (NOT 'PARTIAL', NOT 'SUPPORTED').
-   - Reserve 'PARTIAL' strictly for when QUALIFIED empirical lab testing directly addressed the condition but covered an incomplete operating envelope or subset. A compliance matrix, design, simulation, or calculation alone is UNKNOWN, not PARTIAL.
-   - If the requirement explicitly permits or specifies verification by simulation/analysis, simulation evidence is acceptable.
-3. COMPLIANCE MATRIX STATUS:
-   - If an official compliance tracking matrix explicitly records 'NOT STARTED', 'MISSING', or 'TEST PENDING' for this requirement, the status is 'MISSING' (condition status: 'UNTESTED').
-4. COMPOUND CONDITIONS:
-   - For each requirement item, return every defined condition exactly once using its exact ID and one state: PROVEN, FAILED, PENDING, UNTESTED, NOT_APPLICABLE, or INCONCLUSIVE.
-   - JUDGE EVERY CONDITION INDEPENDENTLY. A sibling condition's missing range, pending test, or failure changes the final requirement status but must never downgrade an independently satisfied condition.
-   - PENDING describes partial empirical coverage of THIS condition only. Never use PENDING merely because the overall requirement is PARTIAL. If this condition is fully satisfied by qualified evidence, return PROVEN even when another condition remains incomplete.
-   - For every condition, also return the exact observed parameter/value/unit, `evidence_value_role` (OBSERVED, REQUIRED_OR_PLANNED, STATUS_ONLY, NOT_ADDRESSED, or UNCLEAR), and `relationship` (SATISFIES, VIOLATES, PARTIAL_COVERAGE, NOT_ADDRESSED, or UNCLEAR).
-   - Also return `execution_state` (EXECUTED, PARTIALLY_EXECUTED, NOT_EXECUTED, NOT_ADDRESSED, UNKNOWN), `subject_identity` (CONFIRMED, UNCONFIRMED, NOT_REQUIRED, UNKNOWN), and `coverage_scope` (ALL_REQUIRED, SAMPLE, SINGLE_ITEM, NOT_APPLICABLE, UNKNOWN) for every condition.
-   - A required, target, planned, scheduled, pending, or not-yet-tested value is NOT an observation. Never use it as measured proof. Set `evidence_value_role` to REQUIRED_OR_PLANNED.
-   - FAILED requires an executed observation that violates the condition. If a test, endpoint, or measurement was not executed, set execution_state=NOT_EXECUTED and status=UNTESTED; absence of a test is not a failed test.
-   - PENDING requires direct evidence that this condition was partly performed or empirically covered. Set execution_state=PARTIALLY_EXECUTED (or EXECUTED when a measured subset was completed), relationship=PARTIAL_COVERAGE, and evidence_value_role=OBSERVED or STATUS_ONLY. A merely planned, scheduled, or not-started test is UNTESTED, not PENDING.
-   - Use `observed_min_value` and `observed_max_value` for an observed range. Use `observed_value` for a scalar, boolean, or categorical observation. Copy the observed unit exactly.
-   - Apply each item's explicit Regulatory Logic: ALL_OF, ANY_OF, or IF_THEN. Do not treat alternative branches as mandatory siblings.
-   - A figure caption or image placeholder without an actual visual description makes a visual condition INCONCLUSIVE, not UNTESTED or PROVEN.
-   - A close-up/example label image proves only the appearance shown, not installation on every required device, barrier, or location unless that scope is explicit.
-   - Visual proof requires subject_identity=CONFIRMED. Missing controlled-article identity is INCONCLUSIVE. Universal every/all/each claims additionally require coverage_scope=ALL_REQUIRED; one image or a sample is INCONCLUSIVE.
-   - UNTESTED means no supplied evidence addresses THIS condition. Do not call a condition INCONCLUSIVE merely because the report addresses a sibling condition. Use INCONCLUSIVE only when evidence directly addresses this condition but remains ambiguous or inadmissible.
-   - Never mark PROVEN from implication, likelihood, or an unstated installation assumption. Use UNTESTED or INCONCLUSIVE according to the preceding definitions.
-   - Derive comparisons from observed table operands even when no prose conclusion is printed. PDF extraction may separate subscripts and primes, such as `V = 1` for V1 and `V ’ = 1` for V1-prime.
-   - Every PROVEN, FAILED, or PENDING condition MUST include at least one evidence ID (E1, E2, ...) and a verbatim quote from that evidence. Never return an attributed condition status without both fields.
-   - A qualified local failure, violation, leakage, exceeded limit, or lower achieved rating dominates an earlier PASS across the supplied evidence set when both concern the same subject and condition. Do not average a demonstrated violation into INCONCLUSIVE.
+{_AUDIT_RULEBOOK.replace("Return every declared condition exactly once in `condition_results`, using its exact condition ID. Never omit a condition.", "For each requirement item, return every defined condition exactly once using its exact ID and one state: PROVEN, FAILED, PENDING, UNTESTED, NOT_APPLICABLE, or INCONCLUSIVE.").replace("Apply the stated Regulatory Logic.", "Apply each item's explicit Regulatory Logic: ALL_OF, ANY_OF, or IF_THEN. Do not treat alternative branches as mandatory siblings.")}
 
 Respond with a JSON object containing `batch_results: list[BatchVerificationItemResult]` with an item for each requirement.
 """

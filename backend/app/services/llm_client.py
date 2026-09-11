@@ -13,6 +13,7 @@ import asyncio
 import base64
 import logging
 import sys
+import time
 from typing import Type, TypeVar, Optional, Any
 import httpx
 from pydantic import BaseModel
@@ -275,8 +276,9 @@ async def _call_openai_compatible_vision(
     timeout: float = 90.0,
     token_parameter: str = "max_tokens",
     request_options: Optional[dict[str, Any]] = None,
+    response_metadata: Optional[dict[str, str]] = None,
 ) -> Optional[str]:
-    """Call Groq or Hugging Face through their OpenAI-compatible VLM API."""
+    """Call an OpenAI-compatible VLM API and optionally record its resolved model."""
     if not api_key:
         return None
     image_url = (
@@ -303,6 +305,13 @@ async def _call_openai_compatible_vision(
     }
     for attempt in range(MAX_ATTEMPTS):
         try:
+            started = time.perf_counter()
+            if attempt == 0:
+                print(
+                    f"  [Vision Request -> {provider}] Sending image to {model} "
+                    f"({len(image_bytes)} bytes)...",
+                    flush=True,
+                )
             async with httpx.AsyncClient(timeout=timeout) as client:
                 response = await client.post(url, json=payload, headers=headers)
             if response.status_code in RETRYABLE_STATUS_CODES:
@@ -331,7 +340,29 @@ async def _call_openai_compatible_vision(
                     response.text[:500],
                 )
                 return None
-            text = _strip_reasoning_tags(_openai_message_text(response.json()))
+            response_data = response.json()
+            if response_metadata is not None:
+                resolved_model = response_data.get("model")
+                if isinstance(resolved_model, str) and resolved_model.strip():
+                    response_metadata["resolved_model"] = resolved_model.strip()
+                resolved_provider = response_data.get("provider")
+                if isinstance(resolved_provider, str) and resolved_provider.strip():
+                    response_metadata["resolved_provider"] = resolved_provider.strip()
+            text = _strip_reasoning_tags(_openai_message_text(response_data))
+            elapsed = time.perf_counter() - started
+            resolved_name = str(response_data.get("model") or model)
+            if text:
+                print(
+                    f"  [Vision Response <- {provider}] {resolved_name} succeeded "
+                    f"in {elapsed:.2f}s ({len(text)} chars)",
+                    flush=True,
+                )
+            else:
+                logger.warning(
+                    "%s vision returned HTTP 200 but no assistant text for %s.",
+                    provider,
+                    resolved_name,
+                )
             return text or None
         except Exception as exc:
             if attempt == MAX_ATTEMPTS - 1:
@@ -339,6 +370,37 @@ async def _call_openai_compatible_vision(
                 return None
             await asyncio.sleep(1.0 * (attempt + 1))
     return None
+
+
+async def call_openrouter_vision(
+    prompt: str,
+    *,
+    image_bytes: bytes,
+    image_mime_type: str = "image/png",
+    model: Optional[str] = None,
+    max_output_tokens: int = 1400,
+) -> dict[str, Any]:
+    """Describe one image through OpenRouter's image-aware free-model router."""
+    routed_model = model or settings.OPENROUTER_VISION_MODEL
+    metadata: dict[str, str] = {}
+    text = await _call_openai_compatible_vision(
+        prompt=prompt,
+        image_bytes=image_bytes,
+        image_mime_type=image_mime_type,
+        api_key=settings.effective_openrouter_api_key,
+        url=f"{settings.OPENROUTER_BASE_URL.rstrip('/')}/chat/completions",
+        model=routed_model,
+        provider="OpenRouter",
+        max_output_tokens=max_output_tokens,
+        request_options={"reasoning": {"enabled": True}},
+        response_metadata=metadata,
+    )
+    return {
+        "text": text or "",
+        "routed_model": routed_model,
+        "model": metadata.get("resolved_model") or routed_model,
+        "upstream_provider": metadata.get("resolved_provider", ""),
+    }
 
 
 async def call_groq_vision(
@@ -394,9 +456,46 @@ async def call_vision_with_fallback(
     max_output_tokens: int = 1400,
     skip_providers: Optional[set[str]] = None,
 ) -> dict[str, Any]:
-    """Try Gemini, Groq, then Hugging Face and return auditable provider data."""
+    """Try Databricks first, then the legacy vision providers with auditable routing."""
     attempted: list[dict[str, str]] = []
     skipped = {provider.lower() for provider in (skip_providers or set())}
+
+    if ("databricks" not in skipped and settings.DATABRICKS_VISION_MODEL
+            and settings.effective_databricks_token and settings.DATABRICKS_BASE_URL):
+        attempted.append({"provider": "databricks", "model": settings.DATABRICKS_VISION_MODEL})
+        text = await call_databricks_chat_completions(
+            prompt, model=settings.DATABRICKS_VISION_MODEL,
+            image_bytes=image_bytes, image_mime_type=image_mime_type,
+            max_output_tokens=max_output_tokens,
+        )
+        if text and text.strip():
+            return {"text": _strip_reasoning_tags(text).strip(), "provider": "databricks",
+                    "model": settings.DATABRICKS_VISION_MODEL, "attempted": attempted}
+
+    if "openrouter" not in skipped and settings.effective_openrouter_api_key:
+        attempted.append({
+            "provider": "openrouter",
+            "model": settings.OPENROUTER_VISION_MODEL,
+        })
+        result = await call_openrouter_vision(
+            prompt,
+            image_bytes=image_bytes,
+            image_mime_type=image_mime_type,
+            max_output_tokens=max_output_tokens,
+        )
+        text = str(result.get("text") or "").strip()
+        if text and not any(label in str(result.get("model") or "").lower() for label in ("content-safety", "moderation", "guard")):
+            attempted[-1]["resolved_model"] = str(result.get("model") or "")
+            if result.get("upstream_provider"):
+                attempted[-1]["upstream_provider"] = str(result["upstream_provider"])
+            return {
+                "text": text,
+                "provider": "openrouter",
+                "model": result.get("model") or settings.OPENROUTER_VISION_MODEL,
+                "routed_model": settings.OPENROUTER_VISION_MODEL,
+                "upstream_provider": result.get("upstream_provider", ""),
+                "attempted": attempted,
+            }
 
     if "gemini" not in skipped and settings.effective_gemini_api_key:
         attempted.append({"provider": "gemini", "model": gemini_model})
@@ -457,7 +556,10 @@ async def call_databricks_chat_completions(
     system_instruction: Optional[str] = None,
     json_mode: bool = False,
     max_output_tokens: int = 4096,
-    timeout: float = 90.0,
+    timeout: Optional[float] = None,
+    thinking_level: Optional[str] = None,
+    image_bytes: Optional[bytes] = None,
+    image_mime_type: str = "image/png",
 ) -> Optional[str]:
     """Call Databricks Model Serving AI Gateway via OpenAI-compatible endpoint."""
     import time
@@ -471,7 +573,15 @@ async def call_databricks_chat_completions(
     messages = []
     if system_instruction:
         messages.append({"role": "system", "content": system_instruction})
-    messages.append({"role": "user", "content": prompt})
+    if image_bytes is not None:
+        import base64
+        encoded = base64.b64encode(image_bytes).decode("ascii")
+        messages.append({"role": "user", "content": [
+            {"type": "text", "text": prompt},
+            {"type": "image_url", "image_url": {"url": f"data:{image_mime_type};base64,{encoded}"}},
+        ]})
+    else:
+        messages.append({"role": "user", "content": prompt})
 
     payload: dict[str, Any] = {
         "model": model,
@@ -479,6 +589,17 @@ async def call_databricks_chat_completions(
         "temperature": 0.1,
         "max_tokens": max_output_tokens,
     }
+    is_gpt_oss = model.rsplit(".", 1)[-1] in {
+        "gpt-oss-120b", "gpt-oss-20b", "databricks-gpt-oss-120b", "databricks-gpt-oss-20b"
+    }
+    if is_gpt_oss:
+        effort = (thinking_level or "medium").strip().lower()
+        effort = {"minimal": "low", "xhigh": "high", "max": "high", "none": "medium"}.get(effort, effort)
+        if effort not in {"low", "medium", "high"}:
+            raise ValueError(f"Unsupported GPT-OSS reasoning effort: {thinking_level!r}")
+        payload["reasoning_effort"] = effort
+    if timeout is None:
+        timeout = settings.DATABRICKS_REASONING_TIMEOUT_SECONDS if is_gpt_oss else 90.0
     if json_mode:
         payload["response_format"] = {"type": "json_object"}
 
@@ -490,7 +611,7 @@ async def call_databricks_chat_completions(
     for attempt in range(MAX_ATTEMPTS):
         try:
             t0 = time.time()
-            print(f"  [LLM Request -> Databricks] Sending prompt to {model} ({len(prompt)} chars)...", flush=True)
+            print(f"  [LLM Request -> Databricks] Sending prompt to {model} ({len(prompt)} chars, reasoning={payload.get('reasoning_effort', 'default')}, timeout={timeout}s)...", flush=True)
             async with httpx.AsyncClient(timeout=timeout) as client:
                 resp = await client.post(url, json=payload, headers=headers)
                 elapsed = time.time() - t0
@@ -559,9 +680,14 @@ async def call_databricks_chat_completions(
                 return result_text
         except Exception as ex:
             if attempt == MAX_ATTEMPTS - 1:
-                print(f"  [LLM Error] Databricks call failed: {ex}", flush=True)
+                print(f"  [LLM Error] Databricks call failed: {type(ex).__name__}: {ex!r}", flush=True)
                 logger.error(f"Exception calling Databricks Model Serving ({model}): {ex}")
                 return None
+            print(
+                f"  [LLM Warning] Databricks {model} attempt {attempt + 1}/{MAX_ATTEMPTS} "
+                f"failed after {time.time() - t0:.2f}s: {type(ex).__name__}: {ex!r}. Retrying...",
+                flush=True,
+            )
             await asyncio.sleep(20.0)
     return None
 
@@ -892,6 +1018,124 @@ async def call_tokenrouter_chat_completions(
     return None
 
 
+def _dashscope_response_text(payload: dict[str, Any]) -> str:
+    """Extract only final assistant text from a Responses-compatible payload."""
+    parts: list[str] = []
+    for item in payload.get("output") or []:
+        if not isinstance(item, dict) or item.get("type") != "message":
+            continue
+        for content in item.get("content") or []:
+            if not isinstance(content, dict):
+                continue
+            if content.get("type") in {"output_text", "text"} and isinstance(content.get("text"), str):
+                parts.append(content["text"])
+    if not parts and isinstance(payload.get("output_text"), str):
+        parts.append(payload["output_text"])
+    return "".join(parts).strip()
+
+
+async def call_dashscope_responses(
+    prompt: str,
+    model: str = "qwen3.8-flash",
+    system_instruction: Optional[str] = None,
+    json_mode: bool = False,
+    thinking_level: Optional[str] = None,
+    timeout: float = 180.0,
+    base_url: Optional[str] = None,
+    api_key: Optional[str] = None,
+) -> Optional[str]:
+    """Call DashScope's OpenAI Responses-compatible endpoint.
+
+    Qwen returns hidden reasoning and the assistant answer as separate output
+    items. Only the final ``message`` text is returned to schema validation.
+    """
+    import time
+
+    token = api_key or settings.effective_dashscope_api_key
+    target_base = (base_url or settings.effective_dashscope_base_url).rstrip("/")
+    if not token or not target_base:
+        return None
+
+    combined_prompt = prompt
+    if system_instruction:
+        combined_prompt = f"{system_instruction}\n\n{prompt}"
+    enable_thinking = str(thinking_level or "").strip().lower() not in {
+        "none",
+        "disabled",
+        "off",
+        "false",
+    }
+    payload: dict[str, Any] = {
+        "model": model,
+        "input": combined_prompt,
+        "enable_thinking": enable_thinking,
+    }
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json",
+    }
+    url = f"{target_base}/responses"
+
+    for attempt in range(MAX_ATTEMPTS):
+        try:
+            started = time.time()
+            print(
+                f"  [LLM Request -> DashScope] Sending prompt to {model} "
+                f"({len(prompt)} chars, thinking={'on' if enable_thinking else 'off'}, "
+                f"attempt {attempt + 1}/{MAX_ATTEMPTS})...",
+                flush=True,
+            )
+            request_timeout = httpx.Timeout(timeout, connect=min(timeout, 20.0))
+            async with httpx.AsyncClient(timeout=request_timeout) as client:
+                response = await client.post(url, json=payload, headers=headers)
+            if response.status_code in RETRYABLE_STATUS_CODES:
+                print(
+                    f"  [LLM Warning] DashScope rate/capacity [{response.status_code}]. Retrying...",
+                    flush=True,
+                )
+                await asyncio.sleep(2.0 * (attempt + 1))
+                continue
+            if response.status_code != 200:
+                error_body = _console_safe_text(response.text)
+                print(
+                    f"  [LLM Error] DashScope returned HTTP {response.status_code}: {error_body[:300]}",
+                    flush=True,
+                )
+                return None
+
+            data = response.json()
+            result_text = _dashscope_response_text(data)
+            elapsed = time.time() - started
+            if result_text:
+                cleaned = _clean_json_text(result_text) if json_mode else result_text
+                print(
+                    f"  [LLM Response <- DashScope] Received response from {model} "
+                    f"in {elapsed:.2f}s ({len(str(cleaned))} chars)",
+                    flush=True,
+                )
+                return str(cleaned)
+            output_types = [
+                item.get("type") for item in data.get("output") or [] if isinstance(item, dict)
+            ]
+            print(
+                f"  [LLM Warning] DashScope returned no final message text from {model} "
+                f"(output_types={output_types or 'unavailable'}).",
+                flush=True,
+            )
+            return None
+        except Exception as exc:
+            if attempt == MAX_ATTEMPTS - 1:
+                logger.error("DashScope call failed for %s: %s", model, exc)
+                print(f"  [LLM Error] DashScope call failed for {model}: {exc}", flush=True)
+                return None
+            print(
+                f"  [LLM Warning] DashScope call failed for {model}: {exc}. Retrying...",
+                flush=True,
+            )
+            await asyncio.sleep(2.0 * (attempt + 1))
+    return None
+
+
 async def call_openai_chat_completions(
     prompt: str,
     model: str = "gpt-4o-mini",
@@ -950,8 +1194,14 @@ def resolve_llm_provider(model: Optional[str] = None) -> str:
         return "databricks"
     if active_model.startswith("gemini-"):
         return "gemini"
+    # Bare Qwen 3.8 model IDs are DashScope-only identifiers. Routing must not
+    # depend on key discovery: a missing key should fail explicitly instead of
+    # sending the model name to the globally configured Databricks endpoint.
+    # Namespaced Qwen IDs (for example qwen/...) remain available to gateways.
+    if active_model.startswith("qwen3.8-"):
+        return "dashscope"
 
-    if explicit_provider in {"tokenrouter", "groq", "databricks", "gemini", "openai"}:
+    if explicit_provider in {"tokenrouter", "dashscope", "groq", "databricks", "gemini", "openai"}:
         return explicit_provider
 
     # Heuristic inference if no explicit provider set
@@ -962,6 +1212,8 @@ def resolve_llm_provider(model: Optional[str] = None) -> str:
     if "gemini" in active_model:
         return "gemini"
     if "qwen" in active_model:
+        if active_model.startswith("qwen3.8-"):
+            return "dashscope"
         return "groq" if settings.effective_groq_api_key else "databricks"
     if "llama" in active_model:
         return "databricks" if settings.effective_databricks_token else "groq"
@@ -976,6 +1228,8 @@ def resolve_llm_provider(model: Optional[str] = None) -> str:
         return "databricks"
     if settings.effective_tokenrouter_api_key:
         return "tokenrouter"
+    if settings.effective_dashscope_api_key:
+        return "dashscope"
     return "gemini"
 
 
@@ -992,6 +1246,12 @@ async def generate_structured(
     active_model = model or settings.LLM_MODEL
     provider = resolve_llm_provider(active_model)
 
+    if provider == "dashscope" and not settings.effective_dashscope_api_key:
+        raise RuntimeError(
+            f"Model {active_model!r} is routed exclusively to Alibaba DashScope, "
+            "but DASHSCOPE_API_KEY is not configured."
+        )
+
     raw_response: Optional[str] = None
 
     schema = response_model.model_json_schema()
@@ -1007,7 +1267,17 @@ async def generate_structured(
             max_output_tokens=max_output_tokens or 4096,
         )
 
-    # 2. Groq (when explicitly selected or inferred)
+    # 2. Alibaba Cloud Model Studio / DashScope Responses API
+    elif provider == "dashscope" and settings.effective_dashscope_api_key:
+        raw_response = await call_dashscope_responses(
+            prompt=prompt_with_schema,
+            model=active_model,
+            system_instruction=system_instruction,
+            json_mode=True,
+            thinking_level=thinking_level,
+        )
+
+    # 3. Groq (when explicitly selected or inferred)
     elif provider == "groq" and settings.effective_groq_api_key:
         raw_response = await call_groq_chat_completions(
             prompt=prompt_with_schema,
@@ -1019,7 +1289,7 @@ async def generate_structured(
             max_output_tokens=max_output_tokens or 8192,
         )
 
-    # 3. Databricks AI Gateway (when configured or requested)
+    # 4. Databricks AI Gateway (when configured or requested)
     elif provider == "databricks" and settings.effective_databricks_token:
         models_to_try = [active_model]
         if allow_model_fallback and active_model != "system.ai.llama-4-maverick":
@@ -1033,11 +1303,12 @@ async def generate_structured(
                 system_instruction=system_instruction,
                 json_mode=True,
                 max_output_tokens=max_output_tokens or 4096,
+                thinking_level=thinking_level,
             )
             if raw_response:
                 break
 
-    # 4. Google Gemini (when configured and selected)
+    # 5. Google Gemini (when configured and selected)
     elif provider == "gemini" and settings.effective_gemini_api_key:
         raw_response = await call_gemini_generate_content(
             prompt=f"{prompt}\n\nReturn only the JSON object required by the response schema.",
@@ -1049,7 +1320,7 @@ async def generate_structured(
             max_output_tokens=max_output_tokens or 8192,
         )
 
-    # 5. OpenAI
+    # 6. OpenAI
     elif provider == "openai" and settings.effective_openai_api_key:
         raw_response = await call_openai_chat_completions(
             prompt=prompt_with_schema,
@@ -1060,7 +1331,12 @@ async def generate_structured(
         )
 
     # Fallbacks across configured providers if primary returned nothing
-    if not raw_response and allow_model_fallback and active_model != "system.ai.llama-4-maverick":
+    if (
+        not raw_response
+        and allow_model_fallback
+        and active_model != "system.ai.llama-4-maverick"
+        and provider != "dashscope"
+    ):
         if provider != "tokenrouter" and settings.effective_tokenrouter_api_key and ("z-ai" in active_model or "glm" in active_model):
             raw_response = await call_tokenrouter_chat_completions(
                 prompt=prompt_with_schema,
@@ -1104,6 +1380,13 @@ async def generate_text(
     """Generate free-form text response with dynamic provider routing and fallbacks."""
     active_model = model or settings.LLM_MODEL
     provider = resolve_llm_provider(active_model)
+    res: Optional[str] = None
+
+    if provider == "dashscope" and not settings.effective_dashscope_api_key:
+        raise RuntimeError(
+            f"Model {active_model!r} is routed exclusively to Alibaba DashScope, "
+            "but DASHSCOPE_API_KEY is not configured."
+        )
 
     # 1. TokenRouter
     if provider == "tokenrouter" and settings.effective_tokenrouter_api_key:
@@ -1116,7 +1399,22 @@ async def generate_text(
         if res:
             return res
 
-    # 2. Gemini
+    # 2. DashScope Responses API
+    if provider == "dashscope" and settings.effective_dashscope_api_key:
+        res = await call_dashscope_responses(
+            prompt=prompt,
+            model=active_model,
+            system_instruction=system_instruction,
+            json_mode=False,
+            thinking_level=thinking_level,
+        )
+        if res:
+            return res
+        # Bare qwen3.8-* IDs are DashScope-only. Never cascade them to a
+        # different provider after a DashScope timeout or API error.
+        return None
+
+    # 3. Gemini
     if provider == "gemini" and settings.effective_gemini_api_key:
         res = await call_gemini_generate_content(
             prompt=prompt,
@@ -1128,8 +1426,8 @@ async def generate_text(
         if res:
             return res
 
-    # 3. Databricks Model Serving
-    if (provider == "databricks" or not res) and settings.effective_databricks_token:
+    # 4. Databricks Model Serving
+    if provider == "databricks" and settings.effective_databricks_token:
         models_to_try = [active_model] if "system.ai." in active_model else [settings.DATABRICKS_MODEL] + [m for m in settings.DATABRICKS_FALLBACK_MODELS if m != settings.DATABRICKS_MODEL]
         for db_model in models_to_try:
             logger.info(f"Cascading to Databricks AI Gateway model: {db_model}")
@@ -1138,6 +1436,7 @@ async def generate_text(
                 model=db_model,
                 system_instruction=system_instruction,
                 json_mode=False,
+                thinking_level=thinking_level,
             )
             if res:
                 return res
@@ -1145,7 +1444,7 @@ async def generate_text(
     if active_model == "system.ai.llama-4-maverick":
         return None
 
-    # 4. TokenRouter fallback
+    # 5. TokenRouter fallback
     if settings.effective_tokenrouter_api_key:
         res = await call_tokenrouter_chat_completions(
             prompt=prompt,
@@ -1156,7 +1455,7 @@ async def generate_text(
         if res:
             return res
 
-    # 5. OpenAI fallback
+    # 6. OpenAI fallback
     if settings.effective_openai_api_key:
         return await call_openai_chat_completions(
             prompt=prompt,

@@ -105,7 +105,12 @@ TraceAudit_AI_Product_Strategy_Report.docx
 evaluation/results/*.json
 evaluation/results/*.xlsx
 evaluation/results/*.md
+evaluation/results/*.log
 evaluation/results/.*.json
+evaluation/results/runs/
+
+# ── Evaluation runner scripts (generated) ────────────────────
+evaluation/*.ps1
 
 # ── Codex visualizations / analysis artifacts ────────────────
 .codex/

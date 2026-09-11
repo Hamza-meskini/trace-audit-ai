@@ -1079,7 +1079,7 @@ class TestSchemaStatusNormalization(unittest.TestCase):
         self.assertEqual(c.status, "INCONCLUSIVE")
 
         # Pending / In Progress synonyms
-        for raw in ["PENDING", "in_progress", "partial", "partially_tested", "deferred", "ongoing", "incomplete"]:
+        for raw in ["PENDING", "in_progress", "partial", "partially_tested", "ongoing", "incomplete"]:
             c = ConditionVerificationResult(condition_id="C1", status=raw)
             self.assertEqual(c.status, "PENDING", f"Failed for {raw}")
 

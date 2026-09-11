@@ -9,7 +9,7 @@ import re
 import asyncio
 from decimal import Decimal, InvalidOperation
 from typing import Optional, Union, Any
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 from app.config import settings
 from app.services.llm_client import generate_structured
 
@@ -54,7 +54,12 @@ class ExtractedCondition(BaseModel):
         pattern="^(VERIFICATION|APPLICABILITY)$",
         description="APPLICABILITY only for a trigger/precondition; VERIFICATION for an auditable obligation",
     )
-    description: str
+    # Models rebuilding a contract during retry passes occasionally omit this
+    # field while every other atom is well-formed; defaulting it here keeps the
+    # whole response from failing schema validation for a cosmetic gap.
+    # `_normalize_extracted_requirements` replaces the placeholder with the
+    # parameter or requirement title.
+    description: str = ""
     source_span: Optional[str] = Field(
         None,
         description="Shortest verbatim source span that grounds this condition",
@@ -82,6 +87,12 @@ class ExtractedCondition(BaseModel):
         default_factory=list,
         description="Semantic clause IDs formalized by this condition",
     )
+
+    @field_validator("description", mode="before")
+    @classmethod
+    def coerce_null_description(cls, value: Any) -> Any:
+        """Treat null as empty so the default + normalizer path applies."""
+        return "" if value is None else value
 
     @field_validator("clause_ids", mode="before")
     @classmethod
@@ -247,6 +258,79 @@ class ExtractedRequirement(BaseModel):
         if isinstance(value, str):
             return {"operator": value}
         return value
+
+    @model_validator(mode="before")
+    @classmethod
+    def flatten_nested_logic_ids(cls, data: Any) -> Any:
+        """Flatten nested logic structures the model nests inside flat lists.
+
+        When reconstructing a contract, models sometimes emit the nested
+        IF_THEN shape ({"operator": "IF_THEN", "if_condition_id": ...}) as an
+        element of the flat logic.condition_ids / then_condition_ids lists
+        instead of using the dedicated fields. Extract the nested gate into
+        its proper fields and keep only string condition IDs, instead of
+        discarding an otherwise complete contract over the shape mismatch.
+        """
+        if not isinstance(data, dict):
+            return data
+        logic = data.get("logic")
+        if not isinstance(logic, dict):
+            return data
+        changed = False
+
+        def extract_nested(values: Any, *, field_name: str) -> list:
+            nonlocal changed
+            flat: list = []
+            if not isinstance(values, list):
+                return values if isinstance(values, list) else []
+            for item in values:
+                if isinstance(item, dict):
+                    changed = True
+                    nested_operator = str(item.get("operator") or "").upper()
+                    if nested_operator == "IF_THEN":
+                        logic.setdefault(
+                            "operator",
+                            "IF_THEN" if str(logic.get("operator") or "").upper() != "ANY_OF" else "ANY_OF",
+                        )
+                        if logic.get("operator") == "IF_THEN":
+                            if_condition = (
+                                item.get("if_condition_id")
+                                or item.get("if")
+                                or (item.get("antecedent") or {}).get("condition_id")
+                            )
+                            if isinstance(if_condition, str):
+                                logic.setdefault("if_condition_id", if_condition)
+                            nested_then = item.get("then_condition_ids") or item.get("then") or []
+                            if isinstance(nested_then, list):
+                                for then_item in nested_then:
+                                    if isinstance(then_item, str):
+                                        logic.setdefault("then_condition_ids", []).append(then_item)
+                                    elif isinstance(then_item, dict):
+                                        condition_id = then_item.get("condition_id")
+                                        if isinstance(condition_id, str):
+                                            logic.setdefault("then_condition_ids", []).append(condition_id)
+                            if isinstance(item.get("condition_id"), str):
+                                flat.append(item["condition_id"])
+                    elif isinstance(item.get("condition_id"), str):
+                        flat.append(item["condition_id"])
+                elif isinstance(item, str):
+                    flat.append(item)
+            if changed and field_name == "condition_ids":
+                logic["condition_ids"] = flat
+            return flat
+
+        extract_nested(logic.get("condition_ids"), field_name="condition_ids")
+        then_flat = extract_nested(logic.get("then_condition_ids"), field_name="then")
+        if changed and isinstance(logic.get("then_condition_ids"), list):
+            # then_condition_ids were rebuilt from nested entries; keep any
+            # plain strings that were already there.
+            original_then = logic.get("then_condition_ids") or []
+            logic["then_condition_ids"] = list(dict.fromkeys(
+                item for item in (original_then + then_flat) if isinstance(item, str)
+            ))
+        if changed:
+            data["logic"] = logic
+        return data
 
     @field_validator(
         "parameters", "conditions", "semantic_clauses", "clause_coverage",
@@ -434,7 +518,7 @@ _REQUIREMENT_START_RE = re.compile(
 # ``S5.3 when it is impacted`` starts with a lowercase continuation and is not
 # a new block, while ``S7.6.6 If V1 ...`` is.
 _REGULATORY_START_RE = re.compile(
-    r"(?mi)^(?=[ \t]*S\d+(?:\.\d+)*(?:\([a-z0-9]+\))*[ \t]+(?:[A-Z§\"“]|$))"
+    r"(?m)^(?=[ \t]*S\d+(?:\.\d+)*(?:\([a-z0-9]+\))*\.?[ \t]+(?:[A-Z§\"“]|$))"
 )
 # Some tagged PDFs expose a lettered subparagraph only in the repeated section
 # path (for example ``SECTION: ... S7.1(c)``) while the body begins with
@@ -528,10 +612,40 @@ def _ground_discovered_description(
 ) -> DiscoveredRequirement:
     """Restore source prose when discovery returned only an ID/title."""
     description = requirement.description or ""
-    if _OBLIGATION_TEXT_RE.search(description):
+    # Absence of 'shall' does not make a description incomplete: procedures,
+    # exceptions and declarative constraints commonly omit modal verbs.
+    # Never borrow an obligation from a neighbouring clause or an ancestor.
+    if _requirement_code_from_block(source_block) != requirement.req_code:
+        return requirement
+    stripped = re.sub(r"^" + re.escape(requirement.req_code) + r"\s*[:.\-–—]?\s*", "", description).strip(" .")
+    if stripped != requirement.title.strip(" .") or _OBLIGATION_TEXT_RE.search(description):
         return requirement
     requirement.description = _source_requirement_description(source_block, description)
     return requirement
+
+
+def _is_source_heading(code: str, block: str) -> bool:
+    """Conservatively recognize short, title-only numbered source blocks."""
+    body = re.sub(r"^" + re.escape(code) + r"\s*[:.\-–—]?\s*", "", block).strip()
+    if "\n" in body or len(body.split()) > 12:
+        return False
+    # Keep declarative constraints and imperative test procedures too.
+    predicate = re.search(
+        r"\b(?:shall|must|required|is|are|be|has|have|may|can|cannot|will|"
+        r"meet|meets|exceed|exceeds|provide|provides|remain|remains|"
+        r"insert|measure|calculate|divide|record|connect|adjust|apply|"
+        r"remove|check|verify|ensure|test|set|use|when|if)\b|[<>=≤≥\d]",
+        body, re.IGNORECASE,
+    )
+    # Only recognize a narrow nominal title form; absence of the verbs above
+    # is not proof that arbitrary prose lacks an obligation (e.g. 'Doors lock
+    # automatically'). Leave uncertain cases to discovery.
+    nominal_title = re.fullmatch(
+        r"(?:Protection\s+(?:against|from)\s+[\w -]+|"
+        r"[\w -]+\s+(?:requirements|conditions|procedures|isolation))\.?",
+        body, re.IGNORECASE,
+    )
+    return nominal_title is not None and predicate is None
 
 
 def _normalize_requirement_code(value: str) -> str:
@@ -1091,6 +1205,88 @@ def _semantic_repair_issues(issues: list[str]) -> list[str]:
     ]
 
 
+def _completeness_defects(
+    requirement: ExtractedRequirement,
+    plan: RequirementClausePlan,
+    source_text: str,
+) -> list[str]:
+    """Detect obligations the atomic contract dropped relative to its own plan.
+
+    A condition can only be verified if it was extracted, so an approved
+    semantic clause with no mapped condition — or a source span whose numeric
+    obligations never reached any condition — is a completeness defect that a
+    focused LLM retry can fix. This mirrors the per-clause checks in
+    `_contract_validation_issues` but is requirement-level and plan-driven,
+    so the retry prompt can name exactly what is missing.
+    """
+    defects: list[str] = []
+    condition_by_id = {
+        condition.condition_id: condition
+        for condition in requirement.conditions
+        if condition.condition_id
+    }
+    covered_condition_ids = {
+        condition_id
+        for mapping in requirement.clause_coverage
+        for condition_id in mapping.condition_ids
+        if condition_id in condition_by_id
+    }
+
+    plan_clauses = {
+        clause.clause_id: clause
+        for clause in (requirement.semantic_clauses or plan.semantic_clauses)
+        if clause.clause_id
+    }
+    covered_clause_ids = {
+        mapping.clause_id
+        for mapping in requirement.clause_coverage
+        if mapping.clause_id in plan_clauses
+    }
+    for clause_id, clause in sorted(plan_clauses.items()):
+        if clause.clause_type == "QUALIFIER":
+            continue
+        if clause_id not in covered_clause_ids:
+            defects.append(
+                f"Semantic clause {clause_id} ({clause.clause_type}) is not mapped to any "
+                f"atomic condition: {clause.source_span}"
+            )
+            continue
+        if clause.clause_type != "VERIFICATION":
+            continue
+        source_numbers = {
+            normalized
+            for token in re.findall(r"[+-]?\d+(?:\.\d+)?", clause.source_span or "")
+            if (normalized := _canonical_numeric_token(token)) is not None
+        }
+        if not source_numbers:
+            continue
+        mapped_ids = {
+            condition_id
+            for mapping in requirement.clause_coverage
+            if mapping.clause_id == clause_id
+            for condition_id in mapping.condition_ids
+        }
+        mapped_values = set().union(*(
+            _numeric_values(condition_by_id[condition_id])
+            for condition_id in mapped_ids
+            if condition_id in condition_by_id
+        )) if mapped_ids else set()
+        if mapped_values and not source_numbers.issubset(mapped_values):
+            missing = ", ".join(sorted(source_numbers - mapped_values))
+            defects.append(
+                f"Semantic clause {clause_id} source span contains numeric obligation(s) {missing} "
+                f"that no mapped condition formalizes: {clause.source_span}"
+            )
+
+    # A declared condition that vanished from clause_coverage can never be
+    # verified, even when the raw text mentions it.
+    for condition_id in sorted(set(condition_by_id) - covered_condition_ids):
+        defects.append(
+            f"Condition {condition_id} is absent from clause_coverage and cannot be verified."
+        )
+    return defects
+
+
 def _normalize_extracted_requirements(
     requirements: list[ExtractedRequirement],
     *,
@@ -1385,7 +1581,16 @@ def _discovered_source_block(
     # For unnumbered requirements, relevant table/figure text may surround the
     # sentence selected during discovery. Preserve that local chunk so the
     # planner and provenance validator can still see the multimodal context.
-    return source_by_code.get(requirement.req_code, fallback_source or requirement.description)
+    if requirement.req_code in source_by_code:
+        return source_by_code[requirement.req_code]
+    # Resolve subparagraphs to their nearest known parent instead of exposing
+    # all unrelated clauses in the chunk to construction/provenance checks.
+    parents = [code for code in source_by_code
+               if requirement.req_code.startswith(code + "(")
+               or requirement.req_code.startswith(code + ".")]
+    if parents:
+        return source_by_code[max(parents, key=len)]
+    return fallback_source or requirement.description
 
 
 def _fallback_clause_plan(requirement: DiscoveredRequirement) -> RequirementClausePlan:
@@ -1445,7 +1650,16 @@ async def _discover_requirements(
         code: block
         for block in _requirement_blocks(chunk_text)
         if (code := _requirement_code_from_block(block)) is not None
+        and not _is_source_heading(code, block)
     }
+    heading_codes = {
+        code for block in _requirement_blocks(chunk_text)
+        if (code := _requirement_code_from_block(block)) is not None
+        and _is_source_heading(code, block)
+    }
+    by_code = {code: item for code, item in by_code.items() if code not in heading_codes}
+    if not by_code and heading_codes and not expected_blocks:
+        return []
     missing = {code: block for code, block in expected_blocks.items() if code not in by_code}
     if missing:
         print(
@@ -1455,7 +1669,8 @@ async def _discover_requirements(
         recovered = await request("\n\n".join(missing.values()), f"{chunk_label}.missing")
         for item in recovered:
             item.req_code = _normalize_requirement_code(item.req_code)
-            by_code.setdefault(item.req_code, item)
+            if item.req_code not in heading_codes:
+                by_code.setdefault(item.req_code, item)
 
     still_missing = {code: block for code, block in expected_blocks.items() if code not in by_code}
     if still_missing and not allow_rule_fallback:
@@ -1505,14 +1720,23 @@ async def _plan_requirement_clauses(
     allow_rule_fallback: bool,
     allow_model_fallback: bool,
 ) -> dict[str, RequirementClausePlan]:
-    async def request(items: list[DiscoveredRequirement], label: str) -> list[RequirementClausePlan]:
+    async def request(
+        items: list[DiscoveredRequirement],
+        label: str,
+        source_text: Optional[str] = None,
+    ) -> list[RequirementClausePlan]:
         models = list(dict.fromkeys(
             model for model in (active_model, fallback_model) if model
         ))
         for model_index, request_model in enumerate(models):
             try:
                 result = await generate_structured(
-                    prompt=_build_clause_planning_prompt(items, chunk_text, doc_name, label),
+                    prompt=_build_clause_planning_prompt(
+                        items,
+                        source_text or chunk_text,
+                        doc_name,
+                        label,
+                    ),
                     response_model=RequirementPlanningResult,
                     model=request_model,
                     system_instruction=(
@@ -1544,17 +1768,61 @@ async def _plan_requirement_clauses(
                 )
         return []
 
-    plans = await request(discovered, chunk_label)
+    source_by_code = {
+        code: block
+        for block in _requirement_blocks(chunk_text)
+        if (code := _requirement_code_from_block(block)) is not None
+    }
+
+    # Qwen's thinking mode is reliable on a focused requirement but can take
+    # longer than the request timeout when several independent clause graphs
+    # share one prompt. Keep its work bounded and source-local. Other models
+    # retain the lower-latency section batch.
+    is_focused_atomic_model = active_model.strip().lower().startswith("qwen3.8-")
+    planning_batches = (
+        [[item] for item in discovered]
+        if is_focused_atomic_model
+        else [discovered]
+    )
+    plans: list[RequirementClausePlan] = []
+    for batch_index, batch in enumerate(planning_batches, start=1):
+        label = chunk_label
+        source_text = chunk_text
+        if is_focused_atomic_model:
+            label = f"{chunk_label}.atomic-plan-{batch_index:02d}"
+            source_text = "\n\n".join(
+                _discovered_source_block(item, source_by_code, item.description)
+                for item in batch
+            )
+        plans.extend(await request(batch, label, source_text))
     by_code: dict[str, RequirementClausePlan] = {}
     for plan in plans:
         plan.req_code = _normalize_requirement_code(plan.req_code)
         by_code[plan.req_code] = plan
     missing = [item for item in discovered if item.req_code not in by_code]
     if missing:
-        repaired = await request(missing, f"{chunk_label}.missing-plans")
-        for plan in repaired:
-            plan.req_code = _normalize_requirement_code(plan.req_code)
-            by_code.setdefault(plan.req_code, plan)
+        repair_batches = (
+            [[item] for item in missing]
+            if is_focused_atomic_model
+            else [missing]
+        )
+        for batch_index, batch in enumerate(repair_batches, start=1):
+            repair_source = (
+                "\n\n".join(
+                    _discovered_source_block(item, source_by_code, item.description)
+                    for item in batch
+                )
+                if is_focused_atomic_model
+                else chunk_text
+            )
+            repaired = await request(
+                batch,
+                f"{chunk_label}.missing-plans-{batch_index:02d}",
+                repair_source,
+            )
+            for plan in repaired:
+                plan.req_code = _normalize_requirement_code(plan.req_code)
+                by_code.setdefault(plan.req_code, plan)
 
     if missing and not allow_rule_fallback:
         still_missing = [item.req_code for item in discovered if item.req_code not in by_code]
@@ -1767,6 +2035,98 @@ Set decomposition_method to staged. Return JSON only.
             f"[{_format_validation_issue_categories(normalized.validation_issues)}]; no LLM repair requested.",
             flush=True,
         )
+
+    # Focused completeness retry: a dropped condition can never be verified
+    # downstream, so an approved clause with no mapped condition — or a source
+    # numeric obligation no condition formalizes — gets one targeted pass to
+    # add exactly the missing atoms. Guards against under-decomposition.
+    if EXTRACTION_REPAIR_ATTEMPTS:
+        defects = _completeness_defects(best, plan, source_text)
+        if defects:
+            print(
+                f"    [Atomic completeness] {discovered.req_code}: {len(defects)} obligation(s) "
+                f"lack an atomic condition; requesting focused retry.",
+                flush=True,
+            )
+            completeness_prompt = f"""Complete one atomic requirement contract whose atomic conditions dropped obligations from the approved plan.
+
+Authoritative source:
+{source_text}
+
+Approved semantic plan:
+{plan.model_dump()}
+
+Current contract:
+{best.model_dump(exclude_none=True)}
+
+Completeness defects to fix (add one atomic condition per unmapped obligation, and only for these):
+{defects}
+
+Preserve every existing condition that already covers a plan obligation, with its exact ID, parameters, and
+source spans. Do not split or duplicate conditions for anything already covered. Add the missing conditions
+with verbatim source_span values, precise source_parameter and canonical_parameter values, and link each
+condition to its clause in clause_ids and clause_coverage. Rebuild logic and logic_tree to govern every
+condition ID exactly once. Set decomposition_method to staged. Return exactly one complete requirement. Return JSON only.
+
+EVERY condition object MUST include a non-empty `description` string (a full sentence restating the
+obligation), plus condition_id, parameter, operator, condition_role, and clause_ids. Omitting `description`
+fails schema validation and the repair is discarded.
+
+{ATOMIC_DECOMPOSITION_GUIDE}
+"""
+            completed = await request(
+                completeness_prompt,
+                (
+                    "You complete a source-grounded atomic contract by adding only the missing atomic "
+                    "conditions named in the completeness defects. Every condition must carry a complete "
+                    "description, parameters, and clause links. Never invent an obligation and never "
+                    "remove a valid condition. Return complete JSON only."
+                ),
+            )
+            if completed is None:
+                # One corrective re-ask pointing at the concrete schema failure,
+                # matching the schema-retry policy above.
+                completed = await request(
+                    completeness_prompt
+                    + "\n\nYour previous response failed schema validation. Rebuild the complete "
+                      "requirement, making sure every condition includes its `description` field.",
+                    (
+                        "You complete a source-grounded atomic contract by adding only the missing atomic "
+                        "conditions named in the completeness defects. Every condition must carry a complete "
+                        "description, parameters, and clause links. Never invent an obligation and never "
+                        "remove a valid condition. Return complete JSON only."
+                    ),
+                )
+            if completed is not None:
+                completed = _normalize_extracted_requirements(
+                    [completed],
+                    source_by_code={discovered.req_code: source_text},
+                )[0]
+                completed_defects = _completeness_defects(completed, plan, source_text)
+                original_quality = (
+                    len(_completeness_defects(best, plan, source_text)),
+                    len(best.validation_issues),
+                    -int(best.contract_complete),
+                )
+                completed_quality = (
+                    len(completed_defects),
+                    len(completed.validation_issues),
+                    -int(completed.contract_complete),
+                )
+                if completed_quality < original_quality:
+                    best = completed
+                print(
+                    f"    [Atomic completeness result] {discovered.req_code}: "
+                    f"{len(completed_defects)} defect(s) remain; "
+                    f"{'accepted' if best is completed else 'kept original'}.",
+                    flush=True,
+                )
+            else:
+                print(
+                    f"    [Atomic completeness result] {discovered.req_code}: "
+                    "retry response failed schema validation; kept original contract.",
+                    flush=True,
+                )
     return best
 
 
@@ -1805,7 +2165,7 @@ async def _extract_chunk_staged(
     discovered = [
         _ground_discovered_description(
             item,
-            source_by_code.get(item.req_code, chunk_text),
+            source_by_code.get(item.req_code, ""),
         )
         for item in discovered
     ]
@@ -2151,6 +2511,7 @@ async def extract_requirements_from_text(
         or settings.effective_databricks_token
         or settings.effective_groq_api_key
         or settings.effective_tokenrouter_api_key
+        or settings.effective_dashscope_api_key
         or settings.effective_openai_api_key
     )
 

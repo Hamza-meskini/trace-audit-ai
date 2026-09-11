@@ -27,6 +27,7 @@ from app.services.validators.test_verdict import validate_test_verdict
 from app.services.validators.semantic import validate_semantic
 from app.services.validators import ValidationOutcome
 from app.services.verification_reasoner import SPEC_DOC_KEYWORDS
+from app.services.taxonomy import display_status, review_state_for
 from app.schemas.verification_result import ConditionVerificationResult
 
 
@@ -308,7 +309,7 @@ def _missing_assessment(contract: RequirementContract, empty_index: bool = False
     return RequirementAssessment(
         coverage_status="Missing",
         confidence=95.0,
-        review_state="Open",
+        review_state="Needs review",
         ai_analysis=analysis,
         ai_recommendation="Upload the relevant test plan, test report, or compliance record covering this requirement.",
         evidence_links=[],
@@ -406,13 +407,8 @@ def _verdict_assessment(
     verdict_outcome: ValidationOutcome,
     claims: Optional[list[Any]] = None,
 ) -> RequirementAssessment:
-    status_map = {
-        "MISSING": "Missing",
-        "PARTIAL": "Partial",
-        "CONFLICT": "Conflict",
-    }
-    cov_status = status_map.get(verdict_outcome.status, "Partial")
-    rev_state = "Open" if cov_status == "Missing" else "Needs review"
+    cov_status = display_status(verdict_outcome.status)
+    rev_state = review_state_for(verdict_outcome.status)
     condition_results = verdict_outcome.condition_results
     if not condition_results and verdict_outcome.status == "PARTIAL":
         condition_results = _partial_condition_results_from_claims(contract, claims or [])
@@ -519,16 +515,6 @@ def _finalize_assessment(
     pipeline_diagnostics: Optional[dict[str, Any]] = None,
 ) -> RequirementAssessment:
     """Map a validation outcome into a RequirementAssessment with evidence links."""
-    status_mapping = {
-        "SUPPORTED": ("Supported", "Reviewed"),
-        "PARTIAL": ("Partial", "Needs review"),
-        "CONFLICT": ("Conflict", "Needs review"),
-        "MISSING": ("Missing", "Open"),
-        # Inconclusive evidence (simulation / design intent / ambiguous) is surfaced
-        # as a first-class "Unknown" status instead of being silently downgraded.
-        "UNKNOWN": ("Unknown", "Needs review"),
-    }
-
     if outcome is None:
         outcome = ValidationOutcome(
             status="UNKNOWN",
@@ -540,7 +526,11 @@ def _finalize_assessment(
         "decision_source": "deterministic_validator",
         "final_status": outcome.status,
     })
-    cov_status, rev_state = status_mapping.get(outcome.status, ("Unknown", "Needs review"))
+    # Display + review mapping is owned by app.services.taxonomy; inconclusive
+    # evidence (simulation / design intent / ambiguous) is surfaced as a
+    # first-class "Unknown" status instead of being silently downgraded.
+    cov_status = display_status(outcome.status)
+    rev_state = review_state_for(outcome.status)
     review_reasons = _supported_review_gate(outcome, diagnostics, contract)
     if cov_status == "Supported" and review_reasons:
         rev_state = "Needs review"

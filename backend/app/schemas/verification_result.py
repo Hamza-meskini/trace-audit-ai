@@ -4,6 +4,7 @@ import re
 from typing import Literal, Optional, Any
 from pydantic import BaseModel, Field, PrivateAttr, field_validator
 from pydantic.json_schema import SkipJsonSchema
+from app.schemas.enum_normalization import coerce_enum
 
 
 AtomicConditionStatus = Literal["PROVEN", "FAILED", "PENDING", "UNTESTED", "NOT_APPLICABLE", "INCONCLUSIVE"]
@@ -53,10 +54,11 @@ _CONDITION_STATUS_SYNONYMS: dict[str, AtomicConditionStatus] = {
     "IN_PROGRESS": "PENDING",
     "PARTIAL": "PENDING",
     "PARTIALLY_TESTED": "PENDING",
-    "DEFERRED": "PENDING",
+    "DEFERRED": "UNTESTED",
     "ONGOING": "PENDING",
     "INCOMPLETE": "PENDING",
-    "SCHEDULED": "PENDING",
+    "SCHEDULED": "UNTESTED",
+    "PLANNED": "UNTESTED",
     # Untested / Not Started / Missing
     "UNTESTED": "UNTESTED",
     "NOT_STARTED": "UNTESTED",
@@ -161,10 +163,14 @@ def _normalize_enum_token(raw: Any) -> str:
 
 def normalize_condition_status(raw: Any) -> AtomicConditionStatus:
     """Normalize free-form LLM condition status into canonical AtomicConditionStatus."""
-    if not isinstance(raw, str):
-        return "UNTESTED"
     clean = _normalize_enum_token(raw)
-    return _CONDITION_STATUS_SYNONYMS.get(clean, "UNTESTED")
+    canonical = _CONDITION_STATUS_SYNONYMS.get(clean)
+    if canonical:
+        return canonical
+    repaired = coerce_enum(clean, ("PROVEN", "FAILED", "PENDING", "UNTESTED", "NOT_APPLICABLE", "INCONCLUSIVE"))
+    if repaired:
+        return repaired
+    raise ValueError(f"Unrecognized atomic condition status: {raw!r}")
 
 
 def normalize_top_level_status(raw: Any) -> VerificationTopLevelStatus:
@@ -240,6 +246,12 @@ class ConditionVerificationResult(BaseModel):
     @classmethod
     def _validate_status(cls, v: Any) -> str:
         return normalize_condition_status(v)
+
+    @field_validator("subject_identity", mode="before")
+    @classmethod
+    def _validate_subject_identity(cls, value: Any) -> str:
+        clean = _normalize_enum_token(value)
+        return coerce_enum(clean, ("CONFIRMED", "UNCONFIRMED", "NOT_REQUIRED", "UNKNOWN")) or clean
 
     @field_validator("execution_state", mode="before")
     @classmethod
