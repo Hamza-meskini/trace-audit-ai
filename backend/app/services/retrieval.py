@@ -14,11 +14,11 @@ Falls back gracefully to pure BM25 when embeddings are unavailable.
 import logging
 from typing import Any, Optional
 from dataclasses import dataclass
+import math
 import re
 from app.services.embedding import (
     tokenize,
     compute_bm25_score,
-    embed_single,
     embed_batch,
     cosine_similarity,
     _has_embedding_key,
@@ -42,11 +42,68 @@ class RetrievedChunk:
 
 
 REQ_CODE_REGEX = re.compile(r"\b(REQ[-_]?[A-Za-z0-9_-]*\d+)\b", re.IGNORECASE)
+CLAUSE_CODE_REGEX = re.compile(
+    r"\b([A-Za-z][A-Za-z0-9_-]*\d+(?:\.\d+)+(?:\([A-Za-z0-9]+\))*)\b",
+    re.IGNORECASE,
+)
 
 # Hybrid scoring weight: α for BM25, (1-α) for semantic embedding
 # 0.4 gives slight preference to semantic understanding while preserving
 # exact-match strength from BM25 (requirement codes, numeric values)
 HYBRID_ALPHA = 0.4
+
+
+def build_requirement_search_queries(
+    req_code: str,
+    title: str,
+    description: str,
+    conditions: list[dict[str, Any]] | None = None,
+    semantic_clauses: list[dict[str, Any]] | None = None,
+) -> list[str]:
+    """Build independent high-recall searches without making atoms authoritative.
+
+    The whole requirement remains the primary query. Atomic and semantic-clause
+    queries only expand recall for predicates that may appear on different
+    pages or in different evidence representations.
+    """
+    base = " ".join(part for part in (req_code, title, description) if part).strip()
+    queries: list[str] = [base] if base else []
+    for condition in conditions or []:
+        query = " ".join(str(value) for value in (
+            req_code,
+            condition.get("source_span", ""),
+            condition.get("description", ""),
+            condition.get("source_parameter", ""),
+            condition.get("canonical_parameter", ""),
+            condition.get("parameter", ""),
+            condition.get("operator", ""),
+            condition.get("threshold", ""),
+            condition.get("min_value", ""),
+            condition.get("max_value", ""),
+            condition.get("unit", ""),
+            condition.get("scope", ""),
+            condition.get("verification_method", ""),
+            " ".join(condition.get("clause_ids") or []),
+            "figure image visual marking label photograph diagram checkbox"
+            if condition.get("requires_visual_evidence") else "",
+        ) if value not in (None, "")).strip()
+        if query:
+            queries.append(query)
+    for clause in semantic_clauses or []:
+        query = " ".join(str(value) for value in (
+            req_code,
+            clause.get("source_span", ""),
+            clause.get("subject", ""),
+            clause.get("predicate", ""),
+            clause.get("relationship", ""),
+        ) if value not in (None, "")).strip()
+        if query:
+            queries.append(query)
+    # Exact identifiers deserve their own lexical query. This covers regulatory
+    # codes such as S5.2 without teaching the retriever benchmark answers.
+    identifiers = [req_code, *REQ_CODE_REGEX.findall(base), *CLAUSE_CODE_REGEX.findall(base)]
+    queries.extend(identifier for identifier in identifiers if identifier)
+    return list(dict.fromkeys(" ".join(query.split()) for query in queries if query.strip()))
 
 
 def _bm25_retrieve(
@@ -64,6 +121,7 @@ def _bm25_retrieve(
     req_code_token = req_code_match.group(1).lower() if req_code_match else None
     req_suffix_match = re.search(r"(\d+)$", req_code_token or "")
     req_suffix = req_suffix_match.group(1) if req_suffix_match else None
+    clause_codes = {match.lower() for match in CLAUSE_CODE_REGEX.findall(requirement_text)}
 
     core_param_tokens = {
         t for t in query_tokens
@@ -95,6 +153,11 @@ def _bm25_retrieve(
         # 1. Exact Requirement Code Boost (+5.0)
         if req_code_token and req_code_token in doc_tokens:
             score += 5.0
+
+        content_lower = content.lower()
+        for clause_code in clause_codes:
+            if re.search(rf"(?<![A-Za-z0-9]){re.escape(clause_code)}(?![A-Za-z0-9])", content_lower):
+                score += 5.0
 
         # Test reports commonly use TC-DOMAIN-NNN rather than the SRS code.
         if req_suffix and re.search(rf"\bTC[-_][A-Za-z0-9_-]*[-_]{re.escape(req_suffix)}\b", content, re.IGNORECASE):
@@ -255,7 +318,11 @@ def _expand_structural_context(
             break
         metadata = item.metadata or {}
         block_type = str(metadata.get("block_type") or "").lower()
-        structured = block_type in {"table", "figure", "formula", "checkbox"}
+        parser_backend = str(metadata.get("parser_backend") or "").lower()
+        structured = (
+            block_type in {"table", "figure", "formula", "checkbox"}
+            or parser_backend.startswith("databricks-ai-parse")
+        )
         if not structured:
             continue
         position = positions.get(item.chunk_id)
@@ -306,12 +373,17 @@ def _diversified_rerank(candidate_pool: list[RetrievedChunk], top_k: int) -> lis
     seen_docs: dict[str, int] = {}
     deferred: list[RetrievedChunk] = []
 
+    candidate_docs = {item.document_name for item in candidate_pool}
+    adaptive_limit = min(top_k, max(2, math.ceil(top_k / max(len(candidate_docs), 1))))
     for item in candidate_pool:
         doc_key = item.document_name
         doc_count = seen_docs.get(doc_key, 0)
 
-        # Allow max 2 chunks per single document in initial selection pass
-        per_doc_limit = 1 if ("matrix" in doc_key.lower() or doc_key.lower().endswith(".xlsx")) else 2
+        # Preserve source diversity without starving single-report corpora.
+        per_doc_limit = 1 if (
+            len(candidate_docs) > 1
+            and ("matrix" in doc_key.lower() or doc_key.lower().endswith(".xlsx"))
+        ) else adaptive_limit
         if doc_count < per_doc_limit or len(candidate_pool) < top_k:
             selected.append(item)
             seen_docs[doc_key] = doc_count + 1
@@ -414,10 +486,18 @@ async def retrieve_candidate_evidence_hybrid(
         selected = _condition_aware_rerank(bm25_pool, condition_rankings, top_k)
         return _expand_structural_context(selected, chunks)
 
-    # Step 3: Get query embedding
-    query_embedding = await embed_single(requirement_text, task_type="RETRIEVAL_QUERY")
-    if query_embedding is None:
-        logger.info("Embedding unavailable for query; using pure BM25 retrieval")
+    # Step 3: Embed the whole clause and atom-specific searches in one request.
+    # A candidate can therefore match either the overall obligation or one
+    # predicate that is documented on a different page.
+    query_texts = list(dict.fromkeys(
+        query.strip()
+        for query in (requirement_text, *(condition_queries or []))
+        if query and query.strip()
+    ))
+    query_embeddings = await embed_batch(query_texts, task_type="RETRIEVAL_QUERY")
+    usable_query_embeddings = [embedding for embedding in query_embeddings if embedding]
+    if not usable_query_embeddings:
+        logger.info("Embeddings unavailable for requirement queries; using pure BM25 retrieval")
         selected = _condition_aware_rerank(bm25_pool, condition_rankings, top_k)
         return _expand_structural_context(selected, chunks)
 
@@ -450,7 +530,10 @@ async def retrieve_candidate_evidence_hybrid(
 
         emb = candidate_embeddings[i]
         if emb:
-            semantic_score = cosine_similarity(query_embedding, emb)
+            semantic_score = max(
+                cosine_similarity(query_embedding, emb)
+                for query_embedding in usable_query_embeddings
+            )
             # Hybrid combination
             candidate.score = HYBRID_ALPHA * bm25_norm + (1 - HYBRID_ALPHA) * semantic_score
         else:

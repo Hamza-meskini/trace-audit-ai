@@ -102,12 +102,9 @@ TraceAudit_AI_Product_Strategy_Report.docx
 *.tmp
 
 # ── Evaluation results & outputs (generated, not source) ────
-evaluation/results/*.json
-evaluation/results/*.xlsx
-evaluation/results/*.md
-evaluation/results/*.log
-evaluation/results/.*.json
-evaluation/results/runs/
+# All run outputs, checkpoints, logs, traces, and experiment subdirs.
+# Benchmark source data & pipeline code live in evaluation/*_benchmark/.
+evaluation/results/
 
 # ── Evaluation runner scripts (generated) ────────────────────
 evaluation/*.ps1

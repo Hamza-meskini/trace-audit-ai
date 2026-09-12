@@ -87,8 +87,13 @@ async def describe_figure_candidates(
         vision_models = [settings.DATABRICKS_VISION_MODEL, settings.OPENROUTER_VISION_MODEL, active_model, settings.GROQ_VISION_MODEL, settings.HF_VISION_MODEL]
         cache_valid = (
             visual.get("status") == "complete" and bool(description)
-            and visual.get("prompt_version") == PROMPT_VERSION
-            and visual.get("vision_models") == vision_models
+            and (
+                visual.get("source") == "databricks-ai-parse"
+                or (
+                    visual.get("prompt_version") == PROMPT_VERSION
+                    and visual.get("vision_models") == vision_models
+                )
+            )
         )
         if not cache_valid:
             description = ""

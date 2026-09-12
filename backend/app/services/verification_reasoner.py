@@ -1,5 +1,6 @@
 """Structured multi-condition LLM reasoner with non-mutating audit diagnostics."""
 
+import json
 import re
 import logging
 from typing import Optional, Any
@@ -231,6 +232,16 @@ def _semantic_retry_condition_ids(
             targets.add(result.condition_id)
         if result.status == "PENDING" and result.execution_state == "NOT_EXECUTED":
             targets.add(result.condition_id)
+        expected_relationship = {
+            "PROVEN": "SATISFIES",
+            "FAILED": "VIOLATES",
+            "PENDING": "PARTIAL_COVERAGE",
+        }.get(result.status)
+        if (
+            expected_relationship
+            and result.relationship not in ("UNCLEAR", expected_relationship)
+        ):
+            targets.add(result.condition_id)
         if (
             result.status == "INCONCLUSIVE"
             and any(marker in evidence_text for marker in _HARD_VIOLATION_MARKERS)
@@ -337,6 +348,38 @@ def _focused_evidence_catalog(
             f" page={chunk.get('page_number') or 'unknown'}\n{content}"
         )
     return "\n\n".join(blocks) if blocks else "[No evidence supplied]"
+
+
+def _compact_verification_recovery_prompt(
+    contract: RequirementContract,
+    evidence_chunks: list[dict[str, Any]],
+) -> str:
+    """Build a small condition-only retry after a malformed full response."""
+    conditions = "\n".join(
+        _condition_line(condition)
+        for condition in contract.atomic_conditions
+        if condition.mandatory
+    )
+    return f"""Recover a malformed compliance-verification response using a compact schema.
+Return only a SemanticAdjudicationResult with `condition_results` and an optional short `reason`.
+Return every condition below exactly once with its exact condition ID.
+
+Requirement: {contract.req_code}
+Clause: {contract.raw_text}
+Logic: {_logic_line(contract)}
+Conditions:
+{conditions}
+
+Evidence:
+{_focused_evidence_catalog(contract, evidence_chunks)}
+
+For each condition use one canonical status. UNTESTED means no supplied excerpt directly
+establishes execution or an outcome. INCONCLUSIVE means an excerpt addresses the condition
+but cannot establish its result, scope, identity, authority, or required detail. PROVEN and
+FAILED require a literal quote and evidence ID. FAILED also requires an executed observed
+violation. Keep optional metadata concise and use UNKNOWN/UNCLEAR when it is unavailable.
+Do not return a requirement-level status, requirement_conditions, or evidence_findings.
+"""
 
 
 def _secondary_adjudication_prompt(
@@ -903,12 +946,21 @@ def _audit_llm_condition_metadata(
             "PENDING": "PARTIAL_COVERAGE",
         }.get(result.status)
         if expected_relationship and result.relationship not in ("UNCLEAR", expected_relationship):
-            if result.validation_state != "CONTRADICTED":
-                result.validation_state = "UNRESOLVED"
-            result.validation_notes.append(
-                f"Structured relationship {result.relationship} is inconsistent with status {result.status}; "
-                "semantic status was preserved."
-            )
+            previous_status = result.status
+            if previous_status in ("PROVEN", "FAILED"):
+                result.status = "INCONCLUSIVE"
+                result.validation_state = "CONTRADICTED"
+                result.validation_notes.append(
+                    f"Normalized impossible {previous_status}/{result.relationship} combination to "
+                    "INCONCLUSIVE; the structured relationship contradicts the semantic status."
+                )
+            else:
+                if result.validation_state != "CONTRADICTED":
+                    result.validation_state = "UNRESOLVED"
+                result.validation_notes.append(
+                    f"Structured relationship {result.relationship} is inconsistent with status {result.status}; "
+                    "semantic status was preserved."
+                )
 
         if result.status == "FAILED" and (
             result.execution_state != "EXECUTED"
@@ -1076,6 +1128,7 @@ _STATUS_DECISION_RULES = (
 def build_verification_prompt(
     contract: RequirementContract,
     evidence_chunks: list[dict[str, Any]],
+    targeted_extraction: Optional[dict[str, Any]] = None,
 ) -> tuple[str, str]:
     """Construct a rigorous, structured compliance auditing prompt with qualification annotations."""
     system_instruction = (
@@ -1105,6 +1158,10 @@ def build_verification_prompt(
         )
 
     evidence_block = "\n".join(formatted_evidence) if formatted_evidence else "[No evidence retrieved]"
+    targeted_block = (
+        json.dumps(targeted_extraction, ensure_ascii=False, indent=2)
+        if targeted_extraction else "[No targeted extraction supplied]"
+    )
 
     cond_descriptions = []
     if contract.atomic_conditions:
@@ -1126,6 +1183,13 @@ def build_verification_prompt(
 
 Retrieved Technical Evidence:
 {evidence_block}
+
+Targeted Structured Extraction (advisory summary derived from the excerpts above):
+{targeted_block}
+
+The complete specification clause and raw evidence excerpts are authoritative. Atomic conditions are a coverage,
+logic, and traceability aid. If decomposition is incomplete or cannot be aligned, report that limitation instead of
+inventing a result. The targeted extraction can locate facts but cannot replace or overrule raw evidence.
 
 {_AUDIT_RULEBOOK}
 
@@ -1249,6 +1313,7 @@ def build_batch_verification_prompt(
     for i, item in enumerate(batch_items, 1):
         contract: RequirementContract = item["contract"]
         evidence_chunks: list[dict] = item["candidate_chunks"]
+        targeted_extraction = item.get("targeted_extraction")
 
         quals = qualify_evidence_chunks(contract, evidence_chunks)
         formatted_evidence = []
@@ -1270,6 +1335,10 @@ def build_batch_verification_prompt(
                 f"block={structure}{context_note}]\n  {anno}\n  {content}"
             )
         evidence_str = "\n".join(formatted_evidence) if formatted_evidence else "  [No independent evidence retrieved]"
+        targeted_str = (
+            json.dumps(targeted_extraction, ensure_ascii=False, indent=2)
+            if targeted_extraction else "[No targeted extraction supplied]"
+        )
 
         cond_lines = []
         if contract.atomic_conditions:
@@ -1289,6 +1358,7 @@ def build_batch_verification_prompt(
             f"- Regulatory Logic: {_logic_line(contract)}\n"
             f"- Atomic Conditions to Verify:\n{chr(10).join(cond_lines)}\n"
             f"- Retrieved Technical Evidence:\n{evidence_str}\n"
+            f"- Targeted Structured Extraction (advisory; raw excerpts remain authoritative):\n{targeted_str}\n"
         )
 
     prompt = f"""Evaluate the following batch of {len(batch_items)} engineering requirements against their respective retrieved technical evidence excerpts:
@@ -1318,6 +1388,24 @@ async def evaluate_batch_verification(
             res = rule_based_multi_condition_verification(item["contract"], item["candidate_chunks"])
             results[item["contract"].req_code] = res
         return results
+
+    # With one item, the batch wrapper adds a second full-size request whenever
+    # a focused logic/semantic retry is needed. Use the single-item path
+    # directly so the first response can be repaired instead of discarded.
+    if len(batch_items) == 1:
+        item = batch_items[0]
+        contract: RequirementContract = item["contract"]
+        return {
+            contract.req_code: await evaluate_requirement_verification(
+                contract=contract,
+                evidence_chunks=item.get("candidate_chunks", []),
+                model=model,
+                thinking_level=thinking_level,
+                spec_doc_names=item.get("spec_doc_names"),
+                allow_deterministic_fallback=False,
+                targeted_extraction=item.get("targeted_extraction"),
+            )
+        }
 
     prompt, system_instruction = build_batch_verification_prompt(batch_items)
 
@@ -1419,6 +1507,7 @@ async def evaluate_batch_verification(
                 thinking_level=thinking_level,
                 spec_doc_names=item.get("spec_doc_names"),
                 allow_deterministic_fallback=False,
+                targeted_extraction=item.get("targeted_extraction"),
             )
 
     return results
@@ -1431,6 +1520,7 @@ async def evaluate_requirement_verification(
     thinking_level: Optional[str] = None,
     spec_doc_names: Optional[set[str]] = None,
     allow_deterministic_fallback: bool = True,
+    targeted_extraction: Optional[dict[str, Any]] = None,
 ) -> VerificationAnalysisResult:
     """Execute LLM condition reasoning followed only by mechanical aggregation."""
     active_model = model or settings.LLM_MODEL
@@ -1440,7 +1530,11 @@ async def evaluate_requirement_verification(
     if not has_keys:
         return rule_based_multi_condition_verification(contract, evidence_chunks, spec_doc_names=spec_doc_names)
 
-    prompt, system_instruction = build_verification_prompt(contract, evidence_chunks)
+    prompt, system_instruction = build_verification_prompt(
+        contract,
+        evidence_chunks,
+        targeted_extraction=targeted_extraction,
+    )
 
     try:
         result: Optional[VerificationAnalysisResult] = await generate_structured(
@@ -1622,6 +1716,80 @@ async def evaluate_requirement_verification(
             )
     except Exception as ex:
         logger.warning(f"Structured LLM verification call failed: {ex}.")
+
+    # A compact condition-only response is easier for constrained endpoints to
+    # serialize correctly and still gives the deterministic aggregator enough
+    # information to produce an honest MISSING/UNKNOWN/PARTIAL outcome.
+    try:
+        recovered = await generate_structured(
+            prompt=_compact_verification_recovery_prompt(contract, evidence_chunks),
+            response_model=SemanticAdjudicationResult,
+            model=active_model,
+            system_instruction=(
+                "Return concise condition-level compliance findings in the requested schema. "
+                "Use only supplied evidence and exact condition IDs."
+            ),
+            thinking_level=thinking_level or settings.GEMINI_THINKING_LEVEL,
+            max_output_tokens=4096,
+            allow_model_fallback=False,
+        )
+    except Exception as recovery_error:
+        logger.warning(
+            "Compact verification recovery failed for %s: %s",
+            contract.req_code,
+            recovery_error,
+        )
+        recovered = None
+
+    if recovered and recovered.condition_results:
+        recovered_conditions = _fill_missing_conditions(
+            contract,
+            recovered.condition_results,
+        )
+        recovery_analysis = VerificationAnalysisResult(
+            status="UNKNOWN",
+            confidence=60,
+            condition_results=recovered_conditions,
+            reason=recovered.reason or "Condition findings recovered after a malformed full response.",
+        )
+        recovery_analysis._diagnostics = {
+            "decision_source": "llm_compact_recovery",
+            "llm_provisional_status": "UNKNOWN",
+            "llm_provisional_confidence": 60,
+            "compact_recovery": True,
+        }
+        quals = qualify_evidence_chunks(
+            contract,
+            evidence_chunks,
+            spec_doc_names=spec_doc_names,
+        )
+        qual_contents = {
+            qualification.evidence_id: _isolate_relevant_passage(
+                (chunk.get("content") or chunk.get("quote") or ""),
+                contract,
+                chunk.get("metadata"),
+            )
+            for qualification, chunk in zip(quals, evidence_chunks)
+        }
+        recovery_analysis.condition_results, citation_diagnostics = (
+            await _ground_condition_citations(
+                contract,
+                evidence_chunks,
+                qual_contents,
+                recovery_analysis.condition_results,
+                active_model,
+            )
+        )
+        recovery_analysis._diagnostics.update(citation_diagnostics)
+        original_conditions = _snapshot_condition_results(recovery_analysis.condition_results)
+        recovery_analysis = _audit_llm_condition_metadata(contract, recovery_analysis)
+        _record_reconciliation_diagnostics(recovery_analysis, original_conditions)
+        return finalize_verdict(
+            contract=contract,
+            analysis=recovery_analysis,
+            qualifications=quals,
+            qualified_contents=qual_contents,
+        )
 
     if allow_deterministic_fallback:
         return rule_based_multi_condition_verification(contract, evidence_chunks, spec_doc_names=spec_doc_names)

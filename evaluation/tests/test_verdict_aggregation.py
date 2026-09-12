@@ -656,6 +656,59 @@ class TestConditionEvidenceAudit(unittest.TestCase):
         self.assertEqual(merged[0].status, "PROVEN")
         self.assertNotEqual(merged[0].validation_state, "VALID")
 
+    def test_generic_procedure_text_cannot_prove_explicit_standard_conformance(self):
+        condition = AtomicConditionContract(
+            condition_id="C1",
+            description="The barrier is documented as conforming to 49 CFR part 587.",
+            parameter="barrier conformity",
+            operator="==",
+            threshold="49 CFR part 587",
+        )
+        contract = make_contract(conditions=[condition])
+        quote = "The impact test followed the applicable laboratory test procedure."
+        merged = audit_condition_evidence(
+            contract,
+            [cr("C1", "PROVEN", evidence_ids=["E1"], quote=quote)],
+            [qual("E1", "lab.pdf", "QUALIFIED", True, True)],
+            {"E1": quote},
+        )
+
+        self.assertEqual(merged[0].status, "INCONCLUSIVE")
+        self.assertEqual(merged[0].validation_state, "CONTRADICTED")
+        self.assertIn("49 CFR part 587", merged[0].validation_notes[-1])
+
+    def test_compound_visual_attributes_must_all_appear_in_cited_evidence(self):
+        condition = AtomicConditionContract(
+            condition_id="C1",
+            description="The symbol is yellow with a black border and arrow.",
+            parameter="warning symbol colour",
+            operator="==",
+            threshold="yellow with black border and arrow",
+            requires_visual_evidence=True,
+        )
+        contract = make_contract(conditions=[condition])
+        incomplete = "VISUAL DESCRIPTION: A yellow label with safety symbols is visible."
+        merged = audit_condition_evidence(
+            contract,
+            [cr("C1", "PROVEN", evidence_ids=["E1"], quote=incomplete)],
+            [qual("E1", "photo.pdf", "QUALIFIED", True, True)],
+            {"E1": incomplete},
+        )
+
+        self.assertEqual(merged[0].status, "INCONCLUSIVE")
+        self.assertIn("black", merged[0].validation_notes[-1])
+        self.assertIn("border", merged[0].validation_notes[-1])
+        self.assertIn("arrow", merged[0].validation_notes[-1])
+
+        complete = "VISUAL DESCRIPTION: A yellow warning symbol has a black border and black arrow."
+        accepted = audit_condition_evidence(
+            contract,
+            [cr("C1", "PROVEN", evidence_ids=["E1"], quote=complete)],
+            [qual("E1", "photo.pdf", "QUALIFIED", True, True)],
+            {"E1": complete},
+        )
+        self.assertEqual(accepted[0].status, "PROVEN")
+
 
 class TestBuildVerificationPrompt(unittest.TestCase):
     """Verify single-requirement prompt construction without undefined variable bugs."""
@@ -897,6 +950,73 @@ class TestFullPipelineToApiResponse(unittest.TestCase):
         self.assertFalse(assessment.pipeline_diagnostics["review_gate"]["auto_close_eligible"])
         self.assertIn("contradicted", assessment.pipeline_diagnostics["review_gate"]["reasons"][0].lower())
         self.assertIn("automatic closure is disabled", assessment.ai_recommendation)
+
+    def test_conflict_with_contradicted_failure_requires_review(self):
+        from app.services.classification import _finalize_assessment
+        from app.services.validators import ValidationOutcome
+
+        failed = ConditionVerificationResult(
+            condition_id="REQ-BAT-001-C1",
+            status="FAILED",
+            validation_state="CONTRADICTED",
+            relationship="SATISFIES",
+        )
+        assessment = _finalize_assessment(
+            contract=self.contract,
+            non_spec_items=[],
+            outcome=ValidationOutcome(
+                status="CONFLICT",
+                confidence=95.0,
+                reason="Atomic aggregation found a failure.",
+                condition_results=[failed],
+            ),
+            pipeline_diagnostics={
+                "decision_source": "llm",
+                "llm_provisional_status": "SUPPORTED",
+                "final_status": "CONFLICT",
+            },
+        )
+
+        self.assertEqual(assessment.coverage_status, "Conflict")
+        self.assertEqual(assessment.review_state, "Needs review")
+        self.assertFalse(assessment.pipeline_diagnostics["review_gate"]["auto_close_eligible"])
+        self.assertTrue(any(
+            "contradicted" in reason.lower()
+            for reason in assessment.pipeline_diagnostics["review_gate"]["reasons"]
+        ))
+        self.assertTrue(any(
+            "disagrees" in reason.lower()
+            for reason in assessment.pipeline_diagnostics["review_gate"]["reasons"]
+        ))
+
+    def test_conflict_with_valid_failure_and_matching_provisional_can_close(self):
+        from app.services.classification import _finalize_assessment
+        from app.services.validators import ValidationOutcome
+
+        failed = ConditionVerificationResult(
+            condition_id="REQ-BAT-001-C1",
+            status="FAILED",
+            validation_state="VALID",
+            relationship="VIOLATES",
+        )
+        assessment = _finalize_assessment(
+            contract=self.contract,
+            non_spec_items=[],
+            outcome=ValidationOutcome(
+                status="CONFLICT",
+                confidence=95.0,
+                reason="A measured violation was confirmed.",
+                condition_results=[failed],
+            ),
+            pipeline_diagnostics={
+                "decision_source": "llm",
+                "llm_provisional_status": "CONFLICT",
+                "final_status": "CONFLICT",
+            },
+        )
+
+        self.assertEqual(assessment.review_state, "Reviewed")
+        self.assertTrue(assessment.pipeline_diagnostics["review_gate"]["auto_close_eligible"])
 
     def test_low_confidence_supported_requires_review_without_changing_verdict(self):
         """Confidence controls workflow review, not the semantic category."""

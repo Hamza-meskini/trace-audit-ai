@@ -24,6 +24,7 @@ import sys
 import time
 from datetime import datetime, timezone
 from collections import Counter
+from dataclasses import fields, is_dataclass
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, Iterable, Optional
@@ -50,9 +51,11 @@ from app.services.extraction import extract_requirements_from_text
 from app.services.ingestion import parse_document
 from app.services.visual_analysis import describe_figure_candidates
 from app.services.retrieval import (
+    build_requirement_search_queries,
     precompute_chunk_embeddings,
     retrieve_candidate_evidence_hybrid,
 )
+from app.services.databricks_document_ai import enrich_targeted_evidence_items
 
 
 FINAL_CLASSES = ["SUPPORTED", "PARTIAL", "CONFLICT", "MISSING", "UNKNOWN"]
@@ -95,6 +98,22 @@ def _field(value: Any, name: str, default: Any = None) -> Any:
     if isinstance(value, dict):
         return value.get(name, default)
     return getattr(value, name, default)
+
+
+def _json_ready(value: Any) -> Any:
+    """Preserve dataclass and Pydantic diagnostics in immutable run output."""
+    if hasattr(value, "model_dump"):
+        return _json_ready(value.model_dump())
+    if is_dataclass(value) and not isinstance(value, type):
+        return {
+            item.name: _json_ready(getattr(value, item.name))
+            for item in fields(value)
+        }
+    if isinstance(value, dict):
+        return {str(key): _json_ready(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple, set)):
+        return [_json_ready(item) for item in value]
+    return value
 
 
 def _normal_final(value: Any) -> str:
@@ -743,6 +762,7 @@ def _report_markdown(results: dict[str, Any]) -> str:
     retrieval = results["metrics"]["retrieval"]
     authority = results["metrics"]["source_authority"]
     visual = results["metrics"].get("visual_evidence", {})
+    targeted = results["metrics"].get("targeted_extraction", {})
     raw_atomic = results["metrics"]["raw_llm_atomic"]
     final_atomic = results["metrics"]["final_atomic"]
     safety = results["metrics"]["review_gate"]
@@ -768,6 +788,7 @@ def _report_markdown(results: dict[str, Any]) -> str:
         f"| Source qualification | Authoritative qualification rate | {authority['authoritative_qualification_rate']:.2f}% |",
         f"| Visual evidence | Retrieved figures analyzed | {visual.get('vision_analyzed', 0)} |",
         f"| Visual evidence | Retrieved figures unavailable | {visual.get('vision_unavailable', 0)} |",
+        f"| Targeted extraction | Successful enrichments | {targeted.get('succeeded', 0)}/{targeted.get('attempted', 0)} |",
         f"| LLM reasoning | Raw atomic aligned accuracy | {raw_atomic['aligned_accuracy']}% |",
         f"| LLM reasoning | Raw condition alignment coverage | {raw_atomic['alignment_coverage']:.2f}% |",
         f"| LLM reasoning | Raw atomic end-to-end accuracy | {raw_atomic['end_to_end_accuracy']:.2f}% |",
@@ -814,6 +835,7 @@ async def run_benchmark(
     batch_size: int,
     provider: Optional[str] = None,
     allow_rule_fallback: bool = True,
+    targeted_extraction: bool = False,
 ) -> dict[str, Any]:
     if mode not in MODES:
         raise ValueError(f"Unsupported mode {mode!r}; choose one of {', '.join(MODES)}")
@@ -832,6 +854,7 @@ async def run_benchmark(
     settings.LLM_MODEL = active_model
     settings.ATOMIC_DECOMPOSITION_MODEL = active_model
     settings.ATOMIC_DECOMPOSITION_FALLBACK_MODEL = ""
+    settings.DATABRICKS_TARGETED_EXTRACTION_ENABLED = targeted_extraction
     if settings.LLM_PROVIDER == "databricks":
         settings.DATABRICKS_VISION_MODEL = active_model
         settings.DATABRICKS_FALLBACK_MODELS = []
@@ -920,17 +943,21 @@ async def run_benchmark(
     retrieved_by_id: dict[str, list[dict[str, Any]]] = {}
     for item in contract_items:
         requirement_id = item["req_code"]
-        query = f"{item['title']} {item['description']}"
+        search_queries = build_requirement_search_queries(
+            requirement_id,
+            item.get("title", ""),
+            item.get("description", ""),
+            item.get("conditions", []),
+            item.get("semantic_clauses", []),
+        )
+        query = search_queries[0] if search_queries else f"{item['title']} {item['description']}"
         retrieved = await retrieve_candidate_evidence_hybrid(
             requirement_text=query,
             chunks=evidence_chunks,
             chunk_embeddings=embeddings,
-            top_k=5,
+            top_k=8,
             min_score=0.3,
-            condition_queries=[
-                _condition_query(requirement_id, condition)
-                for condition in item.get("conditions", [])
-            ],
+            condition_queries=search_queries[1:],
         )
         retrieved_by_id[requirement_id] = [{
             "id": value.chunk_id,
@@ -970,6 +997,12 @@ async def run_benchmark(
         f"{visual_metrics['vision_analyzed']} analyzed, "
         f"{visual_metrics['vision_cache_hits']} cached, "
         f"{visual_metrics['vision_unavailable']} unavailable."
+    )
+    targeted_metrics = await enrich_targeted_evidence_items(req_items)
+    print(
+        "  Targeted extraction: "
+        f"{targeted_metrics['succeeded']}/{targeted_metrics['attempted']} succeeded, "
+        f"{targeted_metrics['failed']} failed."
     )
     assessments = await batch_assess_requirements(
         req_items=req_items,
@@ -1062,6 +1095,9 @@ async def run_benchmark(
             "gold_contracts_supplied": oracle_contracts, "gold_evidence_selection": oracle_evidence,
             "source_rule_fallback_enabled": allow_rule_fallback,
             "model_fallback_enabled": False,
+            "document_parser": settings.TRACEAUDIT_DOCUMENT_PARSER,
+            "retrieval_top_k": 8,
+            "targeted_extraction_enabled": targeted_extraction,
             "scorer_sha256": hashlib.sha256((REPO_ROOT / "evaluation/atomic_evaluation.py").read_bytes()).hexdigest(),
             "ground_truth_sha256": hashlib.sha256((BENCHMARK_DIR / "ground_truth.json").read_bytes()).hexdigest(),
             "scope": "Selected annotated clauses only. Other extracted clauses are verified but unlabelled, not counted as hallucinations.",
@@ -1071,6 +1107,7 @@ async def run_benchmark(
         "retrieval": retrieval_metrics,
         "source_authority": authority_metrics,
         "visual_evidence": visual_metrics,
+        "targeted_extraction": targeted_metrics,
         "raw_llm_atomic": verification_metrics(requirements, raw_condition_results, atomic_alignment),
         "final_atomic": verification_metrics(requirements, final_condition_results, atomic_alignment),
         "regulatory_logic": {
@@ -1093,7 +1130,7 @@ async def run_benchmark(
         "evaluated_contracts": evaluated_contracts,
         "scoring_contracts": scored_contracts,
         "extraction_predictions": [] if oracle_contracts else [c.model_dump() for c in extracted],
-        "all_assessments": {key: value.model_dump() if hasattr(value, "model_dump") else value for key, value in assessments.items()},
+        "all_assessments": {key: _json_ready(value) for key, value in assessments.items()},
         "benchmark_id": dataset["benchmark_id"],
         "benchmark_version": dataset["version"],
         "mode": mode,
@@ -1139,6 +1176,11 @@ def main() -> None:
     parser.add_argument("--thinking-level", default=None, help="Reasoning/thinking override.")
     parser.add_argument("--batch-size", type=int, default=3)
     parser.add_argument(
+        "--targeted-extraction",
+        action="store_true",
+        help="Run Databricks ai_extract on retrieved evidence before verification.",
+    )
+    parser.add_argument(
         "--validate-only",
         action="store_true",
         help="Validate labels, source files, page references, and quotes without calling an LLM.",
@@ -1157,6 +1199,7 @@ def main() -> None:
         batch_size=max(1, args.batch_size),
         provider=args.provider,
         allow_rule_fallback=not args.no_rule_fallback,
+        targeted_extraction=args.targeted_extraction,
     ))
 
 

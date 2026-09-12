@@ -11,3 +11,5 @@ python-docx==1.2.0
 openpyxl==3.1.5
 httpx==0.28.1
 pint>=0.24,<1.0
+databricks-sdk>=0.72.0,<1.0
+databricks-sql-connector>=3.0,<5.0

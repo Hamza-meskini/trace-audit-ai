@@ -92,9 +92,10 @@ def _save_cache_to_disk():
 BATCH_SIZE = 64
 
 
-def _content_hash(text: str) -> str:
-    """Short hash for cache key."""
-    return hashlib.md5(text.encode("utf-8")).hexdigest()[:16]
+def _content_hash(text: str, task_type: str) -> str:
+    """Hash text with its embedding task so query/document vectors never collide."""
+    value = f"{GEMINI_EMBEDDING_MODEL}\0{task_type}\0{text}"
+    return hashlib.md5(value.encode("utf-8")).hexdigest()[:16]
 
 
 _consecutive_rate_limits = 0
@@ -118,7 +119,7 @@ async def embed_single(text: str, task_type: str = "RETRIEVAL_DOCUMENT") -> Opti
 
 
     _ensure_cache_loaded()
-    cache_key = _content_hash(text)
+    cache_key = _content_hash(text, task_type)
     if cache_key in _embedding_cache:
         return _embedding_cache[cache_key]
 
@@ -153,6 +154,7 @@ async def embed_batch(texts: list[str], task_type: str = "RETRIEVAL_DOCUMENT") -
     Checks cache first, only sends uncached texts to the API.
     Returns list of embedding vectors (or None for failed items) in same order as input.
     """
+    global _consecutive_rate_limits, _circuit_open
     if not _has_embedding_key():
         return [None] * len(texts)
 
@@ -163,7 +165,7 @@ async def embed_batch(texts: list[str], task_type: str = "RETRIEVAL_DOCUMENT") -
 
     # Check cache first
     for i, text in enumerate(texts):
-        cache_key = _content_hash(text)
+        cache_key = _content_hash(text, task_type)
         if cache_key in _embedding_cache:
             results[i] = _embedding_cache[cache_key]
         else:
@@ -193,7 +195,7 @@ async def embed_batch(texts: list[str], task_type: str = "RETRIEVAL_DOCUMENT") -
         }
 
         # Try with exponential backoff on rate limits
-        for attempt in range(1, 3):
+        for attempt in range(1, 4):
             try:
                 async with httpx.AsyncClient(timeout=15.0) as client:
                     resp = await client.post(url, json=payload)
@@ -217,9 +219,10 @@ async def embed_batch(texts: list[str], task_type: str = "RETRIEVAL_DOCUMENT") -
                         if values and j < len(batch_indices):
                             idx = batch_indices[j]
                             results[idx] = values
-                            _embedding_cache[_content_hash(texts[idx])] = values
+                            _embedding_cache[_content_hash(texts[idx], task_type)] = values
 
                     _save_cache_to_disk()
+                    _consecutive_rate_limits = 0
                     logger.info(f"Embedded batch of {len(batch_texts)} texts via Gemini {GEMINI_EMBEDDING_MODEL}")
                     break
             except Exception as ex:

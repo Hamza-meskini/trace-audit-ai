@@ -16,6 +16,10 @@ ElementType = Literal[
     "caption",
     "formula",
     "checkbox",
+    "page_header",
+    "page_footer",
+    "page_number",
+    "footnote",
 ]
 
 

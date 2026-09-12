@@ -17,12 +17,13 @@ from pathlib import Path
 from statistics import median
 from typing import Any
 
+from app.config import settings
 from app.services.document_ir import BoundingBox, DocumentElement, ParsedChunk, ParsedDocument
 
 
 logger = logging.getLogger("traceaudit.ingestion")
 
-INGESTION_SCHEMA_VERSION = "2.0"
+INGESTION_SCHEMA_VERSION = "3.1"
 DEFAULT_MAX_CHUNK_CHARS = 3200
 MIN_NATIVE_TEXT_CHARS = 24
 
@@ -224,16 +225,19 @@ def build_structure_aware_chunks(
             caption = _normalize_cell(element.metadata.get("caption"))
             section = " > ".join(element.section_path)
             metadata = metadata_for([element], "figure")
+            parsed_description = _normalize_cell(element.metadata.get("visual_description"))
             metadata["visual_analysis"] = {
-                "status": "pending",
-                "description": "",
+                "status": "complete" if parsed_description else "pending",
+                "description": parsed_description,
                 "caption": caption,
+                "source": "databricks-ai-parse" if parsed_description else "",
             }
             chunks.append(ParsedChunk(
                 content="\n".join(part for part in (
                     f"SECTION: {section}" if section else "",
                     f"FIGURE: {caption}" if caption else "FIGURE: visual content",
                     element.text,
+                    f"VISUAL DESCRIPTION: {parsed_description}" if parsed_description else "",
                 ) if part),
                 page_number=element.page_number,
                 chunk_index=len(chunks),
@@ -598,7 +602,20 @@ def _docling_elements(file_path: str) -> tuple[list[DocumentElement], int, dict[
 
 
 def parse_pdf_document(file_path: str, backend: str | None = None) -> ParsedDocument:
-    requested = (backend or os.getenv("TRACEAUDIT_DOCUMENT_PARSER", "auto")).strip().lower()
+    requested = (backend or settings.TRACEAUDIT_DOCUMENT_PARSER).strip().lower()
+    if requested in {"databricks", "databricks-auto"}:
+        try:
+            from app.services.databricks_document_ai import parse_document as parse_with_databricks
+
+            return parse_with_databricks(file_path)
+        except Exception:
+            if requested == "databricks":
+                raise
+            logger.exception(
+                "Databricks document parsing failed for %s; falling back to local layout parsing",
+                file_path,
+            )
+            requested = "auto"
     sha256 = file_sha256(file_path)
     converter_class = _docling_converter_class() if requested in {"auto", "docling"} else None
     use_docling = converter_class is not None
@@ -754,6 +771,20 @@ def parse_csv_document(file_path: str) -> ParsedDocument:
 
 def parse_document_with_metadata(file_path: str) -> ParsedDocument:
     ext = Path(file_path).suffix.lower()
+    requested = settings.TRACEAUDIT_DOCUMENT_PARSER.strip().lower()
+    if requested in {"databricks", "databricks-auto"} and ext != ".pdf":
+        from app.services.databricks_document_ai import SUPPORTED_SUFFIXES, parse_document as parse_with_databricks
+
+        if ext in SUPPORTED_SUFFIXES:
+            try:
+                return parse_with_databricks(file_path)
+            except Exception:
+                if requested == "databricks":
+                    raise
+                logger.exception(
+                    "Databricks document parsing failed for %s; falling back to a local parser",
+                    file_path,
+                )
     parsers = {
         ".pdf": parse_pdf_document,
         ".docx": parse_docx_document,

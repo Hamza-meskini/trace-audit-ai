@@ -154,6 +154,25 @@ class TestVerificationSemantics(unittest.TestCase):
 
         self.assertEqual(_semantic_retry_condition_ids(contract, results, []), ["C1"])
 
+    def test_semantic_retry_detects_status_relationship_contradiction(self):
+        contract = RequirementContract(
+            requirement_id="REQ-REL",
+            req_code="REQ-REL",
+            title="Relational applicability",
+            atomic_conditions=[
+                AtomicConditionContract(condition_id="C1", description="V1 is at least V2"),
+            ],
+        )
+        results = [ConditionVerificationResult(
+            condition_id="C1",
+            status="FAILED",
+            relationship="SATISFIES",
+            execution_state="EXECUTED",
+            evidence_value_role="OBSERVED",
+        )]
+
+        self.assertEqual(_semantic_retry_condition_ids(contract, results, []), ["C1"])
+
     def test_semantic_retry_rechecks_inconclusive_hard_violation(self):
         contract = RequirementContract(
             requirement_id="REQ-LEAK",

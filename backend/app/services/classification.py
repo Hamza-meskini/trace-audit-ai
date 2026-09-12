@@ -236,6 +236,57 @@ def _supported_review_gate(
     return reasons
 
 
+def _conflict_review_gate(
+    outcome: ValidationOutcome,
+    pipeline_diagnostics: Optional[dict[str, Any]] = None,
+) -> list[str]:
+    """Return reasons why a CONFLICT prediction cannot auto-close."""
+    if outcome.status != "CONFLICT":
+        return []
+
+    reasons: list[str] = []
+    failed = [
+        result
+        for result in (outcome.condition_results or [])
+        if result.status == "FAILED"
+    ]
+    if not failed:
+        reasons.append("No auditable FAILED atomic condition supports the Conflict verdict.")
+    else:
+        contradicted = [
+            result.condition_id
+            for result in failed
+            if result.validation_state == "CONTRADICTED"
+        ]
+        if contradicted:
+            reasons.append(
+                "Evidence audit contradicted the attributed failure for: "
+                + ", ".join(contradicted)
+                + "."
+            )
+        unresolved = [
+            result.condition_id
+            for result in failed
+            if result.validation_state != "VALID"
+            and result.condition_id not in contradicted
+        ]
+        if unresolved:
+            reasons.append(
+                "Failure evidence remains unresolved for: "
+                + ", ".join(unresolved)
+                + "."
+            )
+
+    diagnostics = pipeline_diagnostics or {}
+    provisional = str(diagnostics.get("llm_provisional_status") or "").strip().upper()
+    if provisional and provisional != "CONFLICT":
+        reasons.append(
+            "The LLM's holistic provisional verdict "
+            f"({provisional}) disagrees with condition aggregation (CONFLICT)."
+        )
+    return reasons
+
+
 def _condition_results_for_status(
     contract: RequirementContract,
     status: str,
@@ -531,14 +582,17 @@ def _finalize_assessment(
     # first-class "Unknown" status instead of being silently downgraded.
     cov_status = display_status(outcome.status)
     rev_state = review_state_for(outcome.status)
-    review_reasons = _supported_review_gate(outcome, diagnostics, contract)
-    if cov_status == "Supported" and review_reasons:
+    review_reasons = [
+        *_supported_review_gate(outcome, diagnostics, contract),
+        *_conflict_review_gate(outcome, diagnostics),
+    ]
+    if cov_status in {"Supported", "Conflict"} and review_reasons:
         rev_state = "Needs review"
 
     diagnostics["review_gate"] = {
-        "policy": "supported_evidence_and_contract_audit_v2",
+        "policy": "coverage_evidence_and_contract_audit_v3",
         "required": bool(review_reasons),
-        "auto_close_eligible": cov_status == "Supported" and not review_reasons,
+        "auto_close_eligible": cov_status in {"Supported", "Conflict"} and not review_reasons,
         "reasons": review_reasons,
     }
 
@@ -564,6 +618,11 @@ def _finalize_assessment(
             "Review the atomic proof, extraction completeness, and evidence-admissibility "
             "warnings before approval. "
             "The predicted coverage remains Supported, but automatic closure is disabled."
+        )
+    elif cov_status == "Conflict" and review_reasons:
+        recommendation = (
+            "Review the failed-condition evidence and holistic/atomic disagreement before approval. "
+            "The predicted coverage remains Conflict, but automatic closure is disabled."
         )
 
     return RequirementAssessment(
@@ -784,6 +843,7 @@ async def batch_assess_requirements(
             "req_code": req_code,
             "contract": contract,
             "candidate_chunks": candidate_chunks,
+            "targeted_extraction": item.get("targeted_extraction"),
             "non_spec_items": non_spec_items,
             "spec_doc_names": spec_doc_names,
         })

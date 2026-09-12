@@ -19,6 +19,11 @@ class Settings(BaseSettings):
     # File storage (local filesystem for MVP)
     UPLOAD_DIR: str = "./uploads"
 
+    # Layout parser used by document ingestion. ``databricks-auto`` uses
+    # ai_parse_document when configured and falls back to the local parser if
+    # the remote service is unavailable.
+    TRACEAUDIT_DOCUMENT_PARSER: str = "auto"
+
     # CORS — allowed frontend origins (JSON list in .env overrides this default)
     CORS_ORIGINS: list[str] = [
         "http://localhost:5173",
@@ -69,6 +74,12 @@ class Settings(BaseSettings):
     DATABRICKS_VISION_MODEL: str = "system.ai.llama-4-maverick"
     DATABRICKS_FALLBACK_MODELS: list[str] = []
     DATABRICKS_REASONING_TIMEOUT_SECONDS: float = 300.0
+    DATABRICKS_HOST: str = ""
+    DATABRICKS_SQL_WAREHOUSE_ID: str = ""
+    DATABRICKS_DOCUMENT_VOLUME: str = ""
+    DATABRICKS_DOCUMENT_CACHE_DIR: str = ""
+    DATABRICKS_TARGETED_EXTRACTION_ENABLED: bool = False
+    DATABRICKS_TARGETED_EXTRACTION_CONCURRENCY: int = 2
 
     # TokenRouter Settings (Multi-Model OpenAI-Compatible Gateway)
     TOKENROUTER_API_KEY: str = ""

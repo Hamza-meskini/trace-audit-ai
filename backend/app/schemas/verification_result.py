@@ -251,7 +251,7 @@ class ConditionVerificationResult(BaseModel):
     @classmethod
     def _validate_subject_identity(cls, value: Any) -> str:
         clean = _normalize_enum_token(value)
-        return coerce_enum(clean, ("CONFIRMED", "UNCONFIRMED", "NOT_REQUIRED", "UNKNOWN")) or clean
+        return coerce_enum(clean, ("CONFIRMED", "UNCONFIRMED", "NOT_REQUIRED", "UNKNOWN")) or "UNKNOWN"
 
     @field_validator("execution_state", mode="before")
     @classmethod
@@ -262,6 +262,45 @@ class ConditionVerificationResult(BaseModel):
     @classmethod
     def _validate_evidence_value_role(cls, value: Any) -> str:
         return normalize_evidence_value_role(value)
+
+    @field_validator("relationship", mode="before")
+    @classmethod
+    def _validate_relationship(cls, value: Any) -> str:
+        clean = _normalize_enum_token(value)
+        aliases = {
+            "MEETS": "SATISFIES",
+            "MET": "SATISFIES",
+            "SUPPORTS": "SATISFIES",
+            "FAILS": "VIOLATES",
+            "FAILED": "VIOLATES",
+            "CONTRADICTS": "VIOLATES",
+            "PARTIAL": "PARTIAL_COVERAGE",
+            "NO_EVIDENCE": "NOT_ADDRESSED",
+            "UNKNOWN": "UNCLEAR",
+        }
+        clean = aliases.get(clean, clean)
+        return coerce_enum(
+            clean,
+            ("SATISFIES", "VIOLATES", "PARTIAL_COVERAGE", "NOT_ADDRESSED", "UNCLEAR"),
+        ) or "UNCLEAR"
+
+    @field_validator("coverage_scope", mode="before")
+    @classmethod
+    def _validate_coverage_scope(cls, value: Any) -> str:
+        clean = _normalize_enum_token(value)
+        aliases = {
+            "ALL": "ALL_REQUIRED",
+            "COMPLETE": "ALL_REQUIRED",
+            "ONE": "SINGLE_ITEM",
+            "SINGLE": "SINGLE_ITEM",
+            "N_A": "NOT_APPLICABLE",
+            "NA": "NOT_APPLICABLE",
+        }
+        clean = aliases.get(clean, clean)
+        return coerce_enum(
+            clean,
+            ("ALL_REQUIRED", "SAMPLE", "SINGLE_ITEM", "NOT_APPLICABLE", "UNKNOWN"),
+        ) or "UNKNOWN"
 
     @field_validator("observed_value", mode="before")
     @classmethod

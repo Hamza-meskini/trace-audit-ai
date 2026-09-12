@@ -38,6 +38,42 @@ def test_typo_repair_is_unique_and_bounded():
     assert ConditionVerificationResult(condition_id="C1", status="UNTESTD").status == "UNTESTED"
 
 
+def test_malformed_optional_enum_fields_do_not_discard_condition_result():
+    result = ConditionVerificationResult(
+        condition_id="C1",
+        status="UNTESTED",
+        relationship='evidence_ids": []',
+        subject_identity='garbled output',
+        coverage_scope='evidence_ids": []',
+    )
+    assert result.relationship == "UNCLEAR"
+    assert result.subject_identity == "UNKNOWN"
+    assert result.coverage_scope == "UNKNOWN"
+
+
+def test_impossible_failed_satisfies_pair_is_normalized_to_inconclusive():
+    contract = RequirementContract(
+        requirement_id="R",
+        req_code="R",
+        title="Relational gate",
+        atomic_conditions=[AtomicConditionContract(condition_id="C1", description="V1 >= V2")],
+    )
+    analysis = VerificationAnalysisResult(
+        status="CONFLICT",
+        reason="failed",
+        condition_results=[ConditionVerificationResult(
+            condition_id="C1",
+            status="FAILED",
+            relationship="SATISFIES",
+            execution_state="EXECUTED",
+            evidence_value_role="OBSERVED",
+        )],
+    )
+    audited = _audit_llm_condition_metadata(contract, analysis)
+    assert audited.condition_results[0].status == "INCONCLUSIVE"
+    assert audited.condition_results[0].validation_state == "CONTRADICTED"
+
+
 def test_relevant_but_inconclusive_evidence_survives_execution_metadata():
     contract = RequirementContract(requirement_id="R", req_code="R", title="Test",
         atomic_conditions=[AtomicConditionContract(condition_id="C1", description="Observed outcome")])

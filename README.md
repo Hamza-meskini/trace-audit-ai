@@ -183,7 +183,14 @@ GEMINI_THINKING_LEVEL="HIGH"
 # Option B: Databricks Model Serving AI Gateway
 DATABRICKS_TOKEN="dapi..."
 DATABRICKS_BASE_URL="https://<workspace-id>.cloud.databricks.com/ai-gateway/mlflow/v1"
-DATABRICKS_MODEL="system.ai.qwen35-122b-a10b"
+DATABRICKS_MODEL="system.ai.llama-4-maverick"
+
+# Optional: Databricks layout-aware document parsing
+TRACEAUDIT_DOCUMENT_PARSER="databricks-auto"
+DATABRICKS_SQL_WAREHOUSE_ID="<warehouse-id>"
+DATABRICKS_DOCUMENT_VOLUME="/Volumes/<catalog>/<schema>/<volume>"
+# Focused ai_extract enrichment after retrieval; disabled until latency is measured.
+DATABRICKS_TARGETED_EXTRACTION_ENABLED="false"
 ```
 
 Start the FastAPI backend:

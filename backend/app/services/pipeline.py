@@ -26,7 +26,11 @@ from app.services.ingestion import (
     parse_document_with_metadata,
 )
 from app.services.extraction import extract_requirements_from_text
-from app.services.retrieval import retrieve_candidate_evidence_hybrid, precompute_chunk_embeddings
+from app.services.retrieval import (
+    build_requirement_search_queries,
+    precompute_chunk_embeddings,
+    retrieve_candidate_evidence_hybrid,
+)
 from app.services.classification import batch_assess_requirements
 from app.services.taxonomy import finding_type_for
 from app.config import settings
@@ -65,7 +69,15 @@ def _cache_matches_source(existing_chunks: list[EvidenceChunk], storage_path: st
     if metadata.get("ingestion_schema_version") != INGESTION_SCHEMA_VERSION:
         return False
     cached_sha = metadata.get("source_sha256")
-    return bool(cached_sha and cached_sha == file_sha256(storage_path))
+    if not (cached_sha and cached_sha == file_sha256(storage_path)):
+        return False
+    requested_parser = settings.TRACEAUDIT_DOCUMENT_PARSER.strip().lower()
+    cached_backend = str(metadata.get("parser_backend") or "").lower()
+    if requested_parser in {"databricks", "databricks-auto"}:
+        return cached_backend.startswith("databricks-ai-parse")
+    if requested_parser in {"pymupdf", "docling"}:
+        return requested_parser in cached_backend
+    return True
 
 
 async def run_audit_pipeline(
@@ -327,28 +339,21 @@ async def run_audit_pipeline(
         # the requirement text itself and always outrank true evidence).
         extraction_data = req.extracted_parameters or {}
         structured_conditions = extraction_data.get("conditions", [])
-        condition_queries = [
-            " ".join(str(value) for value in (
-                req.req_code,
-                condition.get("description", ""),
-                condition.get("parameter", ""),
-                condition.get("operator", ""),
-                condition.get("threshold", ""),
-                condition.get("min_value", ""),
-                condition.get("max_value", ""),
-                condition.get("unit", ""),
-                "figure image visual marking label photograph diagram"
-                if condition.get("requires_visual_evidence") else "",
-            ) if value not in (None, ""))
-            for condition in structured_conditions
-        ]
+        search_queries = build_requirement_search_queries(
+            req.req_code,
+            req.title,
+            req.description or "",
+            structured_conditions,
+            extraction_data.get("semantic_clauses", []),
+        )
+        primary_query = search_queries[0] if search_queries else f"{req.req_code} {req.title} {req.description or ''}"
         retrieved = await retrieve_candidate_evidence_hybrid(
-            f"{req.req_code} {req.title} {req.description or ''}",
+            primary_query,
             all_chunks_for_retrieval,
             chunk_embeddings=chunk_embeddings,
-            top_k=4,
+            top_k=8,
             exclude_doc_names=spec_doc_names,
-            condition_queries=condition_queries,
+            condition_queries=search_queries[1:],
         )
 
         candidate_chunks = [
@@ -383,6 +388,7 @@ async def run_audit_pipeline(
             "ambiguities": extraction_data.get("ambiguities", []),
             "validation_issues": extraction_data.get("validation_issues", []),
             "candidate_chunks": candidate_chunks,
+            "search_queries": search_queries,
             "spec_doc_names": spec_doc_names,
         })
         report_progress("retrieval", len(req_items), len(requirements), f"Located evidence for {req.req_code}")
@@ -404,6 +410,7 @@ async def run_audit_pipeline(
             (candidate.get("metadata") or {}).get("block_type") == "figure"
             for item in req_items for candidate in item.get("candidate_chunks", [])
         ),
+        "search_queries_total": sum(len(item.get("search_queries", [])) for item in req_items),
     }
 
     # Render and describe only figures selected by retrieval. Descriptions are
@@ -419,6 +426,17 @@ async def run_audit_pipeline(
     stage_timings["visual_analysis_seconds"] = round(
         time.perf_counter() - vision_started, 3
     )
+
+    # Optional compact Databricks extraction runs only on the retrieved
+    # excerpts, after any selected figures have received visual descriptions.
+    # It is advisory context for the whole-clause reasoner and never replaces
+    # the raw evidence candidates or their source metadata.
+    targeted_started = time.perf_counter()
+    from app.services.databricks_document_ai import enrich_targeted_evidence_items
+
+    targeted_stats = await enrich_targeted_evidence_items(req_items)
+    stage_timings["targeted_extraction_seconds"] = round(time.perf_counter() - targeted_started, 3)
+    retrieval_diagnostics["targeted_extraction"] = targeted_stats
 
     # 4b. Batched hybrid verification: deterministic validators first,
     # LLM multi-condition reasoning (with Databricks cascade fallback) for
@@ -470,6 +488,10 @@ async def run_audit_pipeline(
             "condition_results": [item.model_dump() for item in assessment.condition_results],
             "diagnostics": assessment.pipeline_diagnostics,
             "model": active_model,
+            "targeted_extraction": next((
+                item.get("targeted_extraction")
+                for item in req_items if item["req_code"] == req.req_code
+            ), None),
             "evidence_catalog": [
                 {"evidence_id": f"E{index}", "chunk_id": item["id"], "document_id": item["document_id"],
                  "document_name": item["document_name"], "page_number": item.get("page_number")}

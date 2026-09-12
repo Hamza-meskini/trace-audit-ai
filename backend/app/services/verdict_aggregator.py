@@ -1,13 +1,13 @@
 """Python-owned final verdict aggregation.
 
 Architecture principle:
-    LLM  = interpretation of language / evidence  (produces condition_results)
-    Python = deterministic validation + FINAL verdict aggregation
+    LLM  = whole-clause interpretation plus condition-level findings
+    Python = deterministic validation and aggregation when decomposition is reliable
 
-No LLM-produced top-level status is ever passed through un-recomputed.
-Every verification path (LLM reasoner and deterministic fallback) funnels
-its condition-level results through `aggregate_condition_statuses`, which
-is the single place where a requirement's final status is decided.
+Every verification path computes an atomic aggregate. When extraction itself
+marks the atomic contract incomplete or low-confidence, that aggregate becomes
+advisory: it cannot manufacture a conflict, and a grounded whole-clause status
+may be retained with reduced confidence and mandatory review diagnostics.
 
 Precedence for mandatory conditions:
     1. Any mandatory condition FAILED                     -> CONFLICT
@@ -297,16 +297,85 @@ def _add_validation_note(
         result.validation_notes.append(note)
 
 
+_STRICT_REFERENCE_CUE_RE = re.compile(
+    r"\b(?:conform(?:s|ing|ance)?|certif(?:y|ied|ication)|specified\s+in|"
+    r"compliant\s+with|in\s+accordance\s+with)\b",
+    re.IGNORECASE,
+)
+_STANDARD_REFERENCE_RE = re.compile(
+    r"\b(?:\d+\s*CFR(?:\s+part)?\s*\d+(?:\.\d+)*|part\s+\d+(?:\.\d+)*|"
+    r"(?:ISO|IEC|SAE|EN|DIN|UL|ASTM|IEEE|FMVSS)\s*(?:No\.?\s*)?\d+(?:[-.:/]\d+)*|"
+    r"\d{3,}(?:\.\d+)+)\b",
+    re.IGNORECASE,
+)
+_VISUAL_ATTRIBUTE_STOPWORDS = {
+    "a", "an", "and", "are", "be", "has", "have", "is", "it", "of", "on",
+    "or", "present", "shown", "the", "there", "visible", "with",
+}
+
+
+def _reference_key(value: str) -> str:
+    return re.sub(r"[^a-z0-9]", "", value.lower())
+
+
+def _missing_strict_references(
+    condition: AtomicConditionContract,
+    evidence_text: str,
+) -> list[str]:
+    assertion = f"{condition.description or ''} {condition.threshold or ''}"
+    if not _STRICT_REFERENCE_CUE_RE.search(assertion):
+        return []
+    references = list(dict.fromkeys(_STANDARD_REFERENCE_RE.findall(assertion)))
+    normalized_evidence = _reference_key(evidence_text)
+    return [
+        reference
+        for reference in references
+        if _reference_key(reference) not in normalized_evidence
+    ]
+
+
+def _missing_visual_attributes(
+    condition: AtomicConditionContract,
+    evidence_text: str,
+) -> list[str]:
+    if not condition.requires_visual_evidence or not isinstance(condition.threshold, str):
+        return []
+    required = [
+        token
+        for token in re.findall(r"[a-z0-9]+", condition.threshold.lower())
+        if len(token) > 1 and token not in _VISUAL_ATTRIBUTE_STOPWORDS
+    ]
+    # Presence/visibility conditions are governed by identity and population
+    # checks. Attribute grounding applies to compound descriptions such as
+    # colour + border + symbol shape.
+    if len(required) < 2:
+        return []
+    observed = set(re.findall(r"[a-z0-9]+", evidence_text.lower()))
+    return [token for token in dict.fromkeys(required) if token not in observed]
+
+
+def _invalidate_unsupported_proof(
+    result: ConditionVerificationResult,
+    note: str,
+) -> None:
+    """Conservatively remove proof that its own citation cannot establish."""
+    result.status = "INCONCLUSIVE"
+    result.relationship = "UNCLEAR"
+    _add_validation_note(result, "CONTRADICTED", note)
+
+
 def audit_condition_evidence(
     contract: RequirementContract,
     condition_results: list[ConditionVerificationResult],
     qualifications: list[EvidenceQualification],
     qualified_contents: Optional[dict[str, str]] = None,
 ) -> list[ConditionVerificationResult]:
-    """Attach evidence-audit metadata without changing condition statuses.
+    """Audit traceability and conservatively invalidate ungrounded proof.
 
-    The LLM status is immutable; traceability, authority, method, scope, and
-    parameter concerns are reported through validation_state/validation_notes.
+    Most semantic labels remain model-owned. A PROVEN label is normalized to
+    INCONCLUSIVE only when its own cited passage omits an explicitly required
+    standard reference or compound visual attribute. The transition is stored
+    in diagnostics by ``finalize_verdict``.
     """
     qual_by_id = {q.evidence_id: q for q in qualifications}
     qualified_contents = qualified_contents or {}
@@ -447,6 +516,27 @@ def audit_condition_evidence(
             continue
 
         _add_validation_note(cr, "VALID", "Evidence attribution and admissibility checks passed.")
+
+        cited_text = "\n".join(cited_contents.values())
+        if cr.status == "PROVEN" and cond is not None:
+            missing_references = _missing_strict_references(cond, cited_text)
+            if missing_references:
+                _invalidate_unsupported_proof(
+                    cr,
+                    "The cited passage does not explicitly establish required reference(s): "
+                    + ", ".join(missing_references)
+                    + ". Proof was normalized to INCONCLUSIVE.",
+                )
+                continue
+            missing_attributes = _missing_visual_attributes(cond, cited_text)
+            if missing_attributes:
+                _invalidate_unsupported_proof(
+                    cr,
+                    "The cited visual evidence does not state required attribute(s): "
+                    + ", ".join(missing_attributes)
+                    + ". Proof was normalized to INCONCLUSIVE.",
+                )
+                continue
 
         if (
             cr.status == "PROVEN"
@@ -769,12 +859,7 @@ def finalize_verdict(
     has_relevant_evidence: bool = True,
     evidence_absent: bool = False,
 ) -> VerificationAnalysisResult:
-    """Aggregate immutable LLM conditions and attach non-mutating audit metadata.
-
-    The input analysis's top-level `status` is IGNORED. Only its
-    condition-level findings determine the final status. Qualification checks
-    annotate those findings but never replace their semantic statuses.
-    """
+    """Reconcile whole-clause reasoning with audited atomic-condition results."""
     diagnostics = dict(getattr(analysis, "_diagnostics", {}) or {})
     provisional_conditions = _condition_snapshot(list(analysis.condition_results or []))
     # Audit a deep copy so validation metadata is available without changing
@@ -797,6 +882,39 @@ def finalize_verdict(
     )
 
     provisional = (analysis.status or "").upper()
+    advisory_reasons: list[str] = []
+    if contract.contract_complete is False:
+        advisory_reasons.append("the extracted atomic contract is incomplete")
+    if (
+        contract.decomposition_confidence is not None
+        and contract.decomposition_confidence < 0.7
+    ):
+        advisory_reasons.append(
+            f"decomposition confidence is {contract.decomposition_confidence:.2f}"
+        )
+    if contract.unmapped_obligations:
+        advisory_reasons.append("one or more source obligations are unmapped")
+
+    has_failed_condition = any(result.status == "FAILED" for result in crs)
+    has_positive_condition = any(result.status == "PROVEN" for result in crs)
+    advisory_fallback = bool(
+        advisory_reasons
+        and provisional in {"SUPPORTED", "PARTIAL", "MISSING", "UNKNOWN"}
+        and status in {"PARTIAL", "MISSING", "UNKNOWN"}
+        and not has_failed_condition
+        and (provisional != "SUPPORTED" or has_positive_condition)
+        and provisional != status
+    )
+    atomic_status = status
+    if advisory_fallback:
+        status = provisional
+        confidence = min(float(analysis.confidence), 80.0)
+        reason = (
+            "Whole-clause provisional status retained because atomic decomposition is advisory: "
+            + "; ".join(advisory_reasons)
+            + f". The atomic aggregate was {atomic_status}. Mandatory review is required."
+        )
+
     override_note = ""
     if provisional and provisional != status:
         override_note = (
@@ -804,7 +922,12 @@ def finalize_verdict(
             f"based on condition-level results.]"
         )
 
-    if override_note:
+    if advisory_fallback:
+        provisional_reason = (analysis.reason or "").strip()
+        final_reason = reason
+        if provisional_reason:
+            final_reason += f" Whole-clause rationale: {provisional_reason}"
+    elif override_note:
         provisional_reason = (analysis.reason or "").strip()
         final_reason = f"{reason}{override_note}"
         if provisional_reason:
@@ -835,6 +958,9 @@ def finalize_verdict(
         # Kept as a compatibility alias for existing exports.
         "post_qualification_condition_results": qualified_conditions,
         "final_status": status,
+        "atomic_aggregate_status": atomic_status,
+        "atomic_advisory_fallback": advisory_fallback,
+        "atomic_advisory_reasons": advisory_reasons,
         "aggregator_overrode_status": bool(provisional and provisional != status),
         "condition_transitions": transitions,
         "qualification": [q.model_dump(exclude_none=True) for q in qualifications],
