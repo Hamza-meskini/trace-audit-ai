@@ -52,6 +52,8 @@ function ProjectPage() {
     partial: 1,
     missing: 2,
     conflict: 2,
+    unknown: 0,
+    not_applicable: 0,
     documents: 6,
     evidence_segments: 15,
     findings: 5,

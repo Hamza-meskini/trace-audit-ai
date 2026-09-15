@@ -26,11 +26,14 @@ from app.services.ingestion import (
     parse_document_with_metadata,
 )
 from app.services.extraction import extract_requirements_from_text
+from app.services.contract_transport import extraction_contract_payload
 from app.services.retrieval import (
     build_requirement_search_queries,
     precompute_chunk_embeddings,
     retrieve_candidate_evidence_hybrid,
 )
+from app.services.databricks_ai_search import retrieve_with_fallback, sync_project_chunks
+from app.services.databricks_custom_reranker import rerank_candidates
 from app.services.classification import batch_assess_requirements
 from app.services.taxonomy import finding_type_for
 from app.config import settings
@@ -74,7 +77,9 @@ def _cache_matches_source(existing_chunks: list[EvidenceChunk], storage_path: st
     requested_parser = settings.TRACEAUDIT_DOCUMENT_PARSER.strip().lower()
     cached_backend = str(metadata.get("parser_backend") or "").lower()
     if requested_parser in {"databricks", "databricks-auto"}:
-        return cached_backend.startswith("databricks-ai-parse")
+        expects_prep = bool(settings.DATABRICKS_AI_PREP_SEARCH_ENABLED)
+        has_prep = cached_backend.startswith("databricks-ai-prep-search")
+        return has_prep if expects_prep else cached_backend.startswith("databricks-ai-parse")
     if requested_parser in {"pymupdf", "docling"}:
         return requested_parser in cached_backend
     return True
@@ -283,21 +288,7 @@ async def run_audit_pipeline(
                         extracted_parameters={
                             "source_document_id": doc.id,
                             "parameters": [p.model_dump() for p in er.parameters],
-                            "conditions": [c.model_dump() for c in er.conditions],
-                            "semantic_clauses": [
-                                item.model_dump() for item in er.semantic_clauses
-                            ],
-                            "clause_coverage": [
-                                item.model_dump() for item in er.clause_coverage
-                            ],
-                            "unmapped_obligations": list(er.unmapped_obligations),
-                            "contract_complete": er.contract_complete,
-                            "logic": er.logic.model_dump(),
-                            "logic_tree": er.logic_tree,
-                            "decomposition_confidence": er.decomposition_confidence,
-                            "ambiguities": list(er.ambiguities),
-                            "validation_issues": list(er.validation_issues),
-                            "decomposition_method": er.decomposition_method,
+                            **extraction_contract_payload(er),
                         },
                     )
                     db.add(req)
@@ -319,15 +310,32 @@ async def run_audit_pipeline(
         delete(Finding).where(Finding.project_id == project_id)
     )
 
-    # 4a. Pre-compute semantic embeddings for all evidence chunks (single batch call)
-    # This avoids redundant API calls when retrieving evidence for each requirement.
+    # 4a. Prepare the selected search backend once. Managed AI Search writes the
+    # current project chunks to a Delta Sync source table; local mode reuses one
+    # pre-computed embedding batch across every requirement.
     report_progress("retrieval", 0, len(requirements), "Preparing evidence search")
-    chunk_embeddings = await precompute_chunk_embeddings(all_chunks_for_retrieval)
-    logger.info(f"Pre-computed embeddings for {len(all_chunks_for_retrieval)} chunks")
+    managed_search_ready = False
+    try:
+        search_sync = await sync_project_chunks(project_id, all_chunks_for_retrieval)
+        managed_search_ready = search_sync.backend_used == "databricks-ai-search"
+    except Exception as exc:
+        logger.warning("Databricks AI Search sync failed; preparing local retrieval: %s", exc)
+        search_sync = None
+    chunk_embeddings = (
+        [None] * len(all_chunks_for_retrieval)
+        if managed_search_ready
+        else await precompute_chunk_embeddings(all_chunks_for_retrieval)
+    )
+    logger.info(
+        "Prepared %s retrieval for %d chunks",
+        "Databricks AI Search" if managed_search_ready else "local hybrid",
+        len(all_chunks_for_retrieval),
+    )
 
     # 4b. Retrieve candidate evidence per requirement (hybrid BM25 + semantic)
     retrieval_started = time.perf_counter()
     req_items = []
+    per_requirement_search: dict[str, dict] = {}
     for req in requirements:
         # Clear existing evidence links for this requirement
         await db.execute(
@@ -347,14 +355,45 @@ async def run_audit_pipeline(
             extraction_data.get("semantic_clauses", []),
         )
         primary_query = search_queries[0] if search_queries else f"{req.req_code} {req.title} {req.description or ''}"
-        retrieved = await retrieve_candidate_evidence_hybrid(
-            primary_query,
-            all_chunks_for_retrieval,
-            chunk_embeddings=chunk_embeddings,
-            top_k=8,
-            exclude_doc_names=spec_doc_names,
-            condition_queries=search_queries[1:],
-        )
+        if managed_search_ready:
+            retrieved, search_diagnostics = await retrieve_with_fallback(
+                primary_query,
+                all_chunks_for_retrieval,
+                project_id=project_id,
+                chunk_embeddings=chunk_embeddings,
+                top_k=8,
+                exclude_doc_names=spec_doc_names,
+                condition_queries=search_queries[1:],
+                backend="databricks",
+            )
+            per_requirement_search[req.req_code] = search_diagnostics.as_dict()
+        else:
+            retrieval_top_k = (
+                max(8, int(settings.DATABRICKS_CUSTOM_RERANKER_CANDIDATE_COUNT))
+                if settings.DATABRICKS_CUSTOM_RERANKER_ENABLED
+                else 8
+            )
+            retrieved = await retrieve_candidate_evidence_hybrid(
+                primary_query,
+                all_chunks_for_retrieval,
+                chunk_embeddings=chunk_embeddings,
+                top_k=retrieval_top_k,
+                exclude_doc_names=spec_doc_names,
+                condition_queries=search_queries[1:],
+            )
+            retrieved, custom_reranker = await rerank_candidates(
+                primary_query,
+                retrieved,
+                condition_queries=search_queries[1:],
+                top_k=8,
+            )
+            per_requirement_search[req.req_code] = {
+                "requested_backend": "local",
+                "backend_used": "local-hybrid",
+                "queries": len(search_queries),
+                "candidates": len(retrieved),
+                "custom_reranker": custom_reranker,
+            }
 
         candidate_chunks = [
             {
@@ -411,10 +450,59 @@ async def run_audit_pipeline(
             for item in req_items for candidate in item.get("candidate_chunks", [])
         ),
         "search_queries_total": sum(len(item.get("search_queries", [])) for item in req_items),
+        "backend": "databricks-ai-search" if managed_search_ready else "local-hybrid",
+        "sync": search_sync.as_dict() if search_sync is not None else {
+            "backend_used": "local-hybrid",
+            "fallback_reason": "Databricks AI Search sync was unavailable",
+        },
+        "per_requirement": per_requirement_search,
     }
+
+    # Use ai_extract as a citation-backed discovery stage over the complete
+    # independent-evidence corpus. This can recover pages that similarity
+    # top-k missed. The helper prepends cited raw chunks, preserves the normal
+    # retrieval results, and performs one focused retry for uncovered atoms.
+    targeted_started = time.perf_counter()
+    from app.services.databricks_document_ai import enrich_targeted_evidence_items
+
+    excluded_spec_names = {name.lower() for name in spec_doc_names}
+    evidence_corpus = [
+        chunk for chunk in all_chunks_for_retrieval
+        if chunk.get("document_name", "").lower() not in excluded_spec_names
+    ]
+    pre_discovery_candidate_total = retrieval_diagnostics["candidate_chunks_total"]
+    targeted_stats = await enrich_targeted_evidence_items(
+        req_items,
+        evidence_corpus=evidence_corpus,
+    )
+    stage_timings["targeted_extraction_seconds"] = round(
+        time.perf_counter() - targeted_started, 3
+    )
+    retrieval_diagnostics["targeted_extraction"] = targeted_stats
+    retrieval_diagnostics["candidate_chunks_before_discovery"] = pre_discovery_candidate_total
+    retrieval_diagnostics["candidate_chunks_total"] = sum(
+        len(item.get("candidate_chunks", [])) for item in req_items
+    )
+    retrieval_diagnostics["requirements_without_candidates"] = sum(
+        not item.get("candidate_chunks") for item in req_items
+    )
+    retrieval_diagnostics["ai_extract_discovered_chunks"] = sum(
+        len(((item.get("targeted_extraction") or {}).get("metadata") or {}).get("cited_source_chunk_ids", []))
+        for item in req_items
+    )
+    retrieval_diagnostics["structured_table_candidates"] = sum(
+        (candidate.get("metadata") or {}).get("block_type") == "table"
+        for item in req_items for candidate in item.get("candidate_chunks", [])
+    )
+    retrieval_diagnostics["figure_candidates"] = sum(
+        (candidate.get("metadata") or {}).get("block_type") == "figure"
+        for item in req_items for candidate in item.get("candidate_chunks", [])
+    )
 
     # Render and describe only figures selected by retrieval. Descriptions are
     # persisted on the chunk and reused across requirements and later runs.
+    # Citation discovery runs first so figures found outside the original top-k
+    # are also eligible for visual interpretation.
     vision_started = time.perf_counter()
     report_progress("vision", 0, 0, "Interpreting retrieved figures; provider calls may take several minutes")
     visual_diagnostics = await describe_retrieved_figures(
@@ -426,17 +514,6 @@ async def run_audit_pipeline(
     stage_timings["visual_analysis_seconds"] = round(
         time.perf_counter() - vision_started, 3
     )
-
-    # Optional compact Databricks extraction runs only on the retrieved
-    # excerpts, after any selected figures have received visual descriptions.
-    # It is advisory context for the whole-clause reasoner and never replaces
-    # the raw evidence candidates or their source metadata.
-    targeted_started = time.perf_counter()
-    from app.services.databricks_document_ai import enrich_targeted_evidence_items
-
-    targeted_stats = await enrich_targeted_evidence_items(req_items)
-    stage_timings["targeted_extraction_seconds"] = round(time.perf_counter() - targeted_started, 3)
-    retrieval_diagnostics["targeted_extraction"] = targeted_stats
 
     # 4b. Batched hybrid verification: deterministic validators first,
     # LLM multi-condition reasoning (with Databricks cascade fallback) for
@@ -458,7 +535,7 @@ async def run_audit_pipeline(
             status: sum(
                 assessment.coverage_status == status for assessment in assessments.values()
             )
-            for status in ("Supported", "Partial", "Missing", "Conflict", "Unknown")
+            for status in ("Supported", "Partial", "Missing", "Conflict", "Unknown", "Not applicable")
         },
         "review_required": sum(
             str(assessment.review_state).lower() in {"needs review", "open"}

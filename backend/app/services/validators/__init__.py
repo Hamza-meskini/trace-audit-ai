@@ -4,7 +4,14 @@ from dataclasses import dataclass, field
 from typing import Any, Optional, Literal
 
 
-ValidationStatus = Literal["SUPPORTED", "PARTIAL", "CONFLICT", "MISSING", "UNKNOWN"]
+ValidationStatus = Literal[
+    "SUPPORTED",
+    "PARTIAL",
+    "CONFLICT",
+    "MISSING",
+    "UNKNOWN",
+    "NOT_APPLICABLE",
+]
 
 
 @dataclass

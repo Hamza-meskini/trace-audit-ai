@@ -41,6 +41,7 @@ const coverageColors = [
   "var(--critical)",
   "oklch(0.62 0.19 27)",
   "var(--info)",
+  "var(--muted-foreground)",
 ];
 
 const severityOrder = [
@@ -65,6 +66,7 @@ function Dashboard() {
     missing: 2,
     conflict: 2,
     unknown: 0,
+    not_applicable: 0,
     documents: 6,
     evidence_segments: 15,
     findings: 5,
@@ -76,6 +78,7 @@ function Dashboard() {
     { name: "Missing", value: projectStats.missing, key: "missing" },
     { name: "Conflict", value: projectStats.conflict, key: "conflict" },
     { name: "Unknown", value: projectStats.unknown ?? 0, key: "unknown" },
+    { name: "Not applicable", value: projectStats.not_applicable ?? 0, key: "not_applicable" },
   ];
 
   const recentFindings = (findings || []).slice(0, 4);

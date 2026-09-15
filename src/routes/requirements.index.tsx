@@ -44,6 +44,7 @@ const tabs = [
   "Missing",
   "Conflict",
   "Unknown",
+  "Not applicable",
   "Needs review",
 ] as const;
 

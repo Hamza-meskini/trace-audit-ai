@@ -444,6 +444,7 @@ class TestStagedAtomicDecomposition(unittest.IsolatedAsyncioTestCase):
         with patch("app.services.extraction.generate_structured", mocked):
             result = await _extract_chunk_staged(
                 source,
+                construction_mode="planned",
                 doc_name="requirements.pdf",
                 active_model="test-model",
                 thinking_level=None,
@@ -477,6 +478,7 @@ class TestStagedAtomicDecomposition(unittest.IsolatedAsyncioTestCase):
         with patch("app.services.extraction.generate_structured", mocked):
             result = await _extract_chunk_staged(
                 source,
+                construction_mode="planned",
                 doc_name="requirements.pdf",
                 active_model="system.ai.llama-4-maverick",
                 thinking_level="HIGH",
@@ -544,6 +546,7 @@ class TestStagedAtomicDecomposition(unittest.IsolatedAsyncioTestCase):
         with patch("app.services.extraction.generate_structured", mocked):
             result = await _extract_chunk_staged(
                 source,
+                construction_mode="planned",
                 doc_name="requirements.pdf",
                 active_model="test-model",
                 thinking_level=None,
@@ -554,7 +557,7 @@ class TestStagedAtomicDecomposition(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(mocked.await_count, 4)
         self.assertEqual(len(result), 1)
-        self.assertIn("QUALIFIER is permitted only inside semantic_clauses", mocked.await_args_list[3].kwargs["prompt"])
+        self.assertIn("CORRECTION RETRY", mocked.await_args_list[3].kwargs["prompt"])
 
     def test_ungrounded_condition_span_blocks_completeness(self):
         item = self._contract()

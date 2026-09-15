@@ -170,6 +170,21 @@ class TestAggregationPrecedence(unittest.TestCase):
         )
         self.assertEqual(status, "PARTIAL")
 
+    def test_if_then_false_antecedent_is_not_reported_as_supported(self):
+        contract = make_contract(conditions=[cond("IF"), cond("THEN")])
+        contract.logic = RequirementLogicContract(
+            operator="IF_THEN",
+            condition_ids=["IF", "THEN"],
+            if_condition_id="IF",
+            then_condition_ids=["THEN"],
+        )
+        status, _, reason = aggregate_condition_statuses(
+            contract,
+            [cr("IF", "NOT_APPLICABLE"), cr("THEN", "NOT_APPLICABLE")],
+        )
+        self.assertEqual(status, "NOT_APPLICABLE")
+        self.assertIn("not evaluated as a pass", reason)
+
     def test_nested_any_of_does_not_flatten_an_all_of_branch(self):
         contract = make_contract(conditions=[cond("A"), cond("B"), cond("C")])
         contract.logic = RequirementLogicContract(
@@ -296,6 +311,95 @@ class TestLLMFinalVerdictOverride(unittest.TestCase):
         self.assertEqual(final._diagnostics["pre_qualification_condition_results"][0]["status"], "PENDING")
         self.assertEqual(final._diagnostics["post_qualification_condition_results"][0]["status"], "PENDING")
         self.assertEqual(final._diagnostics["condition_transitions"], [])
+
+    def test_malformed_if_then_contract_retains_provisional_and_abstains(self):
+        contract = make_contract(conditions=[cond("C1"), cond("C2")])
+        contract.contract_complete = True
+        contract.logic = RequirementLogicContract(
+            operator="IF_THEN",
+            if_condition_id=None,
+            then_condition_ids=["C2"],
+        )
+        llm = VerificationAnalysisResult(
+            status="MISSING",
+            confidence=93,
+            condition_results=[cr("C1", "UNTESTED"), cr("C2", "UNTESTED")],
+            reason="No evidence addresses the conditional requirement.",
+        )
+
+        final = finalize_verdict(contract, llm, qualifications=[])
+
+        self.assertEqual(final.status, "MISSING")
+        self.assertEqual(final._diagnostics["atomic_aggregate_status"], "UNKNOWN")
+        self.assertTrue(final._diagnostics["aggregator_abstained"])
+        self.assertEqual(final._diagnostics["aggregator_decision"], "abstained")
+        self.assertIn(
+            "flat IF_THEN logic has no antecedent condition",
+            final._diagnostics["aggregator_validation_issues"],
+        )
+
+    def test_incomplete_contract_uses_atomic_result_but_keeps_quality_warnings(self):
+        contract = make_contract(conditions=[cond("C1"), cond("C2")])
+        contract.contract_complete = False
+        contract.unmapped_obligations = ["A third source obligation was not extracted"]
+        contract.ambiguities = ["Referenced test procedure was unavailable"]
+        llm = VerificationAnalysisResult(
+            status="SUPPORTED",
+            confidence=95,
+            condition_results=[
+                cr("C1", "UNTESTED"),
+                cr("C2", "UNTESTED"),
+            ],
+            reason="Holistic model considered the clause supported.",
+        )
+
+        final = finalize_verdict(contract, llm, qualifications=[])
+
+        self.assertEqual(final.status, "MISSING")
+        self.assertFalse(final._diagnostics["aggregator_abstained"])
+        self.assertEqual(final._diagnostics["aggregator_decision"], "overrode")
+        self.assertIn(
+            "the extracted atomic contract is incomplete",
+            final._diagnostics["aggregator_advisory_issues"],
+        )
+        self.assertEqual(final._diagnostics["aggregator_blocking_issues"], [])
+
+    def test_suffix_aligned_ids_are_canonicalized_for_if_then(self):
+        contract = make_contract(conditions=[cond("REQ-C1"), cond("REQ-C2")])
+        contract.logic = RequirementLogicContract(
+            operator="IF_THEN",
+            if_condition_id="REQ-C1",
+            then_condition_ids=["REQ-C2"],
+        )
+
+        status, _, _ = aggregate_condition_statuses(
+            contract,
+            [cr("C1", "PROVEN"), cr("C2", "PROVEN")],
+        )
+
+        self.assertEqual(status, "SUPPORTED")
+
+    def test_short_id_is_canonicalized_before_evidence_audit(self):
+        contract = make_contract(conditions=[cond("REQ-TEST-001-C1")])
+        content = "The required test passed."
+        llm = VerificationAnalysisResult(
+            status="PARTIAL",
+            confidence=92,
+            condition_results=[cr("C1", "PROVEN", ["E1"], quote=content)],
+            reason="Provisional result.",
+        )
+
+        final = finalize_verdict(
+            contract,
+            llm,
+            [qual("E1", "report.pdf", "QUALIFIED", True, True)],
+            qualified_contents={"E1": content},
+        )
+
+        self.assertEqual(final.status, "SUPPORTED")
+        self.assertEqual(final.condition_results[0].condition_id, "REQ-TEST-001-C1")
+        self.assertEqual(final.condition_results[0].validation_state, "VALID")
+        self.assertTrue(final._diagnostics["aggregator_input_valid"])
 
 
 class TestDeterministicPassFallback(unittest.TestCase):
@@ -709,6 +813,28 @@ class TestConditionEvidenceAudit(unittest.TestCase):
         )
         self.assertEqual(accepted[0].status, "PROVEN")
 
+    def test_incomplete_visual_attributes_cannot_remain_pending(self):
+        condition = AtomicConditionContract(
+            condition_id="C1",
+            description="The symbol is yellow with a black border and arrow.",
+            parameter="warning symbol colour",
+            operator="==",
+            threshold="yellow with black border and arrow",
+            requires_visual_evidence=True,
+        )
+        contract = make_contract(conditions=[condition])
+        incomplete = "VISUAL DESCRIPTION: A yellow warning label is visible."
+        audited = audit_condition_evidence(
+            contract,
+            [cr("C1", "PENDING", evidence_ids=["E1"], quote=incomplete)],
+            [qual("E1", "photo.pdf", "QUALIFIED", True, True)],
+            {"E1": incomplete},
+        )
+
+        self.assertEqual(audited[0].status, "INCONCLUSIVE")
+        self.assertEqual(audited[0].validation_state, "CONTRADICTED")
+        self.assertIn("border", audited[0].validation_notes[-1])
+
 
 class TestBuildVerificationPrompt(unittest.TestCase):
     """Verify single-requirement prompt construction without undefined variable bugs."""
@@ -1017,6 +1143,39 @@ class TestFullPipelineToApiResponse(unittest.TestCase):
 
         self.assertEqual(assessment.review_state, "Reviewed")
         self.assertTrue(assessment.pipeline_diagnostics["review_gate"]["auto_close_eligible"])
+
+    def test_aggregator_abstention_blocks_auto_close(self):
+        from app.services.classification import _finalize_assessment
+        from app.services.validators import ValidationOutcome
+
+        proven = ConditionVerificationResult(
+            condition_id="REQ-BAT-001-C1",
+            status="PROVEN",
+            validation_state="VALID",
+        )
+        assessment = _finalize_assessment(
+            contract=self.contract,
+            non_spec_items=[],
+            outcome=ValidationOutcome(
+                status="SUPPORTED",
+                confidence=80.0,
+                reason="Holistic provisional verdict retained.",
+                condition_results=[proven],
+            ),
+            pipeline_diagnostics={
+                "llm_provisional_status": "SUPPORTED",
+                "llm_provisional_confidence": 95.0,
+                "aggregator_abstained": True,
+                "aggregator_validation_issues": ["flat IF_THEN logic has no antecedent condition"],
+            },
+        )
+
+        self.assertEqual(assessment.coverage_status, "Supported")
+        self.assertEqual(assessment.review_state, "Needs review")
+        self.assertTrue(any(
+            "aggregation abstained" in reason.lower()
+            for reason in assessment.pipeline_diagnostics["review_gate"]["reasons"]
+        ))
 
     def test_low_confidence_supported_requires_review_without_changing_verdict(self):
         """Confidence controls workflow review, not the semantic category."""

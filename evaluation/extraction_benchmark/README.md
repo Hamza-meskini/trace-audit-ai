@@ -70,9 +70,29 @@ Validate the complete corpus without making an LLM call:
 Run all stages with Llama 4 Maverick for discovery, decomposition, and verification:
 
 ```powershell
-.\backend\venv\Scripts\python.exe evaluation\run_nova_end_to_end_benchmark.py --mode end-to-end --provider databricks --model system.ai.llama-4-maverick --atomic-model system.ai.llama-4-maverick --batch-size 4
+.\backend\venv\Scripts\python.exe evaluation\run_nova_end_to_end_benchmark.py --mode end-to-end --provider databricks --model system.ai.llama-4-maverick --atomic-model system.ai.llama-4-maverick --batch-size 4 --retrieval-backend auto --no-resume
 ```
 
-The runner also supports `oracle-contracts-evidence` and `oracle-contracts` for stage isolation. Results are written to `evaluation/results/nova_<mode>_<model>_results.json` with a companion Markdown report.
+The runner uses the production contract serializer, retaining nested logic, semantic clauses,
+validation findings and relational operands. Retrieval uses production query construction,
+eight candidates and the shared search/reranking service. The shared Databricks targeted
+extraction stage enriches evidence before visual analysis and verification when enabled in
+backend settings. `--retrieval-backend auto` follows the configured managed-search setting;
+`local` selects local hybrid retrieval; `databricks` requires managed search to succeed.
+
+Fresh extraction is the CLI default. `--no-resume` is retained for explicit, reproducible
+commands; old extraction artifacts are not loaded by the CLI. Evidence discovery follows
+the configured `DATABRICKS_TARGETED_EXTRACTION_ENABLED` setting and its execution counts
+are printed. The result records retrieval before/after discovery, complete verification
+inputs, and a runner version/hash. Ground truth remains frozen and evaluator-only in
+end-to-end mode. Strict atom matching remains a diagnostic and can penalize differing
+decomposition granularity; no labels are changed to accommodate predictions.
+
+The runner also supports `oracle-contracts-evidence` and `oracle-contracts` for stage isolation.
+Oracle evidence enrichment is restricted to the selected passages. Results are written to
+`evaluation/results/nova_<mode>_<model>_atomic-<model>_verify-<model>_results.json` with a
+companion Markdown report and an immutable copy under `evaluation/results/runs/`.
+Results from this runner revision are not directly comparable to the old adapter that
+dropped nested trees and omitted targeted evidence discovery.
 
 Do not tune evidence wording or expected outcomes after inspecting a model's errors. Fix the pipeline generically, preserve this frozen corpus, and use a separately versioned holdout when Nova becomes a development target.

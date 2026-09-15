@@ -26,6 +26,7 @@ export interface ApiProjectStats {
   missing: number;
   conflict: number;
   unknown: number;
+  not_applicable: number;
   documents: number;
   evidence_segments: number;
   findings: number;
@@ -168,7 +169,7 @@ export interface ApiRequirement {
     | string;
   source_document: string | null;
   sources_count: number;
-  coverage_status: "Supported" | "Partial" | "Missing" | "Conflict" | "Unknown";
+  coverage_status: "Supported" | "Partial" | "Missing" | "Conflict" | "Unknown" | "Not applicable";
   confidence: number;
   review_state: "Reviewed" | "Needs review" | "Open" | "Approved" | "Rejected";
   severity: "Critical" | "High" | "Medium" | "Low";

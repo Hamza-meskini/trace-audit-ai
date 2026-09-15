@@ -8,7 +8,14 @@ from app.schemas.enum_normalization import coerce_enum
 
 
 AtomicConditionStatus = Literal["PROVEN", "FAILED", "PENDING", "UNTESTED", "NOT_APPLICABLE", "INCONCLUSIVE"]
-VerificationTopLevelStatus = Literal["SUPPORTED", "PARTIAL", "MISSING", "UNKNOWN", "CONFLICT"]
+VerificationTopLevelStatus = Literal[
+    "SUPPORTED",
+    "PARTIAL",
+    "MISSING",
+    "UNKNOWN",
+    "CONFLICT",
+    "NOT_APPLICABLE",
+]
 ConditionValidationState = Literal["VALID", "UNRESOLVED", "CONTRADICTED"]
 EvidenceRelationship = Literal["SATISFIES", "VIOLATES", "PARTIAL_COVERAGE", "NOT_ADDRESSED", "UNCLEAR"]
 EvidenceValueRole = Literal["OBSERVED", "REQUIRED_OR_PLANNED", "STATUS_ONLY", "NOT_ADDRESSED", "UNCLEAR"]
@@ -110,6 +117,11 @@ _TOP_LEVEL_STATUS_SYNONYMS: dict[str, VerificationTopLevelStatus] = {
     "SIMULATION_ONLY": "UNKNOWN",
     "AMBIGUOUS": "UNKNOWN",
     "UNVERIFIED": "UNKNOWN",
+    "NOT_APPLICABLE": "NOT_APPLICABLE",
+    "N_A": "NOT_APPLICABLE",
+    "NA": "NOT_APPLICABLE",
+    "WAIVED": "NOT_APPLICABLE",
+    "EXEMPT": "NOT_APPLICABLE",
 }
 
 _EXECUTION_STATE_SYNONYMS: dict[str, TestExecutionState] = {

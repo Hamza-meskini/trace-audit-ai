@@ -91,6 +91,7 @@ backend/.cache/
 tmp/
 .review-tmp/
 sample_documents/
+.pytest-tmp-*/
 
 # ── Generated documents ─────────────────────────────────────
 TraceAudit_AI_Product_Strategy_Report.docx

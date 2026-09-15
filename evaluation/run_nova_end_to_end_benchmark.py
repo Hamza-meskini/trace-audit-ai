@@ -32,13 +32,15 @@ from app.config import settings
 from app.services.classification import batch_assess_requirements
 from app.services.document_classifier import profile_documents
 from app.services.extraction import ExtractedRequirement
-from app.services.retrieval import precompute_chunk_embeddings, retrieve_candidate_evidence_hybrid
+from app.services.contract_transport import extraction_contract_payload
+from app.services.retrieval import precompute_chunk_embeddings, build_requirement_search_queries
+from app.services.databricks_ai_search import retrieve_with_fallback, sync_project_chunks
+from app.services.databricks_document_ai import enrich_targeted_evidence_items
 from app.services.visual_analysis import describe_figure_candidates
 from evaluation.run_extraction_benchmark import run as run_extraction_stage
 from evaluation.atomic_evaluation import POLICY, SCORING_VERSION, decomposition, verification_metrics
 from evaluation.run_fmvss305_benchmark import (
     FINAL_CLASSES,
-    _condition_query,
     _field,
     _ingest_document,
     _macro_f1,
@@ -56,6 +58,7 @@ MODES = {
     "end-to-end": (False, False),
 }
 DEFAULT_MODEL = "system.ai.llama-4-maverick"
+RUNNER_VERSION = "3.0-production-contracts"
 
 
 def load_dataset() -> dict[str, Any]:
@@ -98,11 +101,7 @@ def prediction_contracts(predictions: list[ExtractedRequirement]) -> list[dict[s
         "title": item.title,
         "description": item.description or item.title,
         "category": item.category,
-        "conditions": [condition.model_dump(exclude_none=True) for condition in item.conditions],
-        "clause_coverage": [clause.model_dump(exclude_none=True) for clause in item.clause_coverage],
-        "unmapped_obligations": list(item.unmapped_obligations),
-        "contract_complete": item.contract_complete,
-        "logic": item.logic.model_dump(),
+        **extraction_contract_payload(item),
     } for item in predictions]
 
 
@@ -225,6 +224,7 @@ def markdown_report(result: dict[str, Any]) -> str:
         "# TraceAudit Nova End-to-End Benchmark",
         "",
         f"- Mode: `{result['mode']}`",
+        f"- Runner: `{metrics.get('integrity', {}).get('runner_version', 'legacy')}`",
         f"- Discovery/profile model: `{result['model']}`",
         f"- Atomic decomposition model: `{result['atomic_model']}`",
         f"- Verification model: `{result.get('verification_model', result['model'])}`",
@@ -281,6 +281,7 @@ async def run(
     verification_thinking_level: str | None,
     batch_size: int,
     resume: bool,
+    retrieval_backend: str = "auto",
 ) -> dict[str, Any]:
     if mode not in MODES:
         raise ValueError(f"Unknown mode: {mode}")
@@ -358,17 +359,40 @@ async def run(
     print("[4/6] Retrieving evidence passages...")
     evidence_names = {item["filename"] for item in dataset["evidence_documents"]}
     evidence_chunks = [chunk for name in evidence_names for chunk in chunks_by_name[name]]
-    embeddings = await precompute_chunk_embeddings(evidence_chunks)
+    evidence_chunks.sort(key=lambda chunk: str(chunk.get("id", "")))
+    search_id = f"benchmark:{dataset['benchmark_id']}"
+    managed_ready = False
+    search_sync = None
+    if retrieval_backend == "databricks" or (retrieval_backend == "auto" and settings.DATABRICKS_AI_SEARCH_ENABLED):
+        try:
+            search_sync = await sync_project_chunks(search_id, evidence_chunks)
+            managed_ready = search_sync.backend_used == "databricks-ai-search"
+            if not managed_ready and retrieval_backend == "databricks":
+                raise RuntimeError(f"Databricks search is not ready: {search_sync.as_dict()}")
+        except Exception:
+            if retrieval_backend == "databricks":
+                raise
+            print("  Managed search unavailable; using local hybrid retrieval.")
+    embeddings = [None] * len(evidence_chunks) if managed_ready else await precompute_chunk_embeddings(evidence_chunks)
     retrieved_by_id: dict[str, list[dict[str, Any]]] = {}
+    retrieval_diagnostics: dict[str, Any] = {}
+    queries_by_id: dict[str, list[str]] = {}
     for index, item in enumerate(contracts, 1):
-        retrieved = await retrieve_candidate_evidence_hybrid(
-            requirement_text=f"{item['title']} {item['description']}",
+        queries = build_requirement_search_queries(item["req_code"], item["title"], item["description"],
+                                                  item.get("conditions", []), item.get("semantic_clauses", []))
+        queries_by_id[item["req_code"]] = queries
+        retrieved, search_diagnostics = await retrieve_with_fallback(
+            requirement_text=queries[0] if queries else f"{item['title']} {item['description']}",
             chunks=evidence_chunks,
+            project_id=search_id,
             chunk_embeddings=embeddings,
-            top_k=5,
-            min_score=0.20,
-            condition_queries=[_condition_query(item["req_code"], condition) for condition in item.get("conditions", [])],
+            top_k=8,
+            min_score=0.3,
+            condition_queries=queries[1:],
+            backend="databricks" if managed_ready else "local",
+            strict=retrieval_backend == "databricks",
         )
+        retrieval_diagnostics[item["req_code"]] = search_diagnostics.as_dict()
         retrieved_by_id[item["req_code"]] = [{
             "id": value.chunk_id,
             "chunk_id": value.chunk_id,
@@ -383,8 +407,7 @@ async def run(
         } for value in retrieved]
         if index % 8 == 0 or index == len(contracts):
             print(f"  Retrieved evidence for {index}/{len(contracts)} requirements")
-    retrieval_score = retrieval_metrics(truth, retrieved_by_id)
-    print(f"  Evidence page Recall@3: {retrieval_score['recall_at_3']:.2f}%")
+    retrieval_before_discovery = retrieval_metrics(truth, retrieved_by_id)
 
     print("[5/6] Interpreting visual evidence and verifying atomic conditions...")
     req_items = []
@@ -394,12 +417,28 @@ async def run(
             if use_oracle_evidence
             else retrieved_by_id.get(item["req_code"], [])
         )
-        req_items.append({**item, "candidate_chunks": candidates})
+        req_items.append({**item, "candidate_chunks": candidates,
+                          "search_queries": queries_by_id.get(item["req_code"], []),
+                          "spec_doc_names": sorted(spec["filename"] for spec in dataset["documents"])})
+    targeted = await enrich_targeted_evidence_items(
+        req_items, evidence_corpus=None if use_oracle_evidence else evidence_chunks,
+    )
+    if not use_oracle_evidence:
+        retrieved_by_id = {item["req_code"]: item.get("candidate_chunks", []) for item in req_items}
+    retrieval_score = retrieval_metrics(truth, retrieved_by_id)
+    retrieval_score["before_ai_extract_discovery"] = retrieval_before_discovery
+    retrieval_score["backend_requested"] = retrieval_backend
+    retrieval_score["per_requirement"] = retrieval_diagnostics
+    retrieval_score["search_sync"] = search_sync.as_dict() if search_sync else None
+    print(f"  Evidence page Recall@3: {retrieval_score['recall_at_3']:.2f}% "
+          f"(before discovery: {retrieval_before_discovery['recall_at_3']:.2f}%)")
+    print(f"  Targeted evidence extraction: {targeted['succeeded']}/{targeted['attempted']} succeeded")
     visual = await describe_figure_candidates(
         req_items,
         {Path(name).stem: str(DOCS / name) for name in evidence_names},
         model=model,
     )
+    verification_inputs = copy.deepcopy(req_items)
     assessments = await batch_assess_requirements(
         req_items=req_items,
         model=verification_model,
@@ -469,6 +508,9 @@ async def run(
     metrics = {
         "structured_decomposition": atomic_alignment,
         "integrity": {
+            "runner_version": RUNNER_VERSION,
+            "runner_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
+            "shared_contract_transport": True,
             "scoring_version": SCORING_VERSION,
             "scoring_policy": POLICY,
             "scorer_sha256": hashlib.sha256((REPO / "evaluation" / "atomic_evaluation.py").read_bytes()).hexdigest(),
@@ -485,6 +527,7 @@ async def run(
         "document_profile": profile_score,
         "extraction": extraction_score,
         "retrieval": retrieval_score,
+        "targeted_extraction": targeted,
         "visual_evidence": visual,
         "raw_llm_atomic": verification_metrics(truth, raw_conditions, atomic_alignment),
         "final_atomic": verification_metrics(truth, final_conditions, atomic_alignment),
@@ -498,6 +541,7 @@ async def run(
     result = {
         "run_id": datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S.%fZ"),
         "evaluated_contracts": evaluated_contracts,
+        "verification_inputs": verification_inputs,
         "benchmark_id": dataset["benchmark_id"],
         "benchmark_version": dataset["version"],
         "mode": mode,
@@ -565,7 +609,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--verification-model", default=None, help="Defaults to the primary model")
     parser.add_argument("--verification-thinking-level", default=None)
     parser.add_argument("--batch-size", type=int, default=4)
-    parser.add_argument("--no-resume", action="store_true")
+    parser.add_argument("--retrieval-backend", choices=["auto", "local", "databricks"], default="auto")
+    parser.add_argument("--no-resume", action="store_true", default=True,
+                        help="Fresh extraction (default); old contracts are not reused.")
     parser.add_argument("--validate-only", action="store_true")
     return parser.parse_args()
 
@@ -606,6 +652,7 @@ def main() -> int:
         args.verification_thinking_level,
         args.batch_size,
         not args.no_resume,
+        args.retrieval_backend,
     ))
     return 0
 

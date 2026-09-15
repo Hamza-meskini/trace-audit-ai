@@ -161,6 +161,64 @@ def test_dashscope_response_parser_ignores_reasoning_and_reads_final_message():
     assert llm_client._dashscope_response_text(payload) == '{"value":"ok"}'
 
 
+def test_databricks_structured_generation_sends_json_schema(monkeypatch):
+    llm_client._DATABRICKS_JSON_SCHEMA_UNSUPPORTED_MODELS.discard("system.ai.llama-4-maverick")
+    monkeypatch.setattr(settings, "DATABRICKS_TOKEN", "test-databricks-key")
+    monkeypatch.setattr(settings, "DATABRICKS_BASE_URL", "https://workspace.example/ai-gateway/mlflow/v1")
+    captured = {}
+    response = MagicMock(status_code=200)
+    response.json.return_value = {
+        "choices": [{"message": {"content": '{"value":"ok"}'}}]
+    }
+    client = AsyncMock()
+    client.post.return_value = response
+    context = AsyncMock()
+    context.__aenter__.return_value = client
+    monkeypatch.setattr(llm_client.httpx, "AsyncClient", lambda **kwargs: context)
+
+    raw = asyncio.run(llm_client.call_databricks_chat_completions(
+        prompt="Extract a value.",
+        response_schema=ExampleResult.model_json_schema(),
+        schema_name="ExampleResult",
+        json_mode=True,
+    ))
+
+    assert raw == '{"value":"ok"}'
+    captured.update(client.post.await_args.kwargs["json"])
+    response_format = captured["response_format"]
+    assert response_format["type"] == "json_schema"
+    assert response_format["json_schema"]["name"] == "ExampleResult"
+    assert response_format["json_schema"]["schema"]["type"] == "object"
+
+
+def test_databricks_schema_rejection_is_cached_without_retry_sleep(monkeypatch):
+    model = "system.ai.llama-4-maverick"
+    llm_client._DATABRICKS_JSON_SCHEMA_UNSUPPORTED_MODELS.discard(model)
+    monkeypatch.setattr(settings, "DATABRICKS_TOKEN", "test-databricks-key")
+    monkeypatch.setattr(settings, "DATABRICKS_BASE_URL", "https://workspace.example/ai-gateway/mlflow/v1")
+    rejected = MagicMock(status_code=400, text="response_format json_schema is not supported by this endpoint")
+    accepted = MagicMock(status_code=200)
+    accepted.json.return_value = {"choices": [{"message": {"content": '{"value":"ok"}'}}]}
+    client = AsyncMock()
+    client.post.side_effect = [rejected, accepted]
+    context = AsyncMock()
+    context.__aenter__.return_value = client
+    monkeypatch.setattr(llm_client.httpx, "AsyncClient", lambda **kwargs: context)
+    sleep = AsyncMock()
+    monkeypatch.setattr(llm_client.asyncio, "sleep", sleep)
+
+    raw = asyncio.run(llm_client.call_databricks_chat_completions(
+        prompt="Extract a value.",
+        model=model,
+        response_schema=ExampleResult.model_json_schema(),
+        json_mode=True,
+    ))
+
+    assert raw == '{"value":"ok"}'
+    assert model in llm_client._DATABRICKS_JSON_SCHEMA_UNSUPPORTED_MODELS
+    sleep.assert_not_awaited()
+
+
 def test_gemini_three_uses_native_schema_and_no_temperature(monkeypatch):
     monkeypatch.setattr(llm_client.settings, "GEMINI_API_KEY", "test-gemini-key")
     response = MagicMock(status_code=200)

@@ -1,10 +1,12 @@
 """Structured Requirement Contract schema for formal auditing and validation."""
 
 from typing import Any, Optional, Union, Literal
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, model_validator, field_validator
 import re
 
 from app.schemas.evidence_qualification import normalize_entity_scope
+from app.schemas.contract_logic import ConditionValue, flat_projection
+from app.schemas.predicate import normalize_comparison
 
 
 RequirementType = Literal[
@@ -42,7 +44,8 @@ class AtomicConditionContract(BaseModel):
     canonical_parameter: Optional[str] = None
     parameter: Optional[str] = None
     operator: Optional[str] = None  # ">=", "<=", "==", "between", ">", "<", "in"
-    threshold: Optional[Union[float, str, bool]] = None
+    right_operand: Optional[str] = None
+    threshold: Optional[ConditionValue] = None
     min_value: Optional[float] = None
     max_value: Optional[float] = None
     unit: Optional[str] = None
@@ -51,6 +54,13 @@ class AtomicConditionContract(BaseModel):
     verification_method: Optional[str] = None  # "physical_test", "simulation", "calculation", "inspection"
     requires_visual_evidence: bool = False
     clause_ids: list[str] = Field(default_factory=list)
+
+    @field_validator("operator", mode="before")
+    @classmethod
+    def normalize_operator(cls, value: Any) -> Optional[str]:
+        # Retain unsupported legacy values for a diagnostic at the execution
+        # boundary instead of crashing the entire project on deserialization.
+        return normalize_comparison(value)
 
 
 class SemanticClauseContract(BaseModel):
@@ -84,7 +94,7 @@ class RequirementContract(BaseModel):
     subject: Optional[str] = None
     parameter: Optional[str] = None
     operator: Optional[str] = None  # "between", "<=", "<", ">=", ">", "==", "in", "not_in"
-    expected_value: Optional[Union[float, str, bool]] = None
+    expected_value: Optional[ConditionValue] = None
     min_value: Optional[float] = None
     max_value: Optional[float] = None
     tolerance: Optional[float] = None
@@ -126,7 +136,11 @@ class RequirementContract(BaseModel):
 
     @model_validator(mode="after")
     def normalize_logic_references(self) -> "RequirementContract":
-        """Populate omitted ALL_OF references and discard dangling IDs."""
+        """Derive compatible legacy fields; preserve invalid IDs for diagnostics."""
+        if self.logic_tree is not None:
+            projection = flat_projection(self.logic_tree)
+            self.logic = RequirementLogicContract(**(projection or {}))
+            return self
         available = [condition.condition_id for condition in self.atomic_conditions]
         mandatory = [condition.condition_id for condition in self.atomic_conditions if condition.mandatory]
         # parse_requirement_contract builds the contract before appending its
@@ -134,17 +148,6 @@ class RequirementContract(BaseModel):
         # phase; they are validated when the populated contract is revalidated.
         if not available:
             return self
-        available_set = set(available)
-        self.logic.condition_ids = [
-            condition_id for condition_id in self.logic.condition_ids
-            if condition_id in available_set
-        ]
-        self.logic.then_condition_ids = [
-            condition_id for condition_id in self.logic.then_condition_ids
-            if condition_id in available_set
-        ]
-        if self.logic.if_condition_id not in available_set:
-            self.logic.if_condition_id = None
         if not self.logic.condition_ids:
             if self.logic.operator == "IF_THEN":
                 self.logic.condition_ids = list(dict.fromkeys(
@@ -275,6 +278,7 @@ def parse_requirement_contract(
                 canonical_parameter=raw.get("canonical_parameter") or raw.get("parameter"),
                 parameter=raw.get("parameter"),
                 operator=operator,
+                right_operand=raw.get("right_operand"),
                 threshold=threshold,
                 min_value=min_value,
                 max_value=max_value,
@@ -304,7 +308,7 @@ def parse_requirement_contract(
             } else "threshold"
         elif first.operator == "==" and isinstance(first.threshold, bool):
             contract.requirement_type = "boolean"
-        elif first.operator == "==":
+        elif first.operator in {"==", "in", "not_in"}:
             contract.requirement_type = "enumeration"
         return RequirementContract.model_validate(contract.model_dump())
 

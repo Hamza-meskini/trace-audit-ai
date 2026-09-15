@@ -432,7 +432,7 @@ class TestObservedComplexBenchmarkFailures(unittest.TestCase):
         self.assertIn("latency", latency)
         self.assertNotIn("persistence_time", latency)
 
-    def test_llm_quote_not_present_is_flagged_without_status_override(self):
+    def test_llm_quote_not_present_makes_aggregation_abstain(self):
         contract = contract_for("REQ-AUT-011")
         content = "TC-INV-011 measured phase current at 680 A. Verdict: PASS."
         q = qualify_evidence(contract, "E1", "08_BMS_Functional_Safety_Validation_Report.pdf", content)
@@ -453,7 +453,10 @@ class TestObservedComplexBenchmarkFailures(unittest.TestCase):
             [q],
             qualified_contents={"E1": content},
         )
-        self.assertEqual(result.status, "PARTIAL")
+        self.assertEqual(result.status, "SUPPORTED")
+        self.assertEqual(result._diagnostics["atomic_aggregate_status"], "PARTIAL")
+        self.assertTrue(result._diagnostics["aggregator_abstained"])
+        self.assertFalse(result._diagnostics["aggregator_overrode_status"])
         self.assertEqual(result.condition_results[0].status, "PROVEN")
         self.assertEqual(result.condition_results[0].validation_state, "CONTRADICTED")
 

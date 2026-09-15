@@ -4,10 +4,12 @@ Architecture principle:
     LLM  = whole-clause interpretation plus condition-level findings
     Python = deterministic validation and aggregation when decomposition is reliable
 
-Every verification path computes an atomic aggregate. When extraction itself
-marks the atomic contract incomplete or low-confidence, that aggregate becomes
-advisory: it cannot manufacture a conflict, and a grounded whole-clause status
-may be retained with reduced confidence and mandatory review diagnostics.
+Every verification path computes an atomic aggregate. Contract incompleteness,
+unmapped obligations, ambiguity and low decomposition confidence are advisory:
+they force review but do not prevent a final status for the extracted conditions.
+Malformed Boolean structure, ambiguous alignment and invalid decisive evidence
+make the aggregator abstain; the provisional verdict is then retained with
+reduced confidence and mandatory-review diagnostics.
 
 Precedence for mandatory conditions:
     1. Any mandatory condition FAILED                     -> CONFLICT
@@ -34,6 +36,9 @@ import logging
 from typing import Any, Optional
 
 from app.schemas.contract import RequirementContract, AtomicConditionContract
+from app.schemas.contract_logic import contract_tree
+from app.schemas.predicate import predicate_issues
+from app.schemas.validation_issue import ValidationIssue
 from app.schemas.claim import EvidenceClaim
 from app.services.taxonomy import condition_to_verdict
 from app.schemas.verification_result import (
@@ -127,10 +132,12 @@ def _match_condition_results(
     used as-is (the producer performed the decomposition).
     """
     if isinstance(contract, list):
-        mand = [c for c in contract if getattr(c, "mandatory", True)]
+        mand = list(contract)
     elif hasattr(contract, "atomic_conditions"):
         logic = getattr(contract, "logic", None)
         declared_ids = set(getattr(logic, "condition_ids", []) or [])
+        if getattr(contract, "logic_tree", None) is not None:
+            declared_ids = set(_logic_tree_condition_ids(contract.logic_tree))
         if declared_ids:
             mand = [c for c in contract.atomic_conditions if c.condition_id in declared_ids]
         else:
@@ -155,11 +162,17 @@ def _match_condition_results(
                 if cid == suffix or cid.endswith(f"-{suffix}"):
                     cr = candidate
                     break
-        if cr is None and len(condition_results) == len(mand):
-            cr = condition_results[idx]  # positional fallback
-        aligned.append(cr if cr is not None else ConditionVerificationResult(
-            condition_id=cond.condition_id, status="UNTESTED",
-        ))
+        if cr is None:
+            aligned.append(ConditionVerificationResult(
+                condition_id=cond.condition_id, status="UNTESTED",
+            ))
+        elif cr.condition_id == cond.condition_id:
+            aligned.append(cr)
+        else:
+            # Downstream Boolean logic is keyed by the contract's IDs. A
+            # suffix or positional match is useful only if its canonical ID is
+            # carried forward; otherwise IF_THEN can treat it as missing.
+            aligned.append(cr.model_copy(update={"condition_id": cond.condition_id}))
     return aligned
 
 
@@ -181,6 +194,30 @@ def _complete_condition_results_preserving_order(
             reason="No condition result was supplied for this declared contract condition.",
         ))
     return completed
+
+
+def _canonicalize_condition_result_ids(
+    contract: RequirementContract,
+    condition_results: list[ConditionVerificationResult],
+) -> list[ConditionVerificationResult]:
+    """Canonicalize unambiguous short IDs before evidence auditing."""
+    exact_ids = {condition.condition_id for condition in contract.atomic_conditions}
+    by_suffix: dict[str, list[str]] = {}
+    for condition_id in exact_ids:
+        by_suffix.setdefault(condition_id.rsplit("-", 1)[-1].lower(), []).append(condition_id)
+
+    canonical: list[ConditionVerificationResult] = []
+    for result in condition_results:
+        if result.condition_id in exact_ids:
+            canonical.append(result)
+            continue
+        suffix = (result.condition_id or "").rsplit("-", 1)[-1].lower()
+        matches = by_suffix.get(suffix, [])
+        if len(matches) == 1:
+            canonical.append(result.model_copy(update={"condition_id": matches[0]}))
+        else:
+            canonical.append(result)
+    return canonical
 
 
 # ── Qualification enforcement on condition results ──────────────────────────
@@ -518,8 +555,15 @@ def audit_condition_evidence(
         _add_validation_note(cr, "VALID", "Evidence attribution and admissibility checks passed.")
 
         cited_text = "\n".join(cited_contents.values())
-        if cr.status == "PROVEN" and cond is not None:
-            missing_references = _missing_strict_references(cond, cited_text)
+        if cond is not None:
+            # A pending result may legitimately omit an external standard
+            # reference while work is still in progress.  Compound visual
+            # attributes are different: if the cited image does not show the
+            # requested attributes, PENDING overstates what was observed.
+            if cr.status == "PROVEN":
+                missing_references = _missing_strict_references(cond, cited_text)
+            else:
+                missing_references = []
             if missing_references:
                 _invalidate_unsupported_proof(
                     cr,
@@ -528,7 +572,11 @@ def audit_condition_evidence(
                     + ". Proof was normalized to INCONCLUSIVE.",
                 )
                 continue
-            missing_attributes = _missing_visual_attributes(cond, cited_text)
+            missing_attributes = (
+                _missing_visual_attributes(cond, cited_text)
+                if cr.status in {"PROVEN", "PENDING"}
+                else []
+            )
             if missing_attributes:
                 _invalidate_unsupported_proof(
                     cr,
@@ -581,6 +629,274 @@ def _logic_tree_condition_ids(node: Any) -> list[str]:
     for key in ("antecedent", "consequent", "if", "then"):
         output.extend(_logic_tree_condition_ids(node.get(key)))
     return list(dict.fromkeys(output))
+
+
+def _logic_tree_structure_messages(
+    node: Any,
+    known_ids: set[str],
+    path: str = "logic_tree",
+) -> list[str]:
+    """Return reasons a nested Boolean tree is unsafe to execute."""
+    if not isinstance(node, dict):
+        return [f"{path} is not an object"]
+
+    operator = str(node.get("operator") or "").upper()
+    if operator == "CONDITION":
+        condition_id = str(node.get("condition_id") or "")
+        if not condition_id:
+            return [f"{path} has no condition_id"]
+        if condition_id not in known_ids:
+            return [f"{path} references unknown condition {condition_id}"]
+        return []
+
+    if operator in {"ALL_OF", "ANY_OF"}:
+        children = node.get("children")
+        if not isinstance(children, list) or not children:
+            return [f"{path}.{operator} has no children"]
+        issues: list[str] = []
+        if operator == "ANY_OF" and len(children) < 2:
+            issues.append(f"{path}.ANY_OF needs at least two alternatives")
+        for index, child in enumerate(children):
+            issues.extend(_logic_tree_structure_messages(
+                child, known_ids, f"{path}.children[{index}]"
+            ))
+        return issues
+
+    if operator == "IF_THEN":
+        antecedent = node.get("antecedent") or node.get("if")
+        consequent = node.get("consequent") or node.get("then")
+        issues = []
+        if antecedent is None:
+            issues.append(f"{path}.IF_THEN has no antecedent")
+        else:
+            issues.extend(_logic_tree_structure_messages(
+                antecedent, known_ids, f"{path}.antecedent"
+            ))
+        if consequent is None:
+            issues.append(f"{path}.IF_THEN has no consequent")
+        else:
+            issues.extend(_logic_tree_structure_messages(
+                consequent, known_ids, f"{path}.consequent"
+            ))
+        return issues
+
+    return [f"{path} has unsupported operator {operator or '<missing>'}"]
+
+
+def _logic_tree_structure_issues(node: Any, known_ids: set[str], path: str = "logic_tree") -> list[str]:
+    return [ValidationIssue(message, "LOGIC_STRUCTURE", message.split(" ", 1)[0])
+            for message in _logic_tree_structure_messages(node, known_ids, path)]
+
+
+def _validated_decisive_status(node: Any, by_id: dict[str, ConditionVerificationResult]) -> Optional[str]:
+    """Find a sufficient proof using only VALID evidence, including gate proof."""
+    if not isinstance(node, dict):
+        return None
+    op = node.get("operator")
+    if op == "CONDITION":
+        result = by_id.get(node.get("condition_id"))
+        if result is None or result.validation_state != "VALID":
+            return None
+        return {"PROVEN": "SUPPORTED", "FAILED": "CONFLICT", "NOT_APPLICABLE": "NOT_APPLICABLE"}.get(result.status)
+    if op == "IF_THEN":
+        gate = _validated_decisive_status(node.get("antecedent"), by_id)
+        if gate == "NOT_APPLICABLE":
+            return gate
+        return _validated_decisive_status(node.get("consequent"), by_id) if gate == "SUPPORTED" else None
+    children = node.get("children") or []
+    if op not in {"ALL_OF", "ANY_OF"} or not children:
+        return None
+    statuses = [_validated_decisive_status(child, by_id) for child in children]
+    active = [s for s in statuses if s != "NOT_APPLICABLE"]
+    if not active:
+        return "NOT_APPLICABLE"
+    if op == "ALL_OF":
+        if "CONFLICT" in active:
+            return "CONFLICT"
+        return "SUPPORTED" if all(s == "SUPPORTED" for s in active) else None
+    if "SUPPORTED" in active:
+        return "SUPPORTED"
+    return "CONFLICT" if all(s == "CONFLICT" for s in active) else None
+
+
+def aggregation_input_issues(
+    contract: RequirementContract,
+    condition_results: list[ConditionVerificationResult],
+    original_condition_results: Optional[list[ConditionVerificationResult]] = None,
+) -> list[str]:
+    """Validate symbolic inputs before they may override the LLM verdict.
+
+    This is stricter than schema validation. The returned list contains both
+    advisory quality findings and non-executable input defects. The caller uses
+    ``aggregation_blocking_issues`` to decide whether aggregation must abstain.
+    ``contract_complete=None`` remains supported for legacy/manual contracts.
+    """
+    issues: list[str] = []
+    conditions = list(contract.atomic_conditions or [])
+    condition_ids = [condition.condition_id for condition in conditions]
+    known_ids = set(condition_ids)
+
+    if not conditions:
+        issues.append("the contract has no atomic conditions")
+        return issues
+    if len(known_ids) != len(condition_ids):
+        issues.append("the contract contains duplicate condition IDs")
+    for condition in conditions:
+        issues.extend(ValidationIssue(f"condition {condition.condition_id} {message}", "PREDICATE", condition.condition_id)
+                      for message in predicate_issues(condition))
+    if contract.contract_complete is False:
+        issues.append("the extracted atomic contract is incomplete")
+    if contract.unmapped_obligations:
+        issues.append("one or more source obligations are unmapped")
+    if contract.validation_issues:
+        issues.append("contract validation reported unresolved issues")
+    if contract.ambiguities:
+        issues.append("the atomic decomposition contains unresolved ambiguity")
+    if (
+        contract.decomposition_confidence is not None
+        and contract.decomposition_confidence < 0.7
+    ):
+        issues.append(
+            f"decomposition confidence is {contract.decomposition_confidence:.2f}"
+        )
+
+    required_verification_ids = {
+        condition.condition_id
+        for condition in conditions
+        if condition.mandatory and condition.condition_role == "VERIFICATION"
+    }
+    tree = getattr(contract, "logic_tree", None)
+    governed_ids: list[str]
+    if tree is not None:
+        issues.extend(_logic_tree_structure_issues(tree, known_ids))
+        governed_ids = _logic_tree_condition_ids(tree)
+        missing = required_verification_ids - set(governed_ids)
+        if missing:
+            issues.append(ValidationIssue(
+                "logic_tree omits mandatory verification condition(s): "
+                + ", ".join(sorted(missing)), "MISSING_OBLIGATION", "logic_tree"
+            ))
+    else:
+        logic = contract.logic
+        operator = str(getattr(logic, "operator", "ALL_OF") or "ALL_OF").upper()
+        if operator == "IF_THEN":
+            antecedent_id = getattr(logic, "if_condition_id", None)
+            consequent_ids = list(getattr(logic, "then_condition_ids", []) or [])
+            governed_ids = list(dict.fromkeys(
+                ([antecedent_id] if antecedent_id else []) + consequent_ids
+            ))
+            if not antecedent_id:
+                issues.append("flat IF_THEN logic has no antecedent condition")
+            if not consequent_ids:
+                issues.append("flat IF_THEN logic has no consequent conditions")
+        else:
+            governed_ids = list(getattr(logic, "condition_ids", []) or [])
+            if not governed_ids:
+                governed_ids = [
+                    condition.condition_id for condition in conditions if condition.mandatory
+                ]
+            if operator == "ANY_OF" and len(governed_ids) < 2:
+                issues.append("flat ANY_OF logic needs at least two alternatives")
+
+        unknown = set(governed_ids) - known_ids
+        if unknown:
+            issues.append(
+                "flat logic references unknown condition(s): "
+                + ", ".join(sorted(unknown))
+            )
+        missing = required_verification_ids - set(governed_ids)
+        if missing:
+            issues.append(ValidationIssue(
+                "flat logic omits mandatory verification condition(s): "
+                + ", ".join(sorted(missing)), "MISSING_OBLIGATION", "logic"
+            ))
+
+    # Missing LLM results must not silently become authoritative UNTESTED
+    # placeholders. Suffix IDs are accepted and canonicalized by the matcher.
+    supplied = list(
+        original_condition_results
+        if original_condition_results is not None
+        else condition_results
+    )
+    for condition_id in governed_ids:
+        suffix = condition_id.rsplit("-", 1)[-1].lower()
+        matches = [
+            result for result in supplied
+            if (result.condition_id or "").lower() == condition_id.lower()
+            or (result.condition_id or "").lower() == suffix
+            or (result.condition_id or "").lower().endswith(f"-{suffix}")
+        ]
+        if not matches:
+            issues.append(f"no condition result was supplied for {condition_id}")
+        elif len(matches) > 1:
+            issues.append(f"multiple condition results ambiguously match {condition_id}")
+
+    aligned = _match_condition_results(contract, condition_results)
+    by_id = {result.condition_id: result for result in aligned}
+    # Only a complete, unambiguous contract can justify ignoring an unrelated
+    # unresolved result. Existing findings and review requirements stay visible.
+    decisive = None
+    if not issues and contract.contract_complete is True:
+        decisive = _validated_decisive_status(contract_tree(contract), by_id)
+        computed, _, _ = aggregate_condition_statuses(contract, condition_results)
+        if decisive != computed:
+            decisive = None
+    for condition_id in governed_ids:
+        result = by_id.get(condition_id)
+        if result is None:
+            continue
+        if (
+            result.status in {"PROVEN", "FAILED", "PENDING", "NOT_APPLICABLE"}
+            and result.validation_state != "VALID"
+        ):
+            issues.append(ValidationIssue(
+                f"condition {condition_id} has {result.status} status with "
+                f"{result.validation_state} evidence validation",
+                "EVIDENCE_VALIDATION", condition_id, blocking=decisive is None,
+            ))
+
+    return list(dict.fromkeys(issues))
+
+
+def aggregation_blocking_issues(issues: list[str]) -> list[str]:
+    """Return only defects that make the available Boolean contract non-executable.
+
+    Completeness and semantic-quality findings remain visible and force review,
+    but the aggregator can still calculate the status of the conditions that
+    were actually extracted. Missing model results are represented explicitly
+    as INCONCLUSIVE placeholders before this check.
+    """
+    blocking_prefixes = (
+        "the contract has no atomic conditions",
+        "the contract contains duplicate condition IDs",
+        "logic_tree is not an object",
+        "logic_tree has unsupported operator",
+        "logic_tree references unknown condition",
+        "flat IF_THEN logic has no antecedent condition",
+        "flat IF_THEN logic has no consequent conditions",
+        "flat ANY_OF logic needs at least two alternatives",
+        "flat logic references unknown condition",
+        "multiple condition results ambiguously match",
+        "condition ",
+    )
+    structural_fragments = (
+        ".CONDITION has no condition_id",
+        ".ALL_OF has no children",
+        ".ANY_OF has no children",
+        ".ANY_OF needs at least two alternatives",
+        ".IF_THEN has no antecedent",
+        ".IF_THEN has no consequent",
+    )
+    return [
+        issue for issue in issues
+        if (issue.blocking if isinstance(issue, ValidationIssue) else (
+            issue.startswith(blocking_prefixes)
+            or (issue.startswith("logic_tree") and any(fragment in issue for fragment in (
+                "has unsupported operator", "references unknown condition", "has no condition_id", "is not an object",
+            )))
+            or any(fragment in issue for fragment in structural_fragments)
+        ))
+    ]
 
 
 def _aggregate_status_group(operator: str, statuses: list[str]) -> Optional[str]:
@@ -643,7 +959,7 @@ def _aggregate_logic_tree_node(
         if antecedent_status is None or consequent is None:
             return None
         if antecedent_status == "NOT_APPLICABLE":
-            return "SUPPORTED"
+            return "NOT_APPLICABLE"
         if antecedent_status != "SUPPORTED":
             return antecedent_status
         return _aggregate_logic_tree_node(consequent, by_id)
@@ -663,12 +979,9 @@ def _aggregate_nested_logic_tree(
         return None
     tree_conditions = [condition_by_id[condition_id] for condition_id in tree_ids]
     aligned = _match_condition_results(tree_conditions, condition_results)
-    by_id = {
-        condition.condition_id: result
-        for condition, result in zip(tree_conditions, aligned)
-    }
+    by_id = {result.condition_id: result for result in aligned}
     status = _aggregate_logic_tree_node(tree, by_id)
-    if status in {None, "NOT_APPLICABLE"}:
+    if status is None:
         return None
     confidence = {
         "SUPPORTED": 95.0,
@@ -676,6 +989,7 @@ def _aggregate_nested_logic_tree(
         "MISSING": 92.0,
         "PARTIAL": 88.0,
         "UNKNOWN": 80.0,
+        "NOT_APPLICABLE": 90.0,
     }[status]
     return (
         status,
@@ -702,6 +1016,8 @@ def aggregate_condition_statuses(
     nested = _aggregate_nested_logic_tree(contract, condition_results)
     if nested is not None:
         return nested
+    if getattr(contract, "logic_tree", None) is not None:
+        return "UNKNOWN", 70.0, "Mechanical aggregation: the authoritative logic_tree cannot be evaluated."
 
     aligned = _match_condition_results(contract, condition_results)
     logic = getattr(contract, "logic", None)
@@ -720,8 +1036,8 @@ def aggregate_condition_statuses(
         antecedent_status = (antecedent.status or "UNTESTED").upper()
         if antecedent_status == "NOT_APPLICABLE":
             return (
-                "SUPPORTED", 90.0,
-                "Mechanical IF_THEN aggregation: the antecedent is not applicable, so the conditional obligation is satisfied.",
+                "NOT_APPLICABLE", 90.0,
+                "Mechanical IF_THEN aggregation: the antecedent does not apply, so this conditional requirement was not evaluated as a pass.",
             )
         if antecedent_status == "UNTESTED":
             if any(result.status == "INCONCLUSIVE" for result in aligned):
@@ -764,7 +1080,7 @@ def aggregate_condition_statuses(
     active_n = n - counts["NOT_APPLICABLE"]
     if active_n <= 0:
         return (
-            "UNKNOWN", 75.0,
+            "NOT_APPLICABLE", 90.0,
             "Mechanical aggregation: no applicable mandatory condition was available.",
         )
 
@@ -864,9 +1180,14 @@ def finalize_verdict(
     provisional_conditions = _condition_snapshot(list(analysis.condition_results or []))
     # Audit a deep copy so validation metadata is available without changing
     # the reasoner's original objects or their semantic statuses.
+    copied_results = [
+        result.model_copy(deep=True)
+        for result in (analysis.condition_results or [])
+    ]
+    copied_results = _canonicalize_condition_result_ids(contract, copied_results)
     crs = _complete_condition_results_preserving_order(
         contract,
-        [result.model_copy(deep=True) for result in (analysis.condition_results or [])],
+        copied_results,
     )
     crs = audit_condition_evidence(contract, crs, qualifications, qualified_contents)
     if not crs:
@@ -882,36 +1203,40 @@ def finalize_verdict(
     )
 
     provisional = (analysis.status or "").upper()
-    advisory_reasons: list[str] = []
-    if contract.contract_complete is False:
-        advisory_reasons.append("the extracted atomic contract is incomplete")
-    if (
-        contract.decomposition_confidence is not None
-        and contract.decomposition_confidence < 0.7
-    ):
-        advisory_reasons.append(
-            f"decomposition confidence is {contract.decomposition_confidence:.2f}"
-        )
-    if contract.unmapped_obligations:
-        advisory_reasons.append("one or more source obligations are unmapped")
-
-    has_failed_condition = any(result.status == "FAILED" for result in crs)
-    has_positive_condition = any(result.status == "PROVEN" for result in crs)
-    advisory_fallback = bool(
-        advisory_reasons
-        and provisional in {"SUPPORTED", "PARTIAL", "MISSING", "UNKNOWN"}
-        and status in {"PARTIAL", "MISSING", "UNKNOWN"}
-        and not has_failed_condition
-        and (provisional != "SUPPORTED" or has_positive_condition)
-        and provisional != status
+    advisory_reasons = aggregation_input_issues(
+        contract,
+        crs,
+        original_condition_results=list(analysis.condition_results or []),
     )
+    blocking_reasons = aggregation_blocking_issues(advisory_reasons)
+    aggregation_eligible = not blocking_reasons
+    condition_issue_prefixes = (
+        "no condition result was supplied for ",
+        "multiple condition results ambiguously match ",
+        "condition ",
+    )
+    contract_validation_issues = [
+        issue for issue in advisory_reasons
+        if not issue.startswith(condition_issue_prefixes)
+    ]
     atomic_status = status
+    # With malformed symbolic input there is no sound deterministic override.
+    # Keep the holistic decision as an explicitly review-only result. An empty
+    # model response remains on the conservative atomic fallback.
+    advisory_fallback = bool(
+        not aggregation_eligible
+        and analysis.condition_results
+        and provisional in {
+            "SUPPORTED", "PARTIAL", "MISSING", "UNKNOWN", "CONFLICT",
+            "NOT_APPLICABLE",
+        }
+    )
     if advisory_fallback:
         status = provisional
         confidence = min(float(analysis.confidence), 80.0)
         reason = (
-            "Whole-clause provisional status retained because atomic decomposition is advisory: "
-            + "; ".join(advisory_reasons)
+            "Whole-clause provisional status retained because deterministic aggregation abstained: "
+            + "; ".join(blocking_reasons)
             + f". The atomic aggregate was {atomic_status}. Mandatory review is required."
         )
 
@@ -961,7 +1286,23 @@ def finalize_verdict(
         "atomic_aggregate_status": atomic_status,
         "atomic_advisory_fallback": advisory_fallback,
         "atomic_advisory_reasons": advisory_reasons,
-        "aggregator_overrode_status": bool(provisional and provisional != status),
+        "aggregator_blocking_issues": blocking_reasons,
+        "aggregator_advisory_issues": [
+            issue for issue in advisory_reasons if issue not in blocking_reasons
+        ],
+        "aggregator_contract_valid": not contract_validation_issues,
+        "aggregator_input_valid": aggregation_eligible,
+        "aggregator_contract_validation_issues": contract_validation_issues,
+        "aggregator_validation_issues": advisory_reasons,
+        "aggregator_abstained": bool(blocking_reasons),
+        "aggregator_decision": (
+            "abstained" if not aggregation_eligible else
+            "overrode" if provisional and provisional != status else
+            "agreed"
+        ),
+        "aggregator_overrode_status": bool(
+            aggregation_eligible and provisional and provisional != status
+        ),
         "condition_transitions": transitions,
         "qualification": [q.model_dump(exclude_none=True) for q in qualifications],
     })
@@ -1044,7 +1385,7 @@ def _numeric_condition_status(
     threshold = cond.threshold
     if threshold is None:
         threshold = cond.max_value if op in ("<=", "<") else cond.min_value
-    if threshold is None or isinstance(threshold, (str, bool)):
+    if not isinstance(threshold, (int, float)) or isinstance(threshold, bool):
         return None
     th = float(threshold)
 

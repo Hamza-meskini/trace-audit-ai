@@ -47,18 +47,25 @@ from app.schemas.contract import parse_requirement_contract
 from app.services.classification import batch_assess_requirements
 from app.services.evidence_qualification import qualify_evidence
 from app.services.document_classifier import profile_documents
-from app.services.extraction import extract_requirements_from_text
+from app.services.extraction import (
+    ExtractedRequirement,
+    _requirement_blocks,
+    _requirement_code_from_block,
+    extract_requirements_from_text,
+)
 from app.services.ingestion import parse_document
 from app.services.visual_analysis import describe_figure_candidates
 from app.services.retrieval import (
     build_requirement_search_queries,
     precompute_chunk_embeddings,
-    retrieve_candidate_evidence_hybrid,
+    retrieve_candidate_evidence_hybrid,  # compatibility for paired retrieval tool
 )
+from app.services.databricks_ai_search import retrieve_with_fallback, sync_project_chunks
 from app.services.databricks_document_ai import enrich_targeted_evidence_items
+from app.services.observability import log_benchmark_metrics
 
 
-FINAL_CLASSES = ["SUPPORTED", "PARTIAL", "CONFLICT", "MISSING", "UNKNOWN"]
+FINAL_CLASSES = ["SUPPORTED", "PARTIAL", "CONFLICT", "MISSING", "UNKNOWN", "NOT_APPLICABLE"]
 ATOMIC_CLASSES = [
     "PROVEN",
     "FAILED",
@@ -88,6 +95,7 @@ CONDITION_INPUT_FIELDS = {
     "requires_visual_evidence",
     "verification_method",
 }
+SCOPE_FILE_FIELDS = {"clauses"}
 
 
 def _percent(numerator: int | float, denominator: int | float) -> float:
@@ -127,6 +135,9 @@ def _normal_final(value: Any) -> str:
         "FAIL": "CONFLICT",
         "NO_EVIDENCE": "MISSING",
         "INCONCLUSIVE": "UNKNOWN",
+        "N/A": "NOT_APPLICABLE",
+        "NA": "NOT_APPLICABLE",
+        "EXEMPT": "NOT_APPLICABLE",
     }
     status = aliases.get(status, status)
     return status if status in FINAL_CLASSES else "UNKNOWN"
@@ -201,6 +212,93 @@ def _clean_condition(condition: dict[str, Any]) -> dict[str, Any]:
 def _load_dataset() -> dict[str, Any]:
     with (BENCHMARK_DIR / "ground_truth.json").open("r", encoding="utf-8") as handle:
         return json.load(handle)
+
+
+def _canonical_clause_id(value: str) -> str:
+    """Validate and format a regulatory clause identifier for source scoping."""
+    match = re.fullmatch(r"S\s*(\d+(?:\.\d+)*(?:\([a-z0-9]+\))*)", str(value).strip(), re.I)
+    if not match:
+        raise ValueError(f"Invalid FMVSS clause identifier in scope: {value!r}")
+    code = f"S{match.group(1)}".upper()
+    return re.sub(r"\(([A-Z0-9]+)\)", lambda item: f"({item.group(1).lower()})", code)
+
+
+def _load_clause_scope(path: Path) -> tuple[list[str], dict[str, Any]]:
+    """Load an answer-free list of source clause IDs used to limit extraction."""
+    resolved = path.expanduser().resolve(strict=True)
+    with resolved.open("r", encoding="utf-8") as handle:
+        payload = json.load(handle)
+    if not isinstance(payload, dict):
+        raise ValueError("The scope file must be a JSON object containing a 'clauses' list.")
+    unexpected = set(payload) - SCOPE_FILE_FIELDS
+    if unexpected:
+        raise ValueError(
+            "The scope file may contain clause identifiers and descriptive metadata only; "
+            f"unexpected fields: {', '.join(sorted(unexpected))}"
+        )
+    raw_clauses = payload.get("clauses")
+    if not isinstance(raw_clauses, list) or not raw_clauses:
+        raise ValueError("The scope file must contain a non-empty 'clauses' list.")
+    clauses = [_canonical_clause_id(value) for value in raw_clauses]
+    if len(clauses) != len(set(clauses)):
+        raise ValueError("The scope file contains duplicate clause identifiers.")
+    metadata = {
+        "scope_id": resolved.stem,
+        "source_file": str(resolved),
+        "clauses": clauses,
+    }
+    return clauses, metadata
+
+
+def _lettered_subparagraph(parent_block: str, clause_id: str) -> str:
+    """Return one lettered/numbered subparagraph without importing its siblings."""
+    selector_match = re.search(r"\(([a-z0-9]+)\)$", clause_id, re.I)
+    if not selector_match:
+        raise ValueError(f"Clause {clause_id} is not a subparagraph identifier.")
+    selector = selector_match.group(1)
+    start_match = re.search(rf"(?mi)^[ \t]*\({re.escape(selector)}\)[ \t]*", parent_block)
+    if not start_match:
+        raise ValueError(f"Could not locate subparagraph ({selector}) in its parent source block.")
+    sibling_pattern = r"(?mi)^[ \t]*\([a-z]\)[ \t]*" if selector.isalpha() else r"(?m)^[ \t]*\(\d+\)[ \t]*"
+    sibling_match = re.search(sibling_pattern, parent_block[start_match.end():])
+    end = start_match.end() + sibling_match.start() if sibling_match else len(parent_block)
+    body = parent_block[start_match.end():end].strip()
+    if not body:
+        raise ValueError(f"Subparagraph {clause_id} has no source text.")
+    return f"{clause_id} {body}"
+
+
+def _scope_requirement_text(source_text: str, clause_ids: list[str]) -> tuple[str, list[str]]:
+    """Select exact regulation blocks before any LLM extraction or decomposition."""
+    blocks = _requirement_blocks(source_text)
+    by_clause: dict[str, str] = {}
+    for block in blocks:
+        code = _requirement_code_from_block(block)
+        if code and code.upper().startswith("S"):
+            by_clause.setdefault(_canonical_clause_id(code), block)
+
+    selected: list[str] = []
+    missing: list[str] = []
+    for clause_id in clause_ids:
+        if clause_id in by_clause:
+            selected.append(by_clause[clause_id])
+            continue
+        parent_id = re.sub(r"\([a-z0-9]+\)$", "", clause_id, flags=re.I)
+        parent_block = by_clause.get(parent_id)
+        if parent_block and parent_id != clause_id:
+            selected.append(_lettered_subparagraph(parent_block, clause_id))
+            continue
+        missing.append(clause_id)
+    if missing:
+        raise ValueError(
+            "The requested benchmark clauses were not found in the regulation source: "
+            + ", ".join(missing)
+        )
+    scoped_text = "\n\n".join(selected)
+    resolved = [
+        _requirement_code_from_block(block) or "" for block in _requirement_blocks(scoped_text)
+    ]
+    return scoped_text, resolved
 
 
 def _document_paths(dataset: dict[str, Any]) -> tuple[Path, Path]:
@@ -330,6 +428,7 @@ def _oracle_contracts(requirements: list[dict[str, Any]]) -> tuple[list[dict[str
             "description": requirement["requirement_text"],
             "category": requirement.get("category", "Safety"),
             "conditions": conditions,
+            "semantic_clauses": requirement.get("semantic_clauses", []),
             "clause_coverage": [{
                 "clause": requirement["clause"],
                 "condition_ids": [item["condition_id"] for item in conditions],
@@ -337,6 +436,7 @@ def _oracle_contracts(requirements: list[dict[str, Any]]) -> tuple[list[dict[str
             "unmapped_obligations": [],
             "contract_complete": True,
             "logic": requirement["logic"],
+            "logic_tree": requirement.get("logic_tree"),
         })
     return items, {
         "selected_clause_recall": 100.0,
@@ -403,10 +503,18 @@ def _extracted_contracts(
             "description": candidate.description or candidate.title,
             "category": candidate.category,
             "conditions": candidate_conditions,
+            "semantic_clauses": [
+                item.model_dump(exclude_none=True)
+                for item in candidate.semantic_clauses
+            ],
             "clause_coverage": [item.model_dump(exclude_none=True) for item in candidate.clause_coverage],
             "unmapped_obligations": list(candidate.unmapped_obligations),
             "contract_complete": candidate.contract_complete,
             "logic": candidate.logic.model_dump(),
+            "logic_tree": candidate.logic_tree,
+            "decomposition_confidence": candidate.decomposition_confidence,
+            "ambiguities": list(candidate.ambiguities),
+            "validation_issues": list(candidate.validation_issues),
         })
 
     return items, {
@@ -686,6 +794,74 @@ def _macro_f1(matrix: dict[str, dict[str, int]]) -> float:
     return round(100.0 * sum(scores) / len(scores), 2) if scores else 0.0
 
 
+def _aggregator_impact_metrics(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    """Measure whether deterministic aggregation fixed or damaged verdicts.
+
+    The categories are mutually exclusive. An abstention is counted before
+    comparing statuses because retaining the provisional result is the intended
+    behavior when symbolic input validation fails.
+    """
+    category_names = (
+        "fixed", "broken", "unchanged", "abstained",
+        "changed_wrong_to_wrong", "unavailable",
+    )
+
+    def empty_counts() -> dict[str, int]:
+        return {name: 0 for name in category_names}
+
+    counts = empty_counts()
+    by_contract_validity = {
+        "valid": empty_counts(),
+        "invalid": empty_counts(),
+        "unknown": empty_counts(),
+    }
+    details: list[dict[str, Any]] = []
+
+    for row in rows:
+        diagnostics = row.get("pipeline_diagnostics") or {}
+        raw_provisional = diagnostics.get("llm_provisional_status")
+        if raw_provisional is None:
+            raw_provisional = diagnostics.get("pre_qualification_status")
+        provisional = _normal_final(raw_provisional) if raw_provisional else None
+        final = row["predicted_status"]
+        expected = row["expected_status"]
+        valid_flag = diagnostics.get("aggregator_contract_valid")
+        validity = "valid" if valid_flag is True else "invalid" if valid_flag is False else "unknown"
+
+        if provisional not in FINAL_CLASSES:
+            category = "unavailable"
+        elif diagnostics.get("aggregator_abstained"):
+            category = "abstained"
+        elif provisional == final:
+            category = "unchanged"
+        elif final == expected and provisional != expected:
+            category = "fixed"
+        elif provisional == expected and final != expected:
+            category = "broken"
+        else:
+            category = "changed_wrong_to_wrong"
+
+        counts[category] += 1
+        by_contract_validity[validity][category] += 1
+        details.append({
+            "requirement_id": row["requirement_id"],
+            "expected_status": expected,
+            "provisional_status": provisional,
+            "final_status": final,
+            "category": category,
+            "contract_validity": validity,
+            "validation_issues": diagnostics.get("aggregator_validation_issues", []),
+        })
+
+    return {
+        **counts,
+        "net_fixes": counts["fixed"] - counts["broken"],
+        "total": len(rows),
+        "by_contract_validity": by_contract_validity,
+        "details": details,
+    }
+
+
 def _authority_metrics(
     requirements: list[dict[str, Any]],
     evidence_chunks: list[dict[str, Any]],
@@ -760,6 +936,7 @@ def _report_markdown(results: dict[str, Any]) -> str:
     final = results["metrics"]["final_verdict"]
     extraction = results["metrics"]["extraction"]
     retrieval = results["metrics"]["retrieval"]
+    retrieval_before_discovery = retrieval.get("before_ai_extract_discovery", retrieval)
     authority = results["metrics"]["source_authority"]
     visual = results["metrics"].get("visual_evidence", {})
     targeted = results["metrics"].get("targeted_extraction", {})
@@ -767,12 +944,16 @@ def _report_markdown(results: dict[str, Any]) -> str:
     final_atomic = results["metrics"]["final_atomic"]
     safety = results["metrics"]["review_gate"]
     logic = results["metrics"]["regulatory_logic"]
+    aggregator = results["metrics"].get("aggregator_impact", {})
     lines = [
         "# TraceAudit FMVSS 305 public-document benchmark",
         "",
         f"- Mode: `{results['mode']}`",
         f"- Model: `{results['model']}`",
         f"- Runtime: {results['runtime_seconds']} seconds",
+        f"- Retrieval backend: `{results.get('retrieval_backend', {}).get('used', 'local-hybrid')}`",
+        f"- Extraction scope: `{results['extraction_scope']['mode']}` "
+        f"({len(results['extraction_scope'].get('clauses', [])) or 'all discovered'} clauses)",
         f"- Labelled scope: {final['total']} selected requirements; this is not a legal compliance determination.",
         "",
         "## Diagnostic scorecard",
@@ -781,6 +962,7 @@ def _report_markdown(results: dict[str, Any]) -> str:
         "|---|---|---:|",
         f"| Extraction | Selected-clause recall | {extraction['selected_clause_recall']:.2f}% |",
         f"| Extraction | Atomic-condition recall | {extraction['atomic_condition_recall']:.2f}% |",
+        f"| Retrieval | Recall@3 before ai_extract discovery | {retrieval_before_discovery['recall_at_3']:.2f}% |",
         f"| Retrieval | Evidence page Recall@3 | {retrieval['recall_at_3']:.2f}% |",
         f"| Retrieval | Requirement any-hit@3 | {retrieval['requirement_any_hit_at_3']:.2f}% |",
         f"| Retrieval | Requirement full-page-coverage@3 | {retrieval['requirement_full_coverage_at_3']:.2f}% |",
@@ -796,6 +978,11 @@ def _report_markdown(results: dict[str, Any]) -> str:
         f"| Pipeline output | Final condition alignment coverage | {final_atomic['alignment_coverage']:.2f}% |",
         f"| Pipeline output | Final atomic end-to-end accuracy | {final_atomic['end_to_end_accuracy']:.2f}% |",
         f"| Regulatory logic | ANY_OF / IF_THEN accuracy | {logic['accuracy']:.2f}% |",
+        f"| Aggregator | Fixed provisional verdicts | {aggregator.get('fixed', 0)} |",
+        f"| Aggregator | Broke correct provisional verdicts | {aggregator.get('broken', 0)} |",
+        f"| Aggregator | Unchanged verdicts | {aggregator.get('unchanged', 0)} |",
+        f"| Aggregator | Abstained on invalid inputs | {aggregator.get('abstained', 0)} |",
+        f"| Aggregator | Net fixes | {aggregator.get('net_fixes', 0)} |",
         f"| Final verdict | Requirement accuracy | {final['accuracy']:.2f}% |",
         f"| Final verdict | Macro F1 | {final['macro_f1']:.2f}% |",
         f"| Safety | Review-state accuracy | {safety['review_state_accuracy']:.2f}% |",
@@ -819,7 +1006,9 @@ def _report_markdown(results: dict[str, Any]) -> str:
         "The oracle-contract modes isolate retrieval and verification from requirement extraction. "
         "The oracle-evidence modes additionally inject the manually annotated test-report passages plus only their immediate structural context, "
         "isolating source qualification, condition reasoning, regulatory logic, and aggregation. "
-        "End-to-end verifies all extracted clauses; scores cover only the annotated subset. "
+        "Unscoped end-to-end verifies every extracted clause while scoring only the annotated subset. "
+        "Clause-scoped end-to-end limits the source text before extraction and therefore measures parsing, "
+        "decomposition, retrieval, and verification for the declared workload; it does not measure exhaustive clause discovery. "
         "Atomic matches require structured agreement under scoring policy v3; unresolved representations require review. "
         "Combined atomic accuracy includes extraction failures, while aligned status accuracy covers only eligible atoms. "
         "The ANY_OF/IF_THEN verdict metric is not proof of logic-tree equivalence.",
@@ -836,10 +1025,20 @@ async def run_benchmark(
     provider: Optional[str] = None,
     allow_rule_fallback: bool = True,
     targeted_extraction: bool = False,
+    scope_file: Optional[Path] = None,
+    retrieval_backend: str = "local",
+    custom_reranker: bool = False,
+    contracts_file: Optional[Path] = None,
 ) -> dict[str, Any]:
     if mode not in MODES:
         raise ValueError(f"Unsupported mode {mode!r}; choose one of {', '.join(MODES)}")
     oracle_contracts, oracle_evidence = MODES[mode]
+    if scope_file and oracle_contracts:
+        raise ValueError("--scope-file applies only to end-to-end and oracle-evidence modes.")
+    scope_clauses: list[str] = []
+    scope_metadata: dict[str, Any] = {}
+    if scope_file:
+        scope_clauses, scope_metadata = _load_clause_scope(scope_file)
     dataset = _load_dataset()
     validation = validate_dataset(dataset)
     if not validation["valid"]:
@@ -855,6 +1054,9 @@ async def run_benchmark(
     settings.ATOMIC_DECOMPOSITION_MODEL = active_model
     settings.ATOMIC_DECOMPOSITION_FALLBACK_MODEL = ""
     settings.DATABRICKS_TARGETED_EXTRACTION_ENABLED = targeted_extraction
+    settings.DATABRICKS_CUSTOM_RERANKER_ENABLED = custom_reranker
+    if retrieval_backend == "databricks":
+        settings.DATABRICKS_AI_SEARCH_ENABLED = True
     if settings.LLM_PROVIDER == "databricks":
         settings.DATABRICKS_VISION_MODEL = active_model
         settings.DATABRICKS_FALLBACK_MODELS = []
@@ -869,6 +1071,10 @@ async def run_benchmark(
     print("=" * 74)
     print("TRACEAUDIT FMVSS 305 PUBLIC-DOCUMENT BENCHMARK")
     print(f"Mode: {mode} | Model: {active_model}")
+    print(
+        f"Extraction scope: {len(scope_clauses)} declared clauses"
+        if scope_clauses else "Extraction scope: full regulation"
+    )
     print("=" * 74)
 
     print("[1/5] Ingesting the regulation and laboratory report...")
@@ -905,11 +1111,36 @@ async def run_benchmark(
     )
 
     print("[2/5] Preparing requirement contracts...")
-    if oracle_contracts:
+    if contracts_file:
+        if oracle_contracts:
+            raise ValueError("--contracts-file cannot be combined with an oracle-contract mode.")
+        raw_contracts = json.loads(contracts_file.read_text(encoding="utf-8"))
+        if not isinstance(raw_contracts, list):
+            raise ValueError("--contracts-file must contain a JSON array of extracted contracts.")
+        extracted = [ExtractedRequirement.model_validate(item) for item in raw_contracts]
+        contract_items = copy.deepcopy(raw_contracts)
+        _, extraction_metrics = _extracted_contracts(requirements, extracted)
+        extraction_metrics["source"] = "resumed LLM-extracted contracts"
+        extraction_metrics["contracts_file"] = str(contracts_file.resolve())
+        print(f"  Resumed {len(contract_items)} extracted contracts from {contracts_file}.")
+    elif oracle_contracts:
         contract_items, extraction_metrics = _oracle_contracts(requirements)
     else:
+        extraction_source_text = "\n\n".join(item["content"] for item in requirement_chunks)
+        scoped_source_codes: list[str] = []
+        if scope_clauses:
+            extraction_source_text, scoped_source_codes = _scope_requirement_text(
+                extraction_source_text,
+                scope_clauses,
+            )
+            (archive / "extraction_scope.json").write_text(
+                json.dumps({**scope_metadata, "resolved_source_clauses": scoped_source_codes}, indent=2),
+                encoding="utf-8",
+            )
+            (archive / "scoped_requirements.txt").write_text(extraction_source_text, encoding="utf-8")
+            print(f"  Limited extraction input to {len(scoped_source_codes)} source clauses.")
         extracted = await extract_requirements_from_text(
-            text="\n\n".join(item["content"] for item in requirement_chunks),
+            text=extraction_source_text,
             doc_name=requirements_path.name,
             model=active_model,
             thinking_level=active_thinking,
@@ -918,15 +1149,24 @@ async def run_benchmark(
             atomic_fallback_model="",
             allow_rule_fallback=allow_rule_fallback,
             allow_model_fallback=False,
+            target_req_codes=scope_clauses or None,
         )
         # All model outputs reach verification, independent of annotated clauses.
         contract_items = [{
             "req_code": c.req_code, "title": c.title,
             "description": c.description or c.title, "category": c.category,
             "conditions": [v.model_dump(exclude_none=True) for v in c.conditions],
+            "semantic_clauses": [
+                v.model_dump(exclude_none=True) for v in c.semantic_clauses
+            ],
             "clause_coverage": [v.model_dump(exclude_none=True) for v in c.clause_coverage],
             "unmapped_obligations": list(c.unmapped_obligations),
             "contract_complete": c.contract_complete, "logic": c.logic.model_dump(),
+            "logic_tree": c.logic_tree,
+            "decomposition_confidence": c.decomposition_confidence,
+            "ambiguities": list(c.ambiguities),
+            "validation_issues": list(c.validation_issues),
+            "construction_diagnostics": list(c.construction_diagnostics),
         } for c in extracted]
         _, extraction_metrics = _extracted_contracts(requirements, extracted)
     evaluated_contracts = copy.deepcopy(contract_items)
@@ -939,8 +1179,23 @@ async def run_benchmark(
     )
 
     print("[3/5] Retrieving evidence pages...")
-    embeddings = await precompute_chunk_embeddings(evidence_chunks)
+    benchmark_search_id = f"benchmark:{dataset['benchmark_id']}"
+    search_sync = None
+    managed_search_ready = False
+    if retrieval_backend in {"auto", "databricks"} and settings.DATABRICKS_AI_SEARCH_ENABLED:
+        try:
+            search_sync = await sync_project_chunks(benchmark_search_id, evidence_chunks)
+            managed_search_ready = search_sync.backend_used == "databricks-ai-search"
+        except Exception:
+            if retrieval_backend == "databricks":
+                raise
+    embeddings = (
+        [None] * len(evidence_chunks)
+        if managed_search_ready
+        else await precompute_chunk_embeddings(evidence_chunks)
+    )
     retrieved_by_id: dict[str, list[dict[str, Any]]] = {}
+    retrieval_backend_diagnostics: dict[str, dict[str, Any]] = {}
     for item in contract_items:
         requirement_id = item["req_code"]
         search_queries = build_requirement_search_queries(
@@ -951,14 +1206,19 @@ async def run_benchmark(
             item.get("semantic_clauses", []),
         )
         query = search_queries[0] if search_queries else f"{item['title']} {item['description']}"
-        retrieved = await retrieve_candidate_evidence_hybrid(
+        retrieved, search_diagnostics = await retrieve_with_fallback(
             requirement_text=query,
             chunks=evidence_chunks,
+            project_id=benchmark_search_id,
             chunk_embeddings=embeddings,
             top_k=8,
             min_score=0.3,
             condition_queries=search_queries[1:],
+            backend="databricks" if managed_search_ready else "local",
+            strict=retrieval_backend == "databricks",
+            strict_reranker=custom_reranker,
         )
+        retrieval_backend_diagnostics[requirement_id] = search_diagnostics.as_dict()
         retrieved_by_id[requirement_id] = [{
             "id": value.chunk_id,
             "chunk_id": value.chunk_id,
@@ -973,8 +1233,10 @@ async def run_benchmark(
         } for value in retrieved]
     retrieval_source_ids = ({r["requirement_id"]: r["requirement_id"] for r in requirements}
                             if oracle_contracts else extraction_metrics["matches"])
-    retrieval_metrics = _retrieval_metrics(requirements, {rid: retrieved_by_id.get(sid, []) for rid, sid in retrieval_source_ids.items()})
-    print(f"  Evidence page Recall@3: {retrieval_metrics['recall_at_3']:.2f}%.")
+    retrieval_metrics_before_discovery = _retrieval_metrics(
+        requirements,
+        {rid: retrieved_by_id.get(sid, []) for rid, sid in retrieval_source_ids.items()},
+    )
 
     print("[4/5] Measuring source authority and running condition verification...")
     authority_metrics = _authority_metrics(requirements, evidence_chunks)
@@ -987,6 +1249,32 @@ async def run_benchmark(
             else retrieved_by_id.get(item["req_code"], [])
         )
         req_items.append({**item, "candidate_chunks": candidate_chunks})
+    # In non-oracle modes ai_extract scans the complete evidence corpus and
+    # augments the top-k bundle with citation-backed raw chunks. Oracle-evidence
+    # modes remain isolated to their annotated excerpts.
+    targeted_metrics = await enrich_targeted_evidence_items(
+        req_items,
+        evidence_corpus=None if oracle_evidence else evidence_chunks,
+    )
+    if not oracle_evidence:
+        for item in req_items:
+            retrieved_by_id[item["req_code"]] = item.get("candidate_chunks", [])
+    retrieval_metrics = _retrieval_metrics(
+        requirements,
+        {rid: retrieved_by_id.get(sid, []) for rid, sid in retrieval_source_ids.items()},
+    )
+    retrieval_metrics["before_ai_extract_discovery"] = retrieval_metrics_before_discovery
+    print(
+        "  Evidence page Recall@3: "
+        f"{retrieval_metrics['recall_at_3']:.2f}% "
+        f"(before ai_extract discovery: {retrieval_metrics_before_discovery['recall_at_3']:.2f}%)."
+    )
+    print(
+        "  Targeted extraction/discovery: "
+        f"{targeted_metrics['succeeded']}/{targeted_metrics['attempted']} succeeded, "
+        f"{targeted_metrics['failed']} failed."
+    )
+
     visual_metrics = await describe_figure_candidates(
         req_items,
         {evidence_path.stem: str(evidence_path)},
@@ -997,12 +1285,6 @@ async def run_benchmark(
         f"{visual_metrics['vision_analyzed']} analyzed, "
         f"{visual_metrics['vision_cache_hits']} cached, "
         f"{visual_metrics['vision_unavailable']} unavailable."
-    )
-    targeted_metrics = await enrich_targeted_evidence_items(req_items)
-    print(
-        "  Targeted extraction: "
-        f"{targeted_metrics['succeeded']}/{targeted_metrics['attempted']} succeeded, "
-        f"{targeted_metrics['failed']} failed."
     )
     assessments = await batch_assess_requirements(
         req_items=req_items,
@@ -1021,7 +1303,11 @@ async def run_benchmark(
     atomic_alignment = decomposition(requirements, scored_contracts)
     extraction_metrics["atomic_condition_recall"] = atomic_alignment["recall"]
     extraction_metrics["matched_atomic_conditions"] = atomic_alignment["correct"]
-    retrieval_metrics = _retrieval_metrics(requirements, {rid: retrieved_by_id.get(sid, []) for rid, sid in source_ids.items()})
+    retrieval_metrics = _retrieval_metrics(
+        requirements,
+        {rid: retrieved_by_id.get(sid, []) for rid, sid in source_ids.items()},
+    )
+    retrieval_metrics["before_ai_extract_discovery"] = retrieval_metrics_before_discovery
     matrix = {expected: {predicted: 0 for predicted in [*FINAL_CLASSES, "NOT_EXTRACTED"]} for expected in FINAL_CLASSES}
     final_condition_results: dict[str, Iterable[Any]] = {}
     raw_condition_results: dict[str, Iterable[Any]] = {}
@@ -1088,6 +1374,7 @@ async def run_benchmark(
         "expected_distribution": dict(Counter(item["expected_status"] for item in requirements)),
         "predicted_distribution": dict(Counter(item["predicted_status"] for item in rows)),
     }
+    aggregator_impact = _aggregator_impact_metrics(rows)
     metrics = {
         "structured_decomposition": atomic_alignment,
         "integrity": {
@@ -1095,12 +1382,21 @@ async def run_benchmark(
             "gold_contracts_supplied": oracle_contracts, "gold_evidence_selection": oracle_evidence,
             "source_rule_fallback_enabled": allow_rule_fallback,
             "model_fallback_enabled": False,
+            "atomic_construction_mode": (
+                "resumed_contracts" if contracts_file else
+                "oracle_contracts" if oracle_contracts else settings.ATOMIC_CONSTRUCTION_MODE
+            ),
             "document_parser": settings.TRACEAUDIT_DOCUMENT_PARSER,
             "retrieval_top_k": 8,
             "targeted_extraction_enabled": targeted_extraction,
             "scorer_sha256": hashlib.sha256((REPO_ROOT / "evaluation/atomic_evaluation.py").read_bytes()).hexdigest(),
             "ground_truth_sha256": hashlib.sha256((BENCHMARK_DIR / "ground_truth.json").read_bytes()).hexdigest(),
-            "scope": "Selected annotated clauses only. Other extracted clauses are verified but unlabelled, not counted as hallucinations.",
+            "scope": (
+                "Clause-scoped end-to-end. Only the declared source clauses were supplied to extraction; "
+                "no expected statuses, conditions, evidence pages, or quotes were supplied."
+                if scope_clauses else
+                "Full-document extraction. Selected annotated clauses are scored; other extracted clauses are verified but unlabelled."
+            ),
             "unlabelled_extracted_ids": [c["req_code"] for c in contract_items if c["req_code"] not in set(source_ids.values())],
         },
         "extraction": extraction_metrics,
@@ -1115,6 +1411,7 @@ async def run_benchmark(
             "correct": logic_correct,
             "total": logic_total,
         },
+        "aggregator_impact": aggregator_impact,
         "final_verdict": final_metrics,
         "review_gate": {
             "review_state_accuracy": _percent(review_correct, len(requirements)),
@@ -1136,6 +1433,18 @@ async def run_benchmark(
         "mode": mode,
         "model": active_model,
         "thinking_level": active_thinking,
+        "extraction_scope": {
+            "mode": "clause_ids" if scope_clauses else "full_document",
+            "scope_id": scope_metadata.get("scope_id"),
+            "clauses": scope_clauses,
+        },
+        "retrieval_backend": {
+            "requested": retrieval_backend,
+            "used": "databricks-ai-search" if managed_search_ready else "local-hybrid",
+            "sync": search_sync.as_dict() if search_sync is not None else None,
+            "per_requirement": retrieval_backend_diagnostics,
+            "custom_reranker_requested": custom_reranker,
+        },
         "runtime_seconds": round(time.time() - started, 2),
         "validation": validation,
         "documents": dataset["documents"],
@@ -1146,9 +1455,22 @@ async def run_benchmark(
         "metrics": metrics,
         "requirements": rows,
     }
+    results["mlflow"] = log_benchmark_metrics(
+        run_name=run_id,
+        metrics=metrics,
+        parameters={
+            "benchmark_id": dataset["benchmark_id"],
+            "benchmark_version": dataset["version"],
+            "mode": mode,
+            "model": active_model,
+            "retrieval_backend": results["retrieval_backend"]["used"],
+            "scope": results["extraction_scope"]["mode"],
+        },
+    )
 
-    json_path = RESULTS_DIR / f"fmvss305_{mode}_results.json"
-    report_path = RESULTS_DIR / f"fmvss305_{mode}_report.md"
+    output_stem = f"fmvss305_{mode}{'_scoped' if scope_clauses else ''}"
+    json_path = RESULTS_DIR / f"{output_stem}_results.json"
+    report_path = RESULTS_DIR / f"{output_stem}_report.md"
     (archive / "results.json").write_text(json.dumps(results, indent=2, ensure_ascii=False, default=str), encoding="utf-8")
     (archive / "report.md").write_text(_report_markdown(results), encoding="utf-8")
     json_path.write_text(json.dumps(results, indent=2, ensure_ascii=False, default=str), encoding="utf-8")
@@ -1156,6 +1478,14 @@ async def run_benchmark(
 
     print("\nBenchmark complete")
     print(f"  Final accuracy: {final_metrics['accuracy']:.2f}%")
+    print(
+        "  Aggregator impact: "
+        f"{aggregator_impact['fixed']} fixed, "
+        f"{aggregator_impact['broken']} broken, "
+        f"{aggregator_impact['unchanged']} unchanged, "
+        f"{aggregator_impact['abstained']} abstained "
+        f"(net {aggregator_impact['net_fixes']:+d})."
+    )
     print(f"  Raw LLM atomic accuracy: {metrics['raw_llm_atomic']['accuracy']:.2f}%")
     print(f"  Final atomic accuracy: {metrics['final_atomic']['accuracy']:.2f}%")
     print(f"  Eligible atom status accuracy: {metrics['final_atomic']['aligned_accuracy']}% (coverage {metrics['final_atomic']['alignment_coverage']:.2f}%)")
@@ -1176,9 +1506,38 @@ def main() -> None:
     parser.add_argument("--thinking-level", default=None, help="Reasoning/thinking override.")
     parser.add_argument("--batch-size", type=int, default=3)
     parser.add_argument(
+        "--retrieval-backend",
+        choices=("local", "auto", "databricks"),
+        default="local",
+        help=(
+            "Evidence retrieval backend. 'local' is the reproducible control; "
+            "'databricks' requires a configured AI Search index and fails rather than silently falling back."
+        ),
+    )
+    parser.add_argument(
+        "--custom-reranker",
+        action="store_true",
+        help="Rerank retrieved candidates with the configured Databricks custom BGE endpoint.",
+    )
+    parser.add_argument(
+        "--contracts-file",
+        type=Path,
+        default=None,
+        help="Resume an interrupted end-to-end run from a previously archived contracts.json file.",
+    )
+    parser.add_argument(
         "--targeted-extraction",
         action="store_true",
         help="Run Databricks ai_extract on retrieved evidence before verification.",
+    )
+    parser.add_argument(
+        "--scope-file",
+        type=Path,
+        default=None,
+        help=(
+            "For end-to-end modes, limit extraction to the clause IDs in an answer-free JSON scope file. "
+            "The complete evidence document is still searched."
+        ),
     )
     parser.add_argument(
         "--validate-only",
@@ -1200,6 +1559,10 @@ def main() -> None:
         provider=args.provider,
         allow_rule_fallback=not args.no_rule_fallback,
         targeted_extraction=args.targeted_extraction,
+        scope_file=args.scope_file,
+        retrieval_backend=args.retrieval_backend,
+        custom_reranker=args.custom_reranker,
+        contracts_file=args.contracts_file,
     ))
 
 

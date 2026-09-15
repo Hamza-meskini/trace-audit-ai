@@ -49,6 +49,7 @@ class ProjectStatsResponse(BaseModel):
     missing: int = 0
     conflict: int = 0
     unknown: int = 0
+    not_applicable: int = 0
     documents: int = 0
     evidence_segments: int = 0
     findings: int = 0

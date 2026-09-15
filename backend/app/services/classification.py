@@ -44,7 +44,7 @@ class EvidenceLinkAssessment:
 
 @dataclass
 class RequirementAssessment:
-    coverage_status: str  # "Supported" | "Partial" | "Missing" | "Conflict" | "Unknown"
+    coverage_status: str  # "Supported" | "Partial" | "Missing" | "Conflict" | "Unknown" | "Not applicable"
     confidence: float
     review_state: str     # "Reviewed" | "Needs review" | "Open"
     ai_analysis: str
@@ -61,6 +61,7 @@ RECOMMENDATIONS = {
     "Conflict": "Review contradictory technical documentation with engineering stakeholders.",
     "Missing": "Upload the relevant test plan, test report, or compliance record covering this requirement.",
     "Unknown": "Evidence is inconclusive (e.g. simulation, calculation, or design intent only). Request empirical test records or an authoritative verification record.",
+    "Not applicable": "Retain the applicability evidence and obtain reviewer confirmation before closing the requirement.",
 }
 
 
@@ -80,6 +81,9 @@ def _supporting_results_for_review(
         return condition_results, unresolved
 
     by_id = {result.condition_id: result for result in condition_results}
+    if contract.logic_tree is not None:
+        from app.schemas.contract_logic import supporting_path
+        return supporting_path(contract.logic_tree, by_id)
     logic = contract.logic
     if logic.operator == "ANY_OF":
         governed = [by_id[item] for item in logic.condition_ids if item in by_id]
@@ -130,6 +134,14 @@ def _supported_review_gate(
     reasons: list[str] = []
     condition_results = list(outcome.condition_results or [])
     diagnostics = pipeline_diagnostics or {}
+
+    if diagnostics.get("aggregator_abstained"):
+        issues = diagnostics.get("aggregator_validation_issues") or []
+        detail = "; ".join(str(issue) for issue in issues[:3])
+        reasons.append(
+            "Deterministic aggregation abstained because its symbolic inputs were not valid"
+            + (f": {detail}." if detail else ".")
+        )
 
     if contract is not None and contract.contract_complete is False:
         if contract.unmapped_obligations:
@@ -239,12 +251,25 @@ def _supported_review_gate(
 def _conflict_review_gate(
     outcome: ValidationOutcome,
     pipeline_diagnostics: Optional[dict[str, Any]] = None,
+    contract: Optional[RequirementContract] = None,
 ) -> list[str]:
     """Return reasons why a CONFLICT prediction cannot auto-close."""
     if outcome.status != "CONFLICT":
         return []
 
     reasons: list[str] = []
+    diagnostics = pipeline_diagnostics or {}
+    if contract is not None and contract.contract_complete is False:
+        reasons.append("Atomic-condition extraction is incomplete; the aggregated Conflict verdict requires review.")
+    if contract is not None and (contract.validation_issues or contract.ambiguities):
+        reasons.append("Atomic contract validation or ambiguity findings require review.")
+    if diagnostics.get("aggregator_abstained"):
+        issues = diagnostics.get("aggregator_validation_issues") or []
+        detail = "; ".join(str(issue) for issue in issues[:3])
+        reasons.append(
+            "Deterministic aggregation abstained because its symbolic inputs were not valid"
+            + (f": {detail}." if detail else ".")
+        )
     failed = [
         result
         for result in (outcome.condition_results or [])
@@ -277,7 +302,6 @@ def _conflict_review_gate(
                 + "."
             )
 
-    diagnostics = pipeline_diagnostics or {}
     provisional = str(diagnostics.get("llm_provisional_status") or "").strip().upper()
     if provisional and provisional != "CONFLICT":
         reasons.append(
@@ -584,9 +608,11 @@ def _finalize_assessment(
     rev_state = review_state_for(outcome.status)
     review_reasons = [
         *_supported_review_gate(outcome, diagnostics, contract),
-        *_conflict_review_gate(outcome, diagnostics),
+        *_conflict_review_gate(outcome, diagnostics, contract),
     ]
-    if cov_status in {"Supported", "Conflict"} and review_reasons:
+    if diagnostics.get("aggregator_abstained"):
+        review_reasons.append("The contract could not be mechanically verified; review the provisional verdict.")
+    if review_reasons:
         rev_state = "Needs review"
 
     diagnostics["review_gate"] = {
@@ -883,6 +909,10 @@ async def batch_assess_requirements(
                     reason="Evaluated through compliance assessment engine.",
                 )
             pipeline_diagnostics = dict(getattr(res, "_diagnostics", {}) if res else {})
+            if item.get("targeted_extraction"):
+                # Preserve the exact condition facts, confidence scores, and
+                # source spans that were exposed to the reasoner.
+                pipeline_diagnostics["targeted_extraction"] = item["targeted_extraction"]
             assessments[req_code] = _finalize_assessment(
                 item["contract"],
                 item["non_spec_items"],

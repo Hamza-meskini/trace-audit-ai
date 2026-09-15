@@ -41,7 +41,7 @@ logger = logging.getLogger("traceaudit.verifier")
 
 
 def _condition_line(condition: AtomicConditionContract) -> str:
-    target = condition.threshold
+    target = condition.right_operand if condition.right_operand else condition.threshold
     if target is None:
         if condition.min_value is not None and condition.max_value is not None:
             target = f"{condition.min_value}..{condition.max_value}"
@@ -60,6 +60,9 @@ def _condition_line(condition: AtomicConditionContract) -> str:
 
 
 def _logic_line(contract: RequirementContract) -> str:
+    if contract.logic_tree is not None:
+        import json
+        return "Authoritative logic_tree: " + json.dumps(contract.logic_tree, ensure_ascii=False)
     logic = contract.logic
     if logic.operator == "IF_THEN":
         return (
@@ -131,6 +134,31 @@ def _logic_retry_condition_ids(
     """Identify unresolved Boolean gates that deserve one focused LLM pass."""
     by_id = {result.condition_id: result for result in results}
     unresolved = {"PENDING", "UNTESTED", "INCONCLUSIVE"}
+    if contract.logic_tree is not None:
+        from app.schemas.contract_logic import leaf_ids, supporting_path
+
+        def targets(node: dict) -> list[str]:
+            op = node.get("operator")
+            if op == "ANY_OF":
+                governed = leaf_ids(node)
+                if any(i not in by_id or by_id[i].status in unresolved for i in governed):
+                    return governed
+            if op == "IF_THEN":
+                ant = node.get("antecedent") or {}
+                ant_ids = leaf_ids(ant)
+                pending = [i for i in ant_ids if i not in by_id or by_id[i].status in unresolved]
+                if pending:
+                    return pending
+                proof, missing = supporting_path(ant, by_id)
+                if not missing and any(r.status == "PROVEN" for r in proof):
+                    consequent = node.get("consequent") or {}
+                    return list(dict.fromkeys(targets(consequent) + [
+                        i for i in leaf_ids(consequent) if i not in by_id or by_id[i].status in unresolved
+                    ]))
+                return []
+            return [i for child in node.get("children", []) for i in targets(child)]
+
+        return list(dict.fromkeys(targets(contract.logic_tree)))
     if contract.logic.operator == "ANY_OF":
         governed = list(contract.logic.condition_ids)
         statuses = {(by_id.get(item).status if by_id.get(item) else "UNTESTED") for item in governed}

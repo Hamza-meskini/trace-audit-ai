@@ -64,7 +64,7 @@ VERDICT_TO_DISPLAY_AND_REVIEW = {
     "CONFLICT": ("Conflict", "Reviewed"),
     "MISSING": ("Missing", "Needs review"),
     "UNKNOWN": ("Unknown", "Needs review"),
-    "NOT_APPLICABLE": ("Unknown", "Needs review"),
+    "NOT_APPLICABLE": ("Not applicable", "Needs review"),
 }
 
 # Display status -> Finding type label used at persistence time.

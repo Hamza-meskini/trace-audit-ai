@@ -143,6 +143,7 @@ class ReviewWorkspaceTests(unittest.IsolatedAsyncioTestCase):
             for name, value in {
                 "profile_documents": {}, "discover_specification_documents": ([], set()),
                 "precompute_chunk_embeddings": {}, "retrieve_candidate_evidence_hybrid": [candidate],
+                "rerank_candidates": ([candidate], {"enabled": True, "used": True}),
                 "describe_retrieved_figures": {}, "batch_assess_requirements": {"REQ-1": assessment},
             }.items():
                 stack.enter_context(patch("app.services.pipeline." + name, new=AsyncMock(return_value=value)))

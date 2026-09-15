@@ -15,7 +15,11 @@ from evaluation.run_fmvss305_benchmark import (
     CONDITION_INPUT_FIELDS,
     SAMPLE_DIR,
     _clean_condition,
+    _load_clause_scope,
+    _scope_requirement_text,
     _atomic_metrics,
+    _aggregator_impact_metrics,
+    _extracted_contracts,
     _match_extracted_requirement,
     _oracle_evidence,
     _retrieval_metrics,
@@ -47,6 +51,48 @@ class Fmvss305BenchmarkTests(unittest.TestCase):
     def test_source_files_exist(self) -> None:
         for document in self.dataset["documents"].values():
             self.assertTrue((SAMPLE_DIR / document["filename"]).is_file())
+
+    def test_selected_clause_scope_contains_identifiers_only(self) -> None:
+        scope_path = BENCHMARK_DIR / "selected_clause_scope.json"
+        clauses, metadata = _load_clause_scope(scope_path)
+        self.assertEqual(len(clauses), 11)
+        self.assertEqual(len(clauses), len(set(clauses)))
+        self.assertEqual(set(metadata), {"scope_id", "source_file", "clauses"})
+        raw = json.loads(scope_path.read_text(encoding="utf-8"))
+        serialized = json.dumps(raw).lower()
+        for forbidden in ("expected_status", "conditions", "evidence", "page", "quote"):
+            self.assertNotIn(f'"{forbidden}"', serialized)
+
+    def test_scope_selects_exactly_the_eleven_source_clauses(self) -> None:
+        from evaluation.run_fmvss305_benchmark import _document_paths, _ingest_document
+        from app.services.extraction import _requirement_blocks, _requirement_code_from_block
+
+        requirements_path, _ = _document_paths(self.dataset)
+        chunks = _ingest_document(requirements_path, "Regulatory specification")
+        clauses, _ = _load_clause_scope(BENCHMARK_DIR / "selected_clause_scope.json")
+        scoped_text, resolved = _scope_requirement_text(
+            "\n\n".join(item["content"] for item in chunks),
+            clauses,
+        )
+        blocks = _requirement_blocks(scoped_text)
+        self.assertEqual([_requirement_code_from_block(block) for block in blocks], clauses)
+        self.assertEqual(resolved, clauses)
+        self.assertNotIn("S5.4.2.1 ", scoped_text)
+        self.assertIn("S7.1(c) If the electric energy storage", scoped_text)
+
+    def test_targeted_identity_does_not_expand_parent_into_child_requirements(self) -> None:
+        from app.services.extraction import _targeted_discovery_from_source
+
+        source = {
+            "S5.3": (
+                "S5.3 Electrical safety. Each high voltage source must meet one of: "
+                "(a)(1) low voltage; (a)(2) low energy; or (b) physical protection."
+            ),
+            "S5.4": "S5.4 Unselected requirement shall remain out of scope.",
+        }
+        discovered = _targeted_discovery_from_source(source, {"S5.3"})
+        self.assertEqual([item.req_code for item in discovered], ["S5.3"])
+        self.assertIn("(a)(1)", discovered[0].description)
 
     def test_ids_are_unique_and_every_condition_is_labelled(self) -> None:
         requirement_ids = [item["requirement_id"] for item in self.requirements]
@@ -138,6 +184,39 @@ class Fmvss305BenchmarkTests(unittest.TestCase):
         self.assertEqual(contract.logic.operator, "ANY_OF")
         self.assertEqual(contract.logic.condition_ids, requirement["logic"]["condition_ids"])
 
+    def test_end_to_end_contract_export_preserves_nested_logic_and_diagnostics(self) -> None:
+        from app.schemas.contract import AtomicConditionContract, RequirementLogicContract
+
+        condition = AtomicConditionContract(condition_id="S1-C1", description="A")
+        logic_tree = {"operator": "CONDITION", "condition_id": "S1-C1"}
+        extracted = SimpleNamespace(
+            req_code="S1",
+            title="Clause S1",
+            description="A shall be demonstrated.",
+            category="Safety",
+            conditions=[condition],
+            semantic_clauses=[],
+            clause_coverage=[],
+            unmapped_obligations=[],
+            contract_complete=True,
+            logic=RequirementLogicContract(operator="ALL_OF", condition_ids=["S1-C1"]),
+            logic_tree=logic_tree,
+            decomposition_confidence=0.91,
+            ambiguities=[],
+            validation_issues=[],
+        )
+        truth = [{
+            "requirement_id": "S1",
+            "clause": "S1",
+            "conditions": [{"condition_id": "S1-C1", "description": "A"}],
+        }]
+
+        items, _ = _extracted_contracts(truth, [extracted])
+
+        self.assertEqual(items[0]["logic_tree"], logic_tree)
+        self.assertEqual(items[0]["decomposition_confidence"], 0.91)
+        self.assertEqual(items[0]["validation_issues"], [])
+
     def test_oracle_evidence_selects_best_passage_not_every_page_chunk(self) -> None:
         requirement = {
             "conditions": [{"evidence": [{"page": 4, "quote": "measured isolation 1200 ohms per volt"}]}],
@@ -212,6 +291,35 @@ class Fmvss305BenchmarkTests(unittest.TestCase):
             metrics["mismatches"][0]["predicted"],
             "NOT_EXTRACTED_OR_UNALIGNED",
         )
+
+    def test_aggregator_impact_separates_fixes_breaks_and_abstentions(self) -> None:
+        def row(req_id, expected, provisional, final, **diagnostics):
+            return {
+                "requirement_id": req_id,
+                "expected_status": expected,
+                "predicted_status": final,
+                "pipeline_diagnostics": {
+                    "llm_provisional_status": provisional,
+                    **diagnostics,
+                },
+            }
+
+        metrics = _aggregator_impact_metrics([
+            row("R1", "SUPPORTED", "PARTIAL", "SUPPORTED", aggregator_contract_valid=True),
+            row("R2", "MISSING", "MISSING", "UNKNOWN", aggregator_contract_valid=True),
+            row("R3", "PARTIAL", "PARTIAL", "PARTIAL", aggregator_contract_valid=True),
+            row(
+                "R4", "CONFLICT", "CONFLICT", "CONFLICT",
+                aggregator_contract_valid=False, aggregator_abstained=True,
+            ),
+        ])
+
+        self.assertEqual(metrics["fixed"], 1)
+        self.assertEqual(metrics["broken"], 1)
+        self.assertEqual(metrics["unchanged"], 1)
+        self.assertEqual(metrics["abstained"], 1)
+        self.assertEqual(metrics["net_fixes"], 0)
+        self.assertEqual(metrics["by_contract_validity"]["invalid"]["abstained"], 1)
 
     def test_explicit_regulatory_clause_mismatch_is_not_semantically_matched(self) -> None:
         truth = {

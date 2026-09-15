@@ -189,8 +189,11 @@ DATABRICKS_MODEL="system.ai.llama-4-maverick"
 TRACEAUDIT_DOCUMENT_PARSER="databricks-auto"
 DATABRICKS_SQL_WAREHOUSE_ID="<warehouse-id>"
 DATABRICKS_DOCUMENT_VOLUME="/Volumes/<catalog>/<schema>/<volume>"
-# Focused ai_extract enrichment after retrieval; disabled until latency is measured.
-DATABRICKS_TARGETED_EXTRACTION_ENABLED="false"
+# Citation-backed ai_extract evidence discovery before verification.
+DATABRICKS_TARGETED_EXTRACTION_ENABLED="true"
+DATABRICKS_TARGETED_EXTRACTION_MAX_INPUT_CHARS="800000"
+DATABRICKS_TARGETED_EXTRACTION_MAX_CANDIDATES="24"
+DATABRICKS_TARGETED_EXTRACTION_RETRY_UNCOVERED="true"
 ```
 
 Start the FastAPI backend:

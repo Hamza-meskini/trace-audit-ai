@@ -17,6 +17,7 @@ from app.schemas.verification_result import (
 )
 from app.services import databricks_document_ai
 from app.services.databricks_document_ai import _adapt_parse_result
+from app.services.databricks_document_ai import _validated_targeted_facts
 from app.services.ingestion import build_structure_aware_chunks
 from app.services import retrieval
 from app.services.embedding import _content_hash
@@ -164,6 +165,36 @@ def test_verifier_keeps_targeted_extraction_advisory() -> None:
     assert "cannot replace or overrule raw evidence" in prompt
 
 
+def test_targeted_extraction_rejects_uncited_and_low_confidence_fields() -> None:
+    content = "[E1] report.pdf, page 4\nMeasured voltage was 4.8 V."
+    result = {
+        "response": {
+            "condition_1": {"value": "4.8 V", "confidence_score": 0.97, "citation_ids": [10]},
+            "condition_2": {"value": "passed", "confidence_score": 0.99, "citation_ids": []},
+            "condition_3": {"value": "ambiguous", "confidence_score": 0.40, "citation_ids": [10]},
+        },
+        "metadata": {"citations": [{"id": 10, "start": content.index("Measured"), "stop": len(content)}]},
+    }
+
+    facts = _validated_targeted_facts(
+        result,
+        field_to_condition={"condition_1": "C1", "condition_2": "C2", "condition_3": "C3"},
+        excerpt_ranges=[{
+            "evidence_id": "E1",
+            "source_chunk_id": "chunk-1",
+            "start": 0,
+            "stop": len(content),
+        }],
+        content=content,
+        min_confidence=0.80,
+    )
+
+    assert [item["condition_id"] for item in facts] == ["C1"]
+    assert facts[0]["evidence_ids"] == ["E1"]
+    assert facts[0]["source_chunk_ids"] == ["chunk-1"]
+    assert facts[0]["citations"][0]["quote"] == "Measured voltage was 4.8 V."
+
+
 def test_shared_targeted_enrichment_feeds_production_and_benchmark(monkeypatch) -> None:
     monkeypatch.setattr(
         databricks_document_ai.settings,
@@ -173,22 +204,107 @@ def test_shared_targeted_enrichment_feeds_production_and_benchmark(monkeypatch) 
     monkeypatch.setattr(
         databricks_document_ai,
         "extract_targeted_evidence",
-        lambda requirement, chunks: {"response": {"observed_facts": {"value": requirement}}},
+        lambda requirement, chunks, conditions: {"condition_facts": [{"condition_id": "C1", "fact": requirement}]},
     )
     items = [{
         "req_code": "R1",
         "title": "Limit",
         "description": "Value shall be <= 5",
+        "conditions": [{"condition_id": "C1", "description": "Value shall be <= 5"}],
         "candidate_chunks": [{"content": "Measured value 4"}],
     }]
 
     stats = asyncio.run(databricks_document_ai.enrich_targeted_evidence_items(items))
 
     assert stats == {"attempted": 1, "succeeded": 1, "failed": 0}
-    assert items[0]["targeted_extraction"]["response"]["observed_facts"]["value"].startswith("R1 Limit")
+    assert items[0]["targeted_extraction"]["condition_facts"][0]["fact"].startswith("R1 Limit")
 
 
-def test_incomplete_atomic_contract_is_advisory_without_hiding_failures() -> None:
+def test_corpus_discovery_adds_cited_raw_chunks_before_similarity_hits(monkeypatch) -> None:
+    monkeypatch.setattr(databricks_document_ai.settings, "DATABRICKS_TARGETED_EXTRACTION_ENABLED", True)
+    monkeypatch.setattr(databricks_document_ai.settings, "DATABRICKS_TARGETED_EXTRACTION_MAX_CANDIDATES", 6)
+    monkeypatch.setattr(
+        databricks_document_ai,
+        "discover_targeted_evidence",
+        lambda requirement, corpus, conditions: {
+            "condition_facts": [{
+                "condition_id": "C1",
+                "fact": "Observed result on the previously missed page",
+                "confidence_score": 0.97,
+                "source_chunk_ids": ["missed"],
+                "evidence_ids": ["E99"],
+                "citations": [{"source_chunk_ids": ["missed"], "evidence_ids": ["E99"]}],
+            }],
+            "metadata": {"cited_source_chunk_ids": ["missed"]},
+        },
+    )
+    corpus = [
+        {"id": "ranked", "document_id": "d1", "page_number": 2, "content": "Similarity hit", "metadata": {}},
+        {"id": "missed", "document_id": "d1", "page_number": 11, "content": "Direct observed result", "metadata": {}},
+    ]
+    items = [{
+        "req_code": "R1",
+        "title": "Limit",
+        "description": "Value shall be <= 5",
+        "conditions": [{"condition_id": "C1", "description": "Value shall be <= 5"}],
+        "candidate_chunks": [corpus[0]],
+    }]
+
+    stats = asyncio.run(databricks_document_ai.enrich_targeted_evidence_items(
+        items,
+        evidence_corpus=corpus,
+    ))
+
+    assert stats == {"attempted": 1, "succeeded": 1, "failed": 0}
+    assert [chunk["id"] for chunk in items[0]["candidate_chunks"][:2]] == ["missed", "ranked"]
+    fact = items[0]["targeted_extraction"]["condition_facts"][0]
+    assert fact["source_chunk_ids"] == ["missed"]
+    assert fact["evidence_ids"] == ["E1"]
+    assert fact["citations"][0]["evidence_ids"] == ["E1"]
+
+
+def test_corpus_discovery_scans_every_batch_and_retries_only_uncovered_atoms(monkeypatch) -> None:
+    monkeypatch.setattr(databricks_document_ai.settings, "DATABRICKS_TARGETED_EXTRACTION_ENABLED", True)
+    monkeypatch.setattr(databricks_document_ai.settings, "DATABRICKS_TARGETED_EXTRACTION_MAX_INPUT_CHARS", 20_000)
+    monkeypatch.setattr(databricks_document_ai.settings, "DATABRICKS_TARGETED_EXTRACTION_RETRY_UNCOVERED", True)
+    calls: list[list[str]] = []
+
+    def fake_extract(requirement, chunks, conditions):
+        condition_ids = [condition["condition_id"] for condition in conditions]
+        calls.append(condition_ids)
+        if condition_ids == ["C1", "C2"] and len(calls) == 1:
+            return {"condition_facts": [{
+                "condition_id": "C1", "fact": "first", "confidence_score": 0.9,
+                "source_chunk_ids": [chunks[0]["id"]], "citations": [],
+            }]}
+        if condition_ids == ["C2"] and calls.count(["C2"]) == 1:
+            return {"condition_facts": [{
+                "condition_id": "C2", "fact": "retry", "confidence_score": 0.91,
+                "source_chunk_ids": [chunks[0]["id"]], "citations": [],
+            }]}
+        return None
+
+    monkeypatch.setattr(databricks_document_ai, "extract_targeted_evidence", fake_extract)
+    corpus = [
+        {"id": f"c{index}", "content": "x" * 6000}
+        for index in range(4)
+    ]
+    result = databricks_document_ai.discover_targeted_evidence(
+        "R1 compound requirement",
+        corpus,
+        [{"condition_id": "C1"}, {"condition_id": "C2"}],
+    )
+
+    assert result is not None
+    assert result["metadata"]["batches"] == 2
+    assert result["metadata"]["ai_extract_calls"] == 4
+    assert result["metadata"]["covered_condition_ids"] == ["C1", "C2"]
+    assert result["metadata"]["retried_condition_ids"] == ["C2"]
+    assert calls[:2] == [["C1", "C2"], ["C1", "C2"]]
+    assert calls[2:] == [["C2"], ["C2"]]
+
+
+def test_incomplete_atomic_contract_still_aggregates_available_conditions() -> None:
     contract = RequirementContract(
         requirement_id="R1",
         req_code="R1",
@@ -216,14 +332,19 @@ def test_incomplete_atomic_contract_is_advisory_without_hiding_failures() -> Non
     conflict = VerificationAnalysisResult(
         status="SUPPORTED",
         condition_results=[
-            ConditionVerificationResult(condition_id="C1", status="FAILED"),
-            ConditionVerificationResult(condition_id="C2", status="PROVEN"),
+            ConditionVerificationResult(condition_id="C1", status="UNTESTED"),
+            ConditionVerificationResult(condition_id="C2", status="UNTESTED"),
         ],
         reason="",
     )
     conflict_result = finalize_verdict(contract, conflict, qualifications=[])
-    assert conflict_result.status == "CONFLICT"
+    assert conflict_result.status == "MISSING"
+    assert conflict_result._diagnostics["atomic_aggregate_status"] == "MISSING"
     assert conflict_result._diagnostics["atomic_advisory_fallback"] is False
+    assert conflict_result._diagnostics["aggregator_abstained"] is False
+    assert conflict_result._diagnostics["aggregator_overrode_status"] is True
+    assert "the extracted atomic contract is incomplete" in conflict_result._diagnostics["aggregator_advisory_issues"]
+    assert "one or more source obligations are unmapped" in conflict_result._diagnostics["aggregator_advisory_issues"]
 
 
 def test_batch_size_one_uses_single_requirement_path(monkeypatch) -> None:

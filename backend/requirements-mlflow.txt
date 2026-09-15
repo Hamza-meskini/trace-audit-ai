@@ -1,0 +1,3 @@
+# Optional observability dependency for Databricks MLflow tracing/evaluation.
+-r requirements.txt
+mlflow[databricks]>=3.8,<4

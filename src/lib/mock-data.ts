@@ -1,4 +1,4 @@
-export type CoverageStatus = "Supported" | "Partial" | "Missing" | "Conflict" | "Unknown";
+export type CoverageStatus = "Supported" | "Partial" | "Missing" | "Conflict" | "Unknown" | "Not applicable";
 export type ReviewState = "Reviewed" | "Needs review" | "Open" | "Approved" | "Rejected";
 export type Severity = "Critical" | "High" | "Medium" | "Low";
 export type FindingType =

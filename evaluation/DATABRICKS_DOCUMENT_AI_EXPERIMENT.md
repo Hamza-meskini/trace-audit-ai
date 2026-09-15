@@ -111,6 +111,7 @@ requirement. Enable it only for a measured pilot:
 ```dotenv
 DATABRICKS_TARGETED_EXTRACTION_ENABLED=true
 DATABRICKS_TARGETED_EXTRACTION_CONCURRENCY=2
+DATABRICKS_TARGETED_EXTRACTION_MIN_CONFIDENCE=0.80
 ```
 
 This enrichment receives only already-retrieved excerpts. Its output is

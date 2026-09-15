@@ -61,6 +61,11 @@ class Settings(BaseSettings):
     ATOMIC_DECOMPOSITION_MODEL: str = "z-ai/glm-5.3-free"
     ATOMIC_DECOMPOSITION_FALLBACK_MODEL: str = "system.ai.llama-4-maverick"
     ATOMIC_DECOMPOSITION_THINKING_LEVEL: str = "PROVIDER_DEFAULT"
+    # Keep the former planner available for controlled extraction comparisons.
+    ATOMIC_CONSTRUCTION_MODE: str = "direct"
+    # Global cap for independent per-requirement contract calls. Repairs reuse
+    # the same slots so a failing section cannot create an endpoint burst.
+    ATOMIC_CONTRACT_CONCURRENCY: int = 4
     
     # Gemini Thinking Configuration (https://ai.google.dev/gemini-api/docs/thinking)
     # Supported thinking levels for Gemini 3 series: "LOW", "MEDIUM", "HIGH", "MINIMAL"
@@ -80,6 +85,39 @@ class Settings(BaseSettings):
     DATABRICKS_DOCUMENT_CACHE_DIR: str = ""
     DATABRICKS_TARGETED_EXTRACTION_ENABLED: bool = False
     DATABRICKS_TARGETED_EXTRACTION_CONCURRENCY: int = 2
+    DATABRICKS_TARGETED_EXTRACTION_MIN_CONFIDENCE: float = 0.80
+    # ai_extract evidence discovery scans the independent-evidence corpus before
+    # verification. Normal-sized reports fit in one request; larger corpora are
+    # split without dropping tail pages. A single focused retry is permitted for
+    # atomic conditions that the first pass did not locate.
+    DATABRICKS_TARGETED_EXTRACTION_MAX_INPUT_CHARS: int = 800_000
+    DATABRICKS_TARGETED_EXTRACTION_MAX_CANDIDATES: int = 24
+    DATABRICKS_TARGETED_EXTRACTION_RETRY_UNCOVERED: bool = True
+
+    # Optional Databricks-native retrieval stack.  Every feature is opt-in so
+    # local BM25/Gemini retrieval remains a reproducible benchmark control.
+    DATABRICKS_AI_PREP_SEARCH_ENABLED: bool = False
+    DATABRICKS_AI_PREP_SEARCH_REQUIRED: bool = False
+    DATABRICKS_AI_SEARCH_ENABLED: bool = False
+    DATABRICKS_AI_SEARCH_ENDPOINT: str = ""
+    DATABRICKS_AI_SEARCH_INDEX: str = ""
+    DATABRICKS_AI_SEARCH_SOURCE_TABLE: str = ""
+    DATABRICKS_AI_SEARCH_EMBEDDING_MODEL: str = "databricks-gte-large-en"
+    DATABRICKS_AI_SEARCH_RERANK_ENABLED: bool = True
+    DATABRICKS_AI_SEARCH_CANDIDATE_COUNT: int = 30
+    DATABRICKS_AI_SEARCH_MAX_QUERIES_PER_REQUIREMENT: int = 8
+    DATABRICKS_AI_SEARCH_SYNC_TIMEOUT_SECONDS: float = 90.0
+    DATABRICKS_CUSTOM_RERANKER_ENABLED: bool = False
+    DATABRICKS_CUSTOM_RERANKER_ENDPOINT: str = "bge-reranker-v2-m3"
+    DATABRICKS_CUSTOM_RERANKER_CANDIDATE_COUNT: int = 20
+    DATABRICKS_CUSTOM_RERANKER_MAX_QUERIES: int = 1
+    DATABRICKS_CUSTOM_RERANKER_TIMEOUT_SECONDS: float = 180.0
+    DATABRICKS_CUSTOM_RERANKER_BATCH_SIZE: int = 4
+
+    # Optional MLflow observability.  The dependency is loaded lazily, keeping
+    # development and test environments usable without MLflow installed.
+    DATABRICKS_MLFLOW_TRACING_ENABLED: bool = False
+    DATABRICKS_MLFLOW_EXPERIMENT: str = ""
 
     # TokenRouter Settings (Multi-Model OpenAI-Compatible Gateway)
     TOKENROUTER_API_KEY: str = ""

@@ -30,6 +30,11 @@ GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models"
 RETRYABLE_STATUS_CODES = {429, 502, 503, 504}
 MAX_ATTEMPTS = 3
 
+# Endpoint capability is stable for the life of a worker. Once a serving
+# endpoint rejects JSON Schema, subsequent calls use JSON Object mode directly
+# instead of paying the same compatibility retry for every requirement.
+_DATABRICKS_JSON_SCHEMA_UNSUPPORTED_MODELS: set[str] = set()
+
 
 def _clean_json_text(text: Any) -> str:
     """Extract and clean JSON text from raw string or Databricks/OpenAI multi-part response."""
@@ -550,16 +555,29 @@ async def call_vision_with_fallback(
     return {"text": "", "provider": "", "model": "", "attempted": attempted}
 
 
+def _unsupported_response_format(error_text: str) -> bool:
+    """Do not confuse malformed schemas, token limits or policy errors with capability."""
+    message = error_text.lower()
+    return (
+        any(term in message for term in ("response_format", "json_schema", "json mode", "json schema"))
+        and any(term in message for term in ("not supported", "unsupported", "does not support", "not available"))
+        and not any(term in message for term in ("schema keyword", "schema property", "schema is invalid", "invalid schema"))
+    )
+
+
 async def call_databricks_chat_completions(
     prompt: str,
     model: str = "system.ai.llama-4-maverick",
     system_instruction: Optional[str] = None,
     json_mode: bool = False,
+    response_schema: Optional[dict[str, Any]] = None,
+    schema_name: str = "structured_response",
     max_output_tokens: int = 4096,
     timeout: Optional[float] = None,
     thinking_level: Optional[str] = None,
     image_bytes: Optional[bytes] = None,
     image_mime_type: str = "image/png",
+    diagnostics: Optional[dict[str, Any]] = None,
 ) -> Optional[str]:
     """Call Databricks Model Serving AI Gateway via OpenAI-compatible endpoint."""
     import time
@@ -600,7 +618,18 @@ async def call_databricks_chat_completions(
         payload["reasoning_effort"] = effort
     if timeout is None:
         timeout = settings.DATABRICKS_REASONING_TIMEOUT_SECONDS if is_gpt_oss else 90.0
-    if json_mode:
+    if response_schema and model not in _DATABRICKS_JSON_SCHEMA_UNSUPPORTED_MODELS:
+        payload["response_format"] = {
+            "type": "json_schema",
+            "json_schema": {
+                "name": re.sub(r"[^A-Za-z0-9_-]", "_", schema_name)[:64],
+                # Local Pydantic validation remains authoritative. Best-effort
+                # mode accepts optional fields present in our existing models.
+                "strict": False,
+                "schema": response_schema,
+            },
+        }
+    elif json_mode:
         payload["response_format"] = {"type": "json_object"}
 
     headers = {
@@ -625,17 +654,22 @@ async def call_databricks_chat_completions(
                         await asyncio.sleep(20.0)
                     continue
                 if resp.status_code != 200:
-                    if resp.status_code == 400 and "response_format" in payload:
+                    if diagnostics is not None:
+                        diagnostics["error"] = f"HTTP {resp.status_code}: {resp.text[:2000]}"
+                    if resp.status_code == 400 and "response_format" in payload and _unsupported_response_format(resp.text):
                         # Some serving endpoints expose OpenAI chat semantics
                         # but not JSON response mode. Keep schema prompting as
                         # the portable fallback instead of failing the call.
-                        payload.pop("response_format", None)
+                        if payload.get("response_format", {}).get("type") == "json_schema":
+                            _DATABRICKS_JSON_SCHEMA_UNSUPPORTED_MODELS.add(model)
+                            payload["response_format"] = {"type": "json_object"}
+                        else:
+                            payload.pop("response_format", None)
                         logger.warning(
-                            "Databricks model %s rejected JSON response mode; retrying with schema-only prompting.",
+                            "Databricks model %s rejected %s; retrying immediately with the portable fallback.",
                             model,
+                            "JSON Schema mode" if model in _DATABRICKS_JSON_SCHEMA_UNSUPPORTED_MODELS else "JSON response mode",
                         )
-                        if attempt < MAX_ATTEMPTS - 1:
-                            await asyncio.sleep(20.0)
                         continue
                     print(f"  [LLM Error] Databricks returned HTTP {resp.status_code}: {resp.text[:200]}", flush=True)
                     logger.error(f"Databricks API error [{resp.status_code}] for model {model}: {resp.text}")
@@ -649,6 +683,11 @@ async def call_databricks_chat_completions(
                         await asyncio.sleep(20.0)
                     continue
                 content = choices[0].get("message", {}).get("content")
+                finish_reason = choices[0].get("finish_reason")
+                if diagnostics is not None:
+                    diagnostics.update({"finish_reason": finish_reason, "usage": data.get("usage"),
+                                        "elapsed_seconds": elapsed, "max_output_tokens": max_output_tokens,
+                                        "served_model": data.get("model", model)})
                 if isinstance(content, list):
                     parts = []
                     for p in content:
@@ -665,6 +704,13 @@ async def call_databricks_chat_completions(
                 else:
                     result_text = content
                 print(f"  [LLM Response <- Databricks] Received response from {model} in {elapsed:.2f}s ({len(str(result_text))} chars)", flush=True)
+                if diagnostics is not None:
+                    diagnostics["raw_response"] = result_text
+                if finish_reason in {"length", "max_tokens"}:
+                    if diagnostics is not None:
+                        diagnostics["error"] = f"Output truncated: finish_reason={finish_reason}, max_output_tokens={max_output_tokens}. Return a more concise complete contract."
+                    logger.warning("Databricks output truncated for %s (limit %s)", model, max_output_tokens)
+                    return None
                 if not result_text or str(result_text).strip() == "null":
                     if attempt < MAX_ATTEMPTS - 1:
                         await asyncio.sleep(20.0)
@@ -674,6 +720,9 @@ async def call_databricks_chat_completions(
                         json.loads(_clean_json_text(result_text))
                     except (TypeError, ValueError):
                         logger.warning("Databricks returned invalid JSON for %s", model)
+                        if diagnostics is not None:
+                            diagnostics["error"] = "Response was not valid JSON. Return one complete JSON object."
+                            return None
                         if attempt < MAX_ATTEMPTS - 1:
                             await asyncio.sleep(20.0)
                         continue
@@ -1241,6 +1290,7 @@ async def generate_structured(
     thinking_level: Optional[str] = None,
     max_output_tokens: Optional[int] = None,
     allow_model_fallback: bool = True,
+    diagnostics: Optional[dict[str, Any]] = None,
 ) -> Optional[T]:
     """Generate structured output validated against a Pydantic schema using TokenRouter, Groq, Databricks, Gemini, or OpenAI."""
     active_model = model or settings.LLM_MODEL
@@ -1302,8 +1352,11 @@ async def generate_structured(
                 model=db_model,
                 system_instruction=system_instruction,
                 json_mode=True,
+                response_schema=schema,
+                schema_name=response_model.__name__,
                 max_output_tokens=max_output_tokens or 4096,
                 thinking_level=thinking_level,
+                **({"diagnostics": diagnostics} if diagnostics is not None else {}),
             )
             if raw_response:
                 break
@@ -1355,17 +1408,27 @@ async def generate_structured(
             )
 
     if not raw_response:
+        if diagnostics is not None:
+            diagnostics.setdefault("error", "Provider returned no usable response.")
         return None
 
     try:
+        if diagnostics is not None:
+            diagnostics["raw_response"] = raw_response
         cleaned = _clean_json_text(raw_response)
         parsed_json = json.loads(cleaned)
         # If the model returned a bare list and the schema expects a wrapper
         # object with a `requirements` key, wrap it automatically.
         if isinstance(parsed_json, list) and hasattr(response_model, "model_fields") and "requirements" in response_model.model_fields:
             parsed_json = {"requirements": parsed_json}
-        return response_model.model_validate(parsed_json)
+        result = response_model.model_validate(parsed_json)
+        if diagnostics is not None:
+            diagnostics.pop("error", None)
+            diagnostics["schema_valid"] = True
+        return result
     except Exception as ex:
+        if diagnostics is not None:
+            diagnostics["error"] = str(ex)
         print(f"  [LLM Schema Error] Failed to parse JSON response: {ex}", flush=True)
         logger.error(f"Failed to validate model schema: {ex}. Raw: {raw_response[:300]}")
         return None
