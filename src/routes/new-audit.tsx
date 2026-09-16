@@ -1,5 +1,5 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useState, useRef } from "react";
+import { useEffect, useState, useRef } from "react";
 import { Brain, Check, FileText, Loader2, Sparkles, UploadCloud, Zap } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -13,7 +13,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { PageHeader, Panel } from "@/components/primitives";
-import { categories, frameworks } from "@/lib/mock-data";
+import { categories } from "@/lib/mock-data";
 import { useCreateProject } from "@/hooks/use-projects";
 import { useUploadDocument, useDocuments } from "@/hooks/use-documents";
 import { useTriggerAudit } from "@/hooks/use-audit";
@@ -35,15 +35,19 @@ export const Route = createFileRoute("/new-audit")({
 
 const steps = ["Project", "Requirements", "Evidence", "Review & Model"];
 
+function errorMessage(error: unknown) {
+  return error instanceof Error ? error.message : String(error);
+}
+
 function WizardPage() {
   const [step, setStep] = useState(0);
   const [dragging, setDragging] = useState(false);
   const [running, setRunning] = useState(false);
-  const [projectName, setProjectName] = useState("X200 EU Technical Documentation Audit");
-  const [productName, setProductName] = useState("Industrial Controller X200");
+  const [projectName, setProjectName] = useState("");
+  const [productName, setProductName] = useState("");
   const [productCategory, setProductCategory] = useState("Electrical");
-  const [company, setCompany] = useState("Atlas Motion Systems");
-  const [selectedModel, setSelectedModel] = useState("gemini-3.7-flash");
+  const [company, setCompany] = useState("");
+  const [selectedModel, setSelectedModel] = useState("");
   const [thinkingLevel, setThinkingLevel] = useState("HIGH");
   const [createdProjectId, setCreatedProjectId] = useState<string>("");
   const { selectProject } = useActiveProject();
@@ -57,31 +61,13 @@ function WizardPage() {
   const triggerAuditMutation = useTriggerAudit(createdProjectId);
   const { data: documentsList } = useDocuments(createdProjectId);
 
-  const availableModels = aiSettings?.available_models || [
-    {
-      id: "gemini-3.7-flash",
-      name: "Gemini 3.7 Flash",
-      description:
-        "Recommended. Ultra-fast, highly accurate extraction with High Thinking reasoning enabled.",
-      thinking_supported: true,
-      default_thinking: "HIGH",
-    },
-    {
-      id: "gemini-3.1-pro-preview",
-      name: "Gemini 3.1 Pro Preview",
-      description:
-        "Advanced reasoning model with Thinking enabled for deep contradiction analysis across complex technical files.",
-      thinking_supported: true,
-      default_thinking: "HIGH",
-    },
-    {
-      id: "gemini-3.6-flash",
-      name: "Gemini 3.6 Flash",
-      description: "Fast production model for high-throughput batch extraction.",
-      thinking_supported: true,
-      default_thinking: "MEDIUM",
-    },
-  ];
+  const availableModels = aiSettings?.available_models || [];
+  useEffect(() => {
+    if (!selectedModel && aiSettings?.current_model) {
+      setSelectedModel(aiSettings.current_model);
+      setThinkingLevel(aiSettings.thinking_level || "HIGH");
+    }
+  }, [aiSettings, selectedModel]);
 
   const handleNextStep = async () => {
     if (step === 0) {
@@ -104,8 +90,8 @@ function WizardPage() {
         selectProject(proj.id);
         toast.success("Project created", { description: `${proj.audit_id}` });
         setStep(1);
-      } catch (err: any) {
-        toast.error(`Project was not created: ${err.message || err}`);
+      } catch (err: unknown) {
+        toast.error(`Project was not created: ${errorMessage(err)}`);
       }
     } else {
       setStep((s) => s + 1);
@@ -121,8 +107,8 @@ function WizardPage() {
         toast.info(`Uploading ${file.name}...`);
         await uploadDocMutation.mutateAsync({ file, docType });
         toast.success(`${file.name} uploaded!`);
-      } catch (err: any) {
-        toast.error(`Upload error: ${err.message}`);
+      } catch (err: unknown) {
+        toast.error(`Upload error: ${errorMessage(err)}`);
       }
     }
   };
@@ -142,8 +128,8 @@ function WizardPage() {
         description: "Follow live progress from any page in this project.",
       });
       setTimeout(() => navigate({ to: "/" }), 800);
-    } catch (err: any) {
-      toast.error(`Audit pipeline notice: ${err.message || err}`);
+    } catch (err: unknown) {
+      toast.error(`Audit pipeline notice: ${errorMessage(err)}`);
     } finally {
       setRunning(false);
     }
@@ -192,6 +178,7 @@ function WizardPage() {
                 className="mt-1.5"
                 value={projectName}
                 onChange={(e) => setProjectName(e.target.value)}
+                placeholder="e.g. Battery validation evidence review"
               />
             </div>
             <div>
@@ -202,6 +189,7 @@ function WizardPage() {
                 className="mt-1.5"
                 value={company}
                 onChange={(e) => setCompany(e.target.value)}
+                placeholder="Company or team (optional)"
               />
             </div>
             <div>
@@ -212,6 +200,7 @@ function WizardPage() {
                 className="mt-1.5"
                 value={productName}
                 onChange={(e) => setProductName(e.target.value)}
+                placeholder="Product or system under review"
               />
             </div>
             <div>
@@ -246,21 +235,10 @@ function WizardPage() {
                 PDF, CSV, XLSX or DOCX requirement lists
               </p>
             </div>
-            <div className="text-center text-xs text-muted-foreground">
-              or select a pre-configured framework
-            </div>
-            <div className="grid gap-2 sm:grid-cols-2">
-              {frameworks.map((f) => (
-                <button
-                  key={f.id}
-                  onClick={() => toast.info(`Selected ${f.name}`)}
-                  className="rounded-lg border border-border bg-card p-3 text-left text-sm hover:border-primary"
-                >
-                  <div className="font-medium">{f.name}</div>
-                  <div className="text-xs text-muted-foreground">{f.status}</div>
-                </button>
-              ))}
-            </div>
+            <p className="text-center text-xs text-muted-foreground">
+              Upload the authorized requirement source. Framework templates are not enabled in this
+              workspace.
+            </p>
           </div>
         )}
 
@@ -350,71 +328,84 @@ function WizardPage() {
               </div>
             </dl>
 
-            {/* Model Selection Option */}
-            <div className="rounded-lg border border-border bg-surface/70 p-4">
-              <div className="flex items-center gap-2">
-                <Sparkles className="size-4 text-primary" />
-                <label className="text-xs font-semibold uppercase tracking-wide text-foreground">
-                  Select AI Audit Model
-                </label>
-              </div>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Choose the primary reasoning model. Figure processing and focused secondary review
-                may use other configured providers.
-              </p>
-
-              <div className="mt-3 space-y-2">
-                {availableModels.map((m) => (
-                  <div
-                    key={m.id}
-                    onClick={() => setSelectedModel(m.id)}
-                    className={cn(
-                      "cursor-pointer rounded-lg border p-3 transition-all",
-                      selectedModel === m.id
-                        ? "border-primary bg-info-soft/40 shadow-subtle ring-1 ring-primary"
-                        : "border-border bg-card hover:border-primary/50",
-                    )}
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm font-semibold">{m.name}</span>
-                      {selectedModel === m.id && (
-                        <span className="rounded-full bg-primary px-2 py-0.5 text-[10px] font-medium text-primary-foreground">
-                          Selected
-                        </span>
-                      )}
-                    </div>
-                    <p className="mt-1 text-xs text-muted-foreground">{m.description}</p>
-                  </div>
-                ))}
-              </div>
-
-              {/* Thinking Intensity Selector */}
-              {availableModels.find((m) => m.id === selectedModel)?.thinking_supported && (
-                <div className="mt-4 border-t border-border/80 pt-3">
-                  <div className="flex items-center gap-1.5 text-xs font-medium text-foreground">
-                    <Brain className="size-3.5 text-primary" />
-                    <span>Thinking Intensity (Reasoning Effort):</span>
-                  </div>
-                  <div className="mt-2 flex gap-2">
-                    {["HIGH", "MEDIUM", "LOW"].map((lvl) => (
-                      <button
-                        key={lvl}
-                        type="button"
-                        onClick={() => setThinkingLevel(lvl)}
-                        className={cn(
-                          "flex-1 rounded-md border py-1.5 text-center font-mono text-xs font-semibold uppercase transition-colors",
-                          thinkingLevel === lvl
-                            ? "border-primary bg-primary text-primary-foreground shadow-subtle"
-                            : "border-border bg-card text-muted-foreground hover:text-foreground",
-                        )}
-                      >
-                        {lvl} {lvl === "HIGH" ? "(Recommended)" : ""}
-                      </button>
-                    ))}
-                  </div>
+            <p className="rounded-lg border bg-surface/70 p-4 text-sm">
+              TraceAudit will use the workspace model{" "}
+              <strong>
+                {availableModels.find((item) => item.id === selectedModel)?.name ||
+                  selectedModel ||
+                  "not configured"}
+              </strong>
+              . Document content may be processed by configured remote AI services.
+            </p>
+            <details className="rounded-lg border border-border bg-surface/70 p-4">
+              <summary className="cursor-pointer text-sm font-medium">
+                Advanced model settings
+              </summary>
+              <div className="mt-4">
+                <div className="flex items-center gap-2">
+                  <Sparkles className="size-4 text-primary" />
+                  <label className="text-xs font-semibold uppercase tracking-wide text-foreground">
+                    Select AI Audit Model
+                  </label>
                 </div>
-              )}
-            </div>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Choose the primary reasoning model. Figure processing and focused secondary review
+                  may use other configured providers.
+                </p>
+
+                <div className="mt-3 space-y-2">
+                  {availableModels.map((m) => (
+                    <div
+                      key={m.id}
+                      onClick={() => setSelectedModel(m.id)}
+                      className={cn(
+                        "cursor-pointer rounded-lg border p-3 transition-all",
+                        selectedModel === m.id
+                          ? "border-primary bg-info-soft/40 shadow-subtle ring-1 ring-primary"
+                          : "border-border bg-card hover:border-primary/50",
+                      )}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-semibold">{m.name}</span>
+                        {selectedModel === m.id && (
+                          <span className="rounded-full bg-primary px-2 py-0.5 text-[10px] font-medium text-primary-foreground">
+                            Selected
+                          </span>
+                        )}
+                      </div>
+                      <p className="mt-1 text-xs text-muted-foreground">{m.description}</p>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Thinking Intensity Selector */}
+                {availableModels.find((m) => m.id === selectedModel)?.thinking_supported && (
+                  <div className="mt-4 border-t border-border/80 pt-3">
+                    <div className="flex items-center gap-1.5 text-xs font-medium text-foreground">
+                      <Brain className="size-3.5 text-primary" />
+                      <span>Thinking Intensity (Reasoning Effort):</span>
+                    </div>
+                    <div className="mt-2 flex gap-2">
+                      {["HIGH", "MEDIUM", "LOW"].map((lvl) => (
+                        <button
+                          key={lvl}
+                          type="button"
+                          onClick={() => setThinkingLevel(lvl)}
+                          className={cn(
+                            "flex-1 rounded-md border py-1.5 text-center font-mono text-xs font-semibold uppercase transition-colors",
+                            thinkingLevel === lvl
+                              ? "border-primary bg-primary text-primary-foreground shadow-subtle"
+                              : "border-border bg-card text-muted-foreground hover:text-foreground",
+                          )}
+                        >
+                          {lvl} {lvl === "HIGH" ? "(Recommended)" : ""}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </details>
 
             {running && (
               <div className="rounded-lg border border-primary/30 bg-primary/5 p-4">
@@ -454,6 +445,7 @@ function WizardPage() {
                 running ||
                 !createdProjectId ||
                 !documentsList?.length ||
+                !selectedModel ||
                 uploadDocMutation.isPending
               }
               onClick={handleStartAudit}

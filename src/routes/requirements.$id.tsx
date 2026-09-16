@@ -1,5 +1,5 @@
-import { createFileRoute, Link, useParams } from "@tanstack/react-router";
-import { useState } from "react";
+import { createFileRoute, Link, useNavigate, useParams } from "@tanstack/react-router";
+import { useEffect, useMemo, useState } from "react";
 import {
   ArrowLeft,
   ArrowUpRight,
@@ -17,12 +17,23 @@ import { Textarea } from "@/components/ui/textarea";
 import { CoverageBadge, ReviewBadge } from "@/components/status";
 import { DocumentInspector, ExtractedBlock, StructuredText } from "@/components/document-inspector";
 import { useActiveProject } from "@/hooks/use-active-project";
-import { useRequirement, useSaveReview } from "@/hooks/use-requirements";
+import { useRequirement, useRequirements, useSaveReview } from "@/hooks/use-requirements";
 import { useAuditProgress } from "@/hooks/use-audit";
-import type { AtomicCondition, ReviewRequest } from "@/lib/api-client";
+import type {
+  AtomicCondition,
+  CoverageStatus,
+  ReviewRequest,
+  ReviewResolutionType,
+} from "@/lib/api-client";
 import { cn } from "@/lib/utils";
+import {
+  normalizeRequirementQueueSearch,
+  parseRequirementQueueSearch,
+  type NormalizedRequirementQueueSearch,
+} from "@/lib/requirement-search";
 
 export const Route = createFileRoute("/requirements/$id")({
+  validateSearch: parseRequirementQueueSearch,
   head: () => ({ meta: [{ title: "Requirement Review — TraceAudit" }] }),
   component: RequirementDetail,
 });
@@ -44,11 +55,19 @@ const statusColors: Record<string, string> = {
   PENDING: "bg-info-soft text-primary",
   NOT_APPLICABLE: "bg-muted text-muted-foreground",
 };
+function reviewDraft(key: string) {
+  if (typeof window === "undefined") return null;
+  try {
+    return JSON.parse(window.sessionStorage.getItem(key) || "null");
+  } catch {
+    return null;
+  }
+}
 function requiredTarget(condition: AtomicCondition) {
   const range =
     condition.min_value != null || condition.max_value != null
       ? `${condition.min_value ?? "…"} to ${condition.max_value ?? "…"}`
-      : condition.threshold;
+      : condition.right_operand || condition.threshold;
   return (
     [condition.operator, range, condition.unit]
       .filter((value) => value != null && value !== "")
@@ -57,24 +76,88 @@ function requiredTarget(condition: AtomicCondition) {
 }
 function RequirementDetail() {
   const { id } = useParams({ from: "/requirements/$id" });
+  const search = normalizeRequirementQueueSearch(Route.useSearch());
   const { activeProjectId } = useActiveProject();
-  return <ReviewWorkspace key={`${activeProjectId}-${id}`} projectId={activeProjectId} id={id} />;
+  return (
+    <ReviewWorkspace
+      key={`${activeProjectId}-${id}`}
+      projectId={activeProjectId}
+      id={id}
+      search={search}
+    />
+  );
 }
 
-function ReviewWorkspace({ projectId, id }: { projectId: string; id: string }) {
+function ReviewWorkspace({
+  projectId,
+  id,
+  search,
+}: {
+  projectId: string;
+  id: string;
+  search: NormalizedRequirementQueueSearch;
+}) {
+  const navigate = useNavigate();
   const query = useRequirement(projectId, id);
+  const queueQuery = useRequirements(projectId);
   const saveReview = useSaveReview(projectId, id);
   const { data: auditJob } = useAuditProgress(projectId);
-  const auditActive = auditJob?.status === "queued" || auditJob?.status === "running";
+  const auditActive =
+    auditJob?.status === "queued" ||
+    auditJob?.status === "running" ||
+    auditJob?.status === "cancelling";
   const [tab, setTab] = useState<"conditions" | "source" | "review">("conditions");
   const [selection, setSelection] = useState<{
     documentId: string;
     page: number;
     context: string;
   } | null>(null);
-  const [reviewer, setReviewer] = useState("");
-  const [comment, setComment] = useState("");
+  const draftKey = `traceaudit-review-draft:${projectId}:${id}`;
+  const parsedDraft = reviewDraft(draftKey);
+  const [reviewer, setReviewer] = useState<string>(parsedDraft?.reviewer || "");
+  const [comment, setComment] = useState<string>(parsedDraft?.comment || "");
   const [action, setAction] = useState<ReviewRequest["action"]>("Comment");
+  const [resolutionType, setResolutionType] = useState<ReviewResolutionType>(
+    parsedDraft?.resolutionType || "Comment",
+  );
+  const [humanVerdict, setHumanVerdict] = useState<CoverageStatus | "">(
+    parsedDraft?.humanVerdict || "",
+  );
+  useEffect(() => {
+    window.sessionStorage.setItem(
+      draftKey,
+      JSON.stringify({ reviewer, comment, resolutionType, humanVerdict }),
+    );
+  }, [draftKey, reviewer, comment, resolutionType, humanVerdict]);
+  const queue = useMemo(() => {
+    const items = (queueQuery.data || []).filter((item) => {
+      if (search.tab === "Needs review" && item.review_state !== "Needs review") return false;
+      if (!["All", "Needs review"].includes(search.tab) && item.coverage_status !== search.tab)
+        return false;
+      if (search.category !== "all" && item.category !== search.category) return false;
+      if (search.severity !== "all" && item.severity !== search.severity) return false;
+      if (search.document !== "all" && item.source_document !== search.document) return false;
+      if (
+        search.issue === "contract" &&
+        item.contract_complete !== false &&
+        !item.validation_issue_count
+      )
+        return false;
+      if (search.issue === "evidence" && !item.unresolved_condition_count) return false;
+      if (search.issue === "none" && item.sources_count > 0) return false;
+      return (
+        !search.query ||
+        `${item.req_code} ${item.title}`.toLowerCase().includes(search.query.toLowerCase())
+      );
+    });
+    return items.sort((a, b) =>
+      search.sort === "desc"
+        ? b.req_code.localeCompare(a.req_code)
+        : a.req_code.localeCompare(b.req_code),
+    );
+  }, [queueQuery.data, search]);
+  const queueIndex = queue.findIndex((item) => item.id === id);
+  const nextRequirement = queueIndex >= 0 ? queue[queueIndex + 1] : undefined;
   if (query.isPending)
     return (
       <div role="status" className="flex justify-center gap-2 p-20">
@@ -119,7 +202,7 @@ function ReviewWorkspace({ projectId, id }: { projectId: string; id: string }) {
   const logic = req.contract?.logic?.operator;
   const inspect = (documentId: string, page: number | null | undefined, context: string) =>
     setSelection({ documentId, page: page || 1, context });
-  const submitReview = async () => {
+  const submitReview = async (advance = false) => {
     if (
       action !== "Comment" &&
       !window.confirm(
@@ -128,9 +211,23 @@ function ReviewWorkspace({ projectId, id }: { projectId: string; id: string }) {
     )
       return;
     try {
-      await saveReview.mutateAsync({ reviewer: reviewer.trim(), comment: comment.trim(), action });
+      await saveReview.mutateAsync({
+        reviewer: reviewer.trim(),
+        comment: comment.trim(),
+        action,
+        resolution_type: resolutionType,
+        human_verdict: humanVerdict || null,
+      });
       setComment("");
+      window.sessionStorage.removeItem(draftKey);
       toast.success("Review saved to this requirement");
+      if (advance && nextRequirement) {
+        navigate({
+          to: "/requirements/$id",
+          params: { id: nextRequirement.id },
+          search,
+        });
+      }
     } catch {
       toast.error("Review was not saved. Your text is preserved; please retry.");
     }
@@ -139,6 +236,7 @@ function ReviewWorkspace({ projectId, id }: { projectId: string; id: string }) {
     <div className="mx-auto max-w-[1700px]">
       <Link
         to="/requirements"
+        search={search}
         className="mb-4 inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground"
       >
         <ArrowLeft className="size-4" />
@@ -165,6 +263,17 @@ function ReviewWorkspace({ projectId, id }: { projectId: string; id: string }) {
           <div>
             <p className="mb-1.5 text-muted-foreground">AI coverage verdict</p>
             <CoverageBadge status={req.coverage_status} />
+            {auditActive && (
+              <p className="mt-1 text-[11px] text-muted-foreground">
+                {req.assessment_run_id === auditJob?.run_id
+                  ? "Updated in current run"
+                  : "Previous run result"}
+              </p>
+            )}
+          </div>
+          <div>
+            <p className="mb-1.5 text-muted-foreground">Human-assessed verdict</p>
+            <span className="font-medium">{req.human_verdict || "Not recorded"}</span>
           </div>
           <div>
             <p className="mb-1.5 text-muted-foreground">Workflow state</p>
@@ -266,10 +375,27 @@ function ReviewWorkspace({ projectId, id }: { projectId: string; id: string }) {
                   </div>
                 )}
                 {req.contract?.contract_complete === false && (
-                  <p className="mt-3 text-sm text-warning">
-                    Extraction completeness was not established.{" "}
-                    {(req.contract.unmapped_obligations || []).join("; ")}
-                  </p>
+                  <div className="mt-3 rounded-lg border border-warning/30 bg-warning-soft p-3 text-sm">
+                    <p className="font-medium text-warning">Extraction needs confirmation</p>
+                    <ul className="mt-2 space-y-1 text-xs">
+                      {[
+                        ...(req.contract.validation_issues || []),
+                        ...(req.contract.unmapped_obligations || []),
+                      ]
+                        .slice(0, 5)
+                        .map((issue) => (
+                          <li key={issue}>• {issue}</li>
+                        ))}
+                    </ul>
+                    <Button
+                      className="mt-3"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setTab("source")}
+                    >
+                      Inspect requirement source
+                    </Button>
+                  </div>
                 )}
               </section>
               {!conditionRows.length && (
@@ -299,14 +425,21 @@ function ReviewWorkspace({ projectId, id }: { projectId: string; id: string }) {
                           <span className="font-mono text-[11px] text-muted-foreground">
                             {condition.condition_id}
                           </span>
-                          <span
-                            className={cn(
-                              "rounded-md px-2 py-1 text-xs font-medium",
-                              statusColors[status] || "bg-muted",
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span
+                              className={cn(
+                                "rounded-md px-2 py-1 text-xs font-medium",
+                                statusColors[status] || "bg-muted",
+                              )}
+                            >
+                              {statusLabels[status] || status}
+                            </span>
+                            {result?.validation_state && result.validation_state !== "VALID" && (
+                              <span className="rounded-md border border-warning/40 bg-warning-soft px-2 py-1 text-xs font-medium text-warning">
+                                Evidence {result.validation_state.toLowerCase()}
+                              </span>
                             )}
-                          >
-                            {statusLabels[status] || status}
-                          </span>
+                          </div>
                         </div>
                         <h3 className="mt-2 text-sm font-medium leading-relaxed">
                           {condition.description ||
@@ -334,6 +467,17 @@ function ReviewWorkspace({ projectId, id }: { projectId: string; id: string }) {
                     </div>
                     <div className="space-y-3 p-5">
                       {result?.reason && <p className="text-sm leading-relaxed">{result.reason}</p>}
+                      {result?.validation_state && result.validation_state !== "VALID" && (
+                        <div className="rounded-lg border border-warning/30 bg-warning-soft p-3 text-xs">
+                          <p className="font-medium text-warning">
+                            This condition is not validated for closure
+                          </p>
+                          <p className="mt-1 text-muted-foreground">
+                            {result.validation_notes?.[0] ||
+                              "Evidence or provenance validation remains unresolved."}
+                          </p>
+                        </div>
+                      )}
                       {reviewedBySecondary && (
                         <p className="flex items-center gap-2 text-xs text-primary">
                           <CheckCircle2 className="size-4" />
@@ -534,6 +678,47 @@ function ReviewWorkspace({ projectId, id }: { projectId: string; id: string }) {
                     </select>
                   </label>
                   <label className="block text-xs font-medium">
+                    Resolution type
+                    <select
+                      value={resolutionType}
+                      onChange={(e) => setResolutionType(e.target.value as ReviewResolutionType)}
+                      className="mt-1.5 block w-full rounded-md border bg-background p-2 text-sm"
+                    >
+                      <option>Comment</option>
+                      <option>Confirm AI assessment</option>
+                      <option>Override verdict</option>
+                      <option>Evidence issue</option>
+                      <option>Contract correction</option>
+                    </select>
+                  </label>
+                  <label className="block text-xs font-medium">
+                    Human-assessed verdict
+                    <select
+                      value={humanVerdict}
+                      onChange={(e) => setHumanVerdict(e.target.value as CoverageStatus | "")}
+                      className="mt-1.5 block w-full rounded-md border bg-background p-2 text-sm"
+                    >
+                      <option value="">No verdict — comment only</option>
+                      {(
+                        [
+                          "Supported",
+                          "Partial",
+                          "Missing",
+                          "Conflict",
+                          "Unknown",
+                          "Not applicable",
+                        ] as CoverageStatus[]
+                      ).map((status) => (
+                        <option key={status} value={status}>
+                          {status}
+                        </option>
+                      ))}
+                    </select>
+                    <span className="mt-1 block font-normal text-muted-foreground">
+                      Stored separately; the original AI verdict remains unchanged.
+                    </span>
+                  </label>
+                  <label className="block text-xs font-medium">
                     Rationale / comment
                     <Textarea
                       className="mt-1.5 min-h-28"
@@ -543,14 +728,35 @@ function ReviewWorkspace({ projectId, id }: { projectId: string; id: string }) {
                       placeholder="Explain your decision and reference the source evidence…"
                     />
                   </label>
-                  <Button
-                    disabled={
-                      auditActive || !reviewer.trim() || !comment.trim() || saveReview.isPending
-                    }
-                    onClick={submitReview}
-                  >
-                    {saveReview.isPending && <Loader2 className="size-4 animate-spin" />}Save review
-                  </Button>
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      disabled={
+                        auditActive || !reviewer.trim() || !comment.trim() || saveReview.isPending
+                      }
+                      onClick={() => submitReview(false)}
+                    >
+                      {saveReview.isPending && <Loader2 className="size-4 animate-spin" />}Save
+                      review
+                    </Button>
+                    <Button
+                      variant="outline"
+                      disabled={
+                        auditActive ||
+                        !reviewer.trim() ||
+                        !comment.trim() ||
+                        saveReview.isPending ||
+                        !nextRequirement
+                      }
+                      onClick={() => submitReview(true)}
+                    >
+                      Save and next
+                    </Button>
+                    <span className="self-center text-xs text-muted-foreground">
+                      {queueIndex >= 0
+                        ? `${queueIndex + 1} of ${queue.length} in this queue`
+                        : "Outside current queue"}
+                    </span>
+                  </div>
                   {auditActive && (
                     <p role="status" className="text-xs text-muted-foreground">
                       Audit in progress. You can draft a review; save it after the new results
@@ -577,7 +783,9 @@ function ReviewWorkspace({ projectId, id }: { projectId: string; id: string }) {
                           {event.comment}
                         </p>
                         <p className="mt-2 text-xs text-muted-foreground">
-                          AI verdict at review: {event.ai_verdict}
+                          {event.resolution_type || "Review"}
+                          {event.human_verdict ? ` · Human verdict: ${event.human_verdict}` : ""}
+                          {` · AI verdict at review: ${event.ai_verdict}`}
                         </p>
                       </li>
                     ))}

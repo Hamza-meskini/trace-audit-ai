@@ -3,8 +3,11 @@
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from pathlib import Path
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 
 from app.config import settings
 from app.database import init_db, async_session
@@ -28,7 +31,8 @@ async def lifespan(app: FastAPI):
     logger.info("Initializing database...")
     await init_db()
     from app.services.audit_progress import recover_interrupted
-    recover_interrupted()
+    from app.services import audit_worker
+    recover_interrupted(requeue=True)
 
     # Seed mock data for development
     async with async_session() as db:
@@ -39,8 +43,11 @@ async def lifespan(app: FastAPI):
             logger.info("Database already contains data, skipping seed.")
         await load_persisted_settings(db)
 
-    yield
-    # Shutdown (nothing to clean up for now)
+    audit_worker.start()
+    try:
+        yield
+    finally:
+        await audit_worker.stop()
 
 
 app = FastAPI(
@@ -48,6 +55,7 @@ app = FastAPI(
     version=settings.APP_VERSION,
     description="AI-assisted technical requirements and evidence auditing platform.",
     lifespan=lifespan,
+    root_path=settings.ROOT_PATH,
 )
 
 # CORS — allow all local development origins (5173, 8080, 3000, etc.)
@@ -72,3 +80,71 @@ app.include_router(settings_router, prefix="/api")
 @app.get("/api/health")
 async def health_check():
     return {"status": "ok", "version": settings.APP_VERSION}
+
+
+def _resolve_frontend_dir() -> Path | None:
+    """Find the compiled React frontend directory."""
+    candidates = [
+        Path(settings.FRONTEND_DIR),
+        Path(__file__).resolve().parent.parent.parent / "dist" / "client",
+        Path(__file__).resolve().parent.parent / "dist" / "client",
+        Path("dist/client"),
+        Path("static"),
+    ]
+    for p in candidates:
+        if p.is_dir() and (p / "index.html").is_file():
+            return p.resolve()
+    for p in candidates:
+        if p.is_dir():
+            return p.resolve()
+    return None
+
+
+frontend_dir = _resolve_frontend_dir()
+
+if frontend_dir and (frontend_dir / "assets").is_dir():
+    logger.info("Serving frontend static assets from %s", frontend_dir / "assets")
+    app.mount(
+        "/assets",
+        StaticFiles(directory=str(frontend_dir / "assets")),
+        name="frontend-assets",
+    )
+
+if frontend_dir and (frontend_dir / "index.html").is_file():
+    logger.info("Configured SPA fallback for frontend from %s", frontend_dir)
+
+    @app.get("/{full_path:path}", include_in_schema=False)
+    async def serve_frontend(full_path: str):
+        # Do not catch API or documentation routes
+        if full_path.startswith("api/") or full_path == "api" or full_path in ("docs", "redoc", "openapi.json"):
+            raise HTTPException(status_code=404, detail="Endpoint not found")
+
+        # 1. Exact static file match (favicon.ico, robots.txt, subpage index.html, etc.)
+        target_file = frontend_dir / full_path
+        if target_file.is_file():
+            return FileResponse(target_file)
+
+        # 2. Sub-directory with index.html (e.g. /requirements/ -> requirements/index.html)
+        if target_file.is_dir():
+            sub_index = target_file / "index.html"
+            if sub_index.is_file():
+                return FileResponse(sub_index)
+
+        # 3. Fallback to main index.html for client-side routing
+        main_index = frontend_dir / "index.html"
+        if main_index.is_file():
+            return FileResponse(main_index)
+
+        raise HTTPException(status_code=404, detail="File not found")
+else:
+    logger.info("Frontend static build not detected. Running in API-only mode.")
+
+    @app.get("/", include_in_schema=False)
+    async def root_fallback():
+        return {
+            "status": "ok",
+            "app": settings.APP_NAME,
+            "version": settings.APP_VERSION,
+            "message": "TraceAudit AI backend API is running. Frontend static build not found in dist/client. Run 'npm run build' to generate the frontend assets.",
+            "docs": "/docs",
+        }

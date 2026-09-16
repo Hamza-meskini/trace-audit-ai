@@ -42,6 +42,15 @@ class RequirementResponse(BaseModel):
     source_document_id: str | None = None
     source_blocks: list[dict[str, Any]] = Field(default_factory=list)
     review_history: list[dict[str, Any]] = Field(default_factory=list)
+    human_verdict: str | None = None
+    human_assessment: dict[str, Any] | None = None
+    contract_complete: bool | None = None
+    validation_issue_count: int = 0
+    unresolved_condition_count: int = 0
+    review_blocker_count: int = 0
+    assessment_run_id: str | None = None
+    assessed_at: str | None = None
+    source_sync_status: str | None = None
 
     model_config = {"from_attributes": True}
 
@@ -59,3 +68,10 @@ class RequirementReviewRequest(BaseModel):
     action: Literal["Approved", "Rejected", "Reviewed", "Needs review", "Comment"]
     reviewer: str = Field(min_length=1, max_length=120)
     comment: str = Field(min_length=1, max_length=5000)
+    resolution_type: Literal[
+        "Confirm AI assessment", "Override verdict", "Evidence issue",
+        "Contract correction", "Comment",
+    ] = "Comment"
+    human_verdict: Literal[
+        "Supported", "Partial", "Missing", "Conflict", "Unknown", "Not applicable",
+    ] | None = None

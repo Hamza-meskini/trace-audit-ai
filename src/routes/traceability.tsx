@@ -1,218 +1,125 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { useState } from "react";
-import { Minus, Plus, RotateCcw } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { PageHeader, Panel } from "@/components/primitives";
-import { cn } from "@/lib/utils";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { ArrowRight, FileText, GitBranch, Loader2, Search } from "lucide-react";
+import { useMemo, useState } from "react";
+import { Input } from "@/components/ui/input";
+import { PageHeader, EmptyState } from "@/components/primitives";
+import { CoverageBadge, ReviewBadge } from "@/components/status";
+import { useActiveProject } from "@/hooks/use-active-project";
+import { useRequirements } from "@/hooks/use-requirements";
 
 export const Route = createFileRoute("/traceability")({
-  head: () => ({
-    meta: [
-      { title: "Traceability Map — TraceAudit" },
-      {
-        name: "description",
-        content: "Explore requirement-to-evidence relationships across documents and findings.",
-      },
-      { property: "og:title", content: "Traceability Map — TraceAudit" },
-      {
-        property: "og:description",
-        content: "Interactive map linking requirements, documents, evidence and findings.",
-      },
-    ],
-  }),
+  head: () => ({ meta: [{ title: "Traceability Register — TraceAudit" }] }),
   component: TraceabilityPage,
 });
 
-type NodeType = "Requirement" | "Document" | "Evidence" | "Finding";
-
-const nodes: { id: string; label: string; type: NodeType; x: number; y: number }[] = [
-  { id: "REQ-001", label: "REQ-001", type: "Requirement", x: 90, y: 70 },
-  { id: "REQ-003", label: "REQ-003", type: "Requirement", x: 90, y: 220 },
-  { id: "REQ-005", label: "REQ-005", type: "Requirement", x: 90, y: 370 },
-  { id: "DOC-SPEC", label: "Product_Spec.pdf", type: "Document", x: 330, y: 70 },
-  { id: "DOC-TECH", label: "Technical_Spec.pdf", type: "Document", x: 330, y: 220 },
-  { id: "DOC-SUP", label: "Supplier_Datasheet.pdf", type: "Document", x: 330, y: 400 },
-  { id: "EV-12", label: "Page 12", type: "Evidence", x: 580, y: 70 },
-  { id: "EV-31", label: "Page 31", type: "Evidence", x: 580, y: 220 },
-  { id: "EV-4", label: "Page 4", type: "Evidence", x: 580, y: 400 },
-  { id: "F-001", label: "Finding F-001", type: "Finding", x: 800, y: 330 },
-];
-
-const edges: [string, string][] = [
-  ["REQ-001", "DOC-SPEC"],
-  ["DOC-SPEC", "EV-12"],
-  ["REQ-003", "DOC-TECH"],
-  ["DOC-TECH", "EV-31"],
-  ["REQ-005", "DOC-SPEC"],
-  ["REQ-005", "DOC-SUP"],
-  ["DOC-SUP", "EV-4"],
-  ["EV-4", "F-001"],
-  ["EV-12", "F-001"],
-];
-
-const typeColor: Record<NodeType, string> = {
-  Requirement: "var(--primary)",
-  Document: "var(--muted-foreground)",
-  Evidence: "var(--success)",
-  Finding: "var(--critical)",
-};
-
 function TraceabilityPage() {
-  const [zoom, setZoom] = useState(1);
-  const [pan, setPan] = useState({ x: 0, y: 0 });
-  const [drag, setDrag] = useState<{ x: number; y: number } | null>(null);
-  const [selected, setSelected] = useState<string | null>("REQ-005");
-  const [hidden, setHidden] = useState<NodeType[]>([]);
-
-  const connected = new Set<string>();
-  if (selected) {
-    connected.add(selected);
-    edges.forEach(([a, b]) => {
-      if (a === selected) connected.add(b);
-      if (b === selected) connected.add(a);
-    });
-  }
-
-  const visible = (t: NodeType) => !hidden.includes(t);
+  const navigate = useNavigate();
+  const { activeProject, activeProjectId } = useActiveProject();
+  const query = useRequirements(activeProjectId);
+  const [search, setSearch] = useState("");
+  const rows = useMemo(
+    () =>
+      (query.data || []).filter(
+        (item) =>
+          !search ||
+          `${item.req_code} ${item.title} ${item.source_document || ""}`
+            .toLowerCase()
+            .includes(search.toLowerCase()),
+      ),
+    [query.data, search],
+  );
 
   return (
     <div className="mx-auto max-w-[1400px]">
       <PageHeader
-        title="Traceability Map"
-        subtitle="Requirement-to-evidence relationships across the indexed document set."
-        actions={
-          <div className="flex items-center gap-1.5">
-            <Button variant="outline" size="icon" onClick={() => setZoom((z) => Math.max(0.5, z - 0.15))} aria-label="Zoom out">
-              <Minus className="size-4" />
-            </Button>
-            <Button variant="outline" size="icon" onClick={() => setZoom((z) => Math.min(1.8, z + 0.15))} aria-label="Zoom in">
-              <Plus className="size-4" />
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                setZoom(1);
-                setPan({ x: 0, y: 0 });
-                setSelected(null);
-              }}
-            >
-              <RotateCcw className="size-4" />
-              Reset
-            </Button>
-          </div>
-        }
+        title="Traceability register"
+        subtitle={`Live requirement-to-source-to-evidence links for ${activeProject?.name || "the active project"}.`}
       />
-
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-4">
-        <Panel className="lg:col-span-3" bodyClassName="p-0">
-          <div
-            className="relative h-[560px] cursor-grab overflow-hidden rounded-xl bg-[radial-gradient(var(--border)_1px,transparent_1px)] [background-size:20px_20px] active:cursor-grabbing"
-            onPointerDown={(e) => setDrag({ x: e.clientX - pan.x, y: e.clientY - pan.y })}
-            onPointerMove={(e) => drag && setPan({ x: e.clientX - drag.x, y: e.clientY - drag.y })}
-            onPointerUp={() => setDrag(null)}
-            onPointerLeave={() => setDrag(null)}
-          >
-            <svg
-              className="size-full"
-              viewBox="0 0 1000 500"
-              style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})` }}
-            >
-              {edges.map(([a, b]) => {
-                const na = nodes.find((n) => n.id === a)!;
-                const nb = nodes.find((n) => n.id === b)!;
-                if (!visible(na.type) || !visible(nb.type)) return null;
-                const active = selected ? connected.has(a) && connected.has(b) : true;
-                return (
-                  <line
-                    key={`${a}-${b}`}
-                    x1={na.x + 60}
-                    y1={na.y + 14}
-                    x2={nb.x}
-                    y2={nb.y + 14}
-                    stroke={active ? "var(--primary)" : "var(--border)"}
-                    strokeWidth={active ? 1.6 : 1}
-                    opacity={active ? 0.8 : 0.4}
-                  />
-                );
-              })}
-              {nodes.filter((n) => visible(n.type)).map((n) => {
-                const active = !selected || connected.has(n.id);
-                return (
-                  <g
-                    key={n.id}
-                    transform={`translate(${n.x}, ${n.y})`}
-                    onClick={() => setSelected(n.id)}
-                    className="cursor-pointer"
-                    opacity={active ? 1 : 0.35}
-                  >
-                    <rect
-                      width={n.label.length > 12 ? 170 : 120}
-                      height={28}
-                      rx={7}
-                      fill="var(--card)"
-                      stroke={selected === n.id ? "var(--primary)" : "var(--border)"}
-                      strokeWidth={selected === n.id ? 2 : 1}
-                    />
-                    <circle cx={12} cy={14} r={4} fill={typeColor[n.type]} />
-                    <text x={24} y={18} fontSize={11} fill="var(--foreground)" fontFamily="IBM Plex Mono, monospace">
-                      {n.label}
-                    </text>
-                  </g>
-                );
-              })}
-            </svg>
-          </div>
-        </Panel>
-
-        <div className="space-y-4">
-          <Panel title="Legend">
-            <ul className="space-y-2 text-sm">
-              {(Object.keys(typeColor) as NodeType[]).map((t) => (
-                <li key={t}>
-                  <button
-                    onClick={() =>
-                      setHidden((h) => (h.includes(t) ? h.filter((x) => x !== t) : [...h, t]))
-                    }
-                    className={cn(
-                      "flex w-full items-center gap-2 rounded-md px-2 py-1.5 transition-colors hover:bg-accent",
-                      hidden.includes(t) && "opacity-40",
-                    )}
-                  >
-                    <span className="size-2.5 rounded-full" style={{ backgroundColor: typeColor[t] }} />
-                    {t}
-                    <span className="ml-auto text-xs text-muted-foreground">
-                      {hidden.includes(t) ? "hidden" : "shown"}
-                    </span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </Panel>
-
-          <Panel title="Selected node">
-            {selected ? (
-              <div className="space-y-2 text-sm">
-                <div className="font-mono text-xs text-muted-foreground">{selected}</div>
-                <p className="text-muted-foreground">
-                  {connected.size - 1} direct relationships in the current map view.
-                </p>
-                <ul className="space-y-1.5 pt-1">
-                  {[...connected]
-                    .filter((c) => c !== selected)
-                    .map((c) => (
-                      <li key={c} className="rounded-md border border-border px-2.5 py-1.5 text-xs">
-                        {nodes.find((n) => n.id === c)?.label}
-                      </li>
-                    ))}
-                </ul>
-              </div>
-            ) : (
-              <p className="text-sm text-muted-foreground">Select a node to highlight its connections.</p>
-            )}
-          </Panel>
+      <div className="mb-4 rounded-xl border bg-card p-4">
+        <div className="relative max-w-md">
+          <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            className="pl-9"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Search requirement or document…"
+          />
         </div>
       </div>
+      {query.isLoading ? (
+        <div role="status" className="flex justify-center gap-2 p-20">
+          <Loader2 className="size-5 animate-spin" />
+          Loading traceability…
+        </div>
+      ) : query.isError ? (
+        <div role="alert" className="rounded-xl border bg-card p-8 text-sm">
+          Traceability data could not be loaded. No example graph is being substituted.
+        </div>
+      ) : !rows.length ? (
+        <EmptyState
+          title="No traceability links found"
+          description="Complete an audit or adjust the search to see live requirement links."
+        />
+      ) : (
+        <div className="space-y-3">
+          {rows.map((item) => (
+            <button
+              key={item.id}
+              onClick={() =>
+                navigate({
+                  to: "/requirements/$id",
+                  params: { id: item.id },
+                  search: {
+                    tab: "All",
+                    query: "",
+                    category: "all",
+                    severity: "all",
+                    document: "all",
+                    issue: "all",
+                    sort: "asc",
+                  },
+                })
+              }
+              className="grid w-full gap-3 rounded-xl border bg-card p-4 text-left transition-colors hover:bg-accent/30 lg:grid-cols-[minmax(0,1fr)_auto_minmax(0,.8fr)_auto_minmax(0,.6fr)] lg:items-center"
+            >
+              <div className="min-w-0">
+                <p className="font-mono text-xs text-primary">{item.req_code}</p>
+                <p className="mt-1 truncate text-sm font-medium">{item.title}</p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <CoverageBadge status={item.coverage_status} />
+                  <ReviewBadge state={item.review_state} />
+                </div>
+              </div>
+              <ArrowRight className="hidden size-4 text-muted-foreground lg:block" />
+              <div className="min-w-0 rounded-lg bg-muted/40 p-3">
+                <p className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <FileText className="size-3.5" />
+                  Requirement source
+                </p>
+                <p className="mt-1 truncate text-sm">
+                  {item.source_document || "Unresolved source"}
+                </p>
+                {item.contract_complete === false && (
+                  <p className="mt-1 text-xs text-warning">Contract needs confirmation</p>
+                )}
+              </div>
+              <ArrowRight className="hidden size-4 text-muted-foreground lg:block" />
+              <div className="rounded-lg bg-muted/40 p-3">
+                <p className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <GitBranch className="size-3.5" />
+                  Evidence links
+                </p>
+                <p className="mt-1 text-sm font-medium">{item.sources_count}</p>
+                {item.unresolved_condition_count ? (
+                  <p className="mt-1 text-xs text-warning">
+                    {item.unresolved_condition_count} unresolved
+                  </p>
+                ) : null}
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

@@ -18,6 +18,32 @@ from app.services import audit_progress
 router = APIRouter(prefix="/projects/{project_id}/requirements", tags=["Requirements"])
 
 
+def _review_metadata(req: Requirement) -> dict:
+    """Expose compact review health without replacing the stored AI verdict."""
+    data = req.extracted_parameters or {}
+    history = data.get("review_history", [])
+    human = next((item for item in reversed(history) if item.get("human_verdict")), None)
+    contract_issues = data.get("validation_issues", []) or []
+    verification = data.get("verification", {}) or {}
+    diagnostics = verification.get("diagnostics", {}) or {}
+    gate = diagnostics.get("review_gate", {}) or {}
+    unresolved = sum(
+        1 for item in (verification.get("condition_results", []) or [])
+        if item.get("validation_state") not in (None, "VALID")
+    )
+    return {
+        "human_verdict": human.get("human_verdict") if human else None,
+        "human_assessment": human,
+        "contract_complete": data.get("contract_complete"),
+        "validation_issue_count": len(contract_issues),
+        "unresolved_condition_count": unresolved,
+        "review_blocker_count": len(gate.get("reasons", []) or []),
+        "assessment_run_id": verification.get("audit_run_id"),
+        "assessed_at": verification.get("assessed_at"),
+        "source_sync_status": (data.get("source_sync") or {}).get("status"),
+    }
+
+
 def _build_evidence_response(link: RequirementEvidence) -> EvidenceResponse:
     """Convert a RequirementEvidence join into a flat evidence response."""
     chunk = link.evidence_chunk
@@ -110,6 +136,7 @@ async def list_requirements(
             evidence=evidence,
             created_at=req.created_at,
             updated_at=req.updated_at,
+            **_review_metadata(req),
         )
         responses.append(resp)
 
@@ -151,6 +178,7 @@ async def get_requirement(project_id: str, requirement_id: str, db: AsyncSession
         evidence=evidence,
         created_at=req.created_at,
         updated_at=req.updated_at,
+        **_review_metadata(req),
     )
     data = req.extracted_parameters or {}
     response.contract = {key: data[key] for key in (
@@ -188,7 +216,7 @@ async def get_requirement(project_id: str, requirement_id: str, db: AsyncSession
 async def save_review(project_id: str, requirement_id: str, body: RequirementReviewRequest,
                       db: AsyncSession = Depends(get_db)):
     job = audit_progress.latest(project_id)
-    if job and job["status"] in ("queued", "running"):
+    if job and job["status"] in ("queued", "running", "cancelling"):
         raise HTTPException(409, "Wait for the active audit to finish before saving a review")
     req = (await db.execute(select(Requirement).where(
         Requirement.id == requirement_id, Requirement.project_id == project_id,
@@ -197,10 +225,15 @@ async def save_review(project_id: str, requirement_id: str, body: RequirementRev
         raise HTTPException(404, "Requirement not found")
     if not body.reviewer.strip() or not body.comment.strip():
         raise HTTPException(422, "Reviewer and rationale cannot be blank")
+    if body.resolution_type == "Override verdict" and body.human_verdict is None:
+        raise HTTPException(422, "A human-assessed verdict is required when overriding the AI verdict")
+    human_verdict = req.coverage_status if body.resolution_type == "Confirm AI assessment" else body.human_verdict
     event = {"id": str(uuid.uuid4()), "action": body.action, "reviewer": body.reviewer.strip(),
              "comment": body.comment.strip(), "created_at": datetime.now(timezone.utc).isoformat(),
              "ai_verdict": req.coverage_status, "previous_review_state": req.review_state,
-             "assessment_at": (req.extracted_parameters or {}).get("verification", {}).get("assessed_at")}
+             "assessment_at": (req.extracted_parameters or {}).get("verification", {}).get("assessed_at"),
+             "resolution_type": body.resolution_type,
+             "human_verdict": human_verdict}
     data = dict(req.extracted_parameters or {})
     data["review_history"] = [*data.get("review_history", []), event]
     req.extracted_parameters = data

@@ -26,6 +26,21 @@ Run the evaluation test suite validating ground truth schemas, metrics algorithm
 python -m unittest discover -s evaluation/tests -p "test_*.py"
 ```
 
+### Current benchmark snapshots
+
+The legacy foundational runner remains useful for regression work. The current
+production-contract evaluation is captured by benchmark-specific runners:
+
+| Benchmark | Latest saved end-to-end result | Important interpretation |
+|---|---:|---|
+| Nova: 48 requirements, 147 atoms | **91.67%** final verdict accuracy (44/48); **38.51%** structured atom F1; **100.00%** Recall@3 | Strict atomic alignment coverage was 38.78%, so final-verdict accuracy is not complete contract-extraction accuracy. |
+| Scoped FMVSS 305: 11 clauses, 30 atoms | **90.91%** final verdict accuracy (10/11); **78.95%** evidence-page Recall@3 | Final atomic alignment coverage was 10.00%; this is a diagnostic public-document benchmark, not a compliance determination. |
+
+The Nova result is from runner 3.0-production-contracts and is saved under
+[evaluation/results/runs/20260915T140120.543292Z](results/runs/20260915T140120.543292Z/).
+See the benchmark guides for exact commands, models, scopes, and limitations. Do not compare
+these scores with older runners that omitted nested contract fields or targeted evidence discovery.
+
 ### 3. Regenerate Synthetic Dataset
 If you modify requirement clauses or add new test files:
 

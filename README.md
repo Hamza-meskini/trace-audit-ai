@@ -9,19 +9,70 @@ TraceAudit AI is a production-grade decision-support software platform engineere
 ## 🌟 Key Capabilities
 
 - 📄 **Multi-Format Technical Document Ingestion:** High-fidelity chunking and table parsing across PDF test reports, Word SRS specifications (`.docx`), Excel compliance matrices (`.xlsx`), and datasheets.
-- 📐 **Structured Requirement Extraction (100% F1):** Automatically extracts mandatory clauses, engineering categories, severities, atomic conditions, and strict numeric tolerance bounds ($V, \text{mA}, \text{ms}, ^\circ\text{C}, \text{mbar}$).
+- 📐 **Structured Requirement Contracts:** Extracts mandatory clauses, engineering categories, severities, atomic conditions, numeric bounds, source spans, and logical relationships for human review.
 - 🔎 **Hybrid BM25 Lexical & Dense Retrieval:** Multi-document evidence linking with code-boosting and document type diversification.
 - 🔬 **Deterministic SI Validation + LLM Semantic Reasoner:**
   - **Local Python SI Validator:** Formally verifies metric ranges ($[T_{min}, T_{max}] \supseteq [R_{min}, R_{max}]$), threshold limits ($\le, \ge$), and timing latency without hallucinations.
   - **Source Authority & Modality Classifier:** Distinguishes empirical test reports from theoretical simulations, calculations, and component datasheets.
   - **Databricks Model Serving & Gemini 3.7 Flash Reasoning:** Evaluates multi-condition engineering clauses, compound predicates ($X \land Y \land Z$), and physical vs simulation modalities.
-- ⚡ **Strict Evidence-Grounded Verification:** Achieves a **0.00% Unsupported Claim Rate** on benchmark suites (evaluated by verifying that no requirement marked SUPPORTED lacks authoritative empirical evidence).
+- ⚡ **Evidence-Grounded Verification:** Validates evidence authority, scope, modality, numeric constraints, and citation provenance before an automated conclusion can be relied on.
 - 🗺️ **Interactive Traceability Matrix:** Visual network graph linking Requirements $\to$ Documents $\to$ Evidence Quotes $\to$ Audit Findings.
 - 📊 **Auditable Reporting:** Exportable executive compliance files with audit trails and human-in-the-loop review actions.
 
 ---
 
-## 📊 Scientific Benchmark Suites
+## 📊 Latest Reproducible Benchmark Results
+
+The figures below are development measurements from saved run artifacts, not claims of
+general regulatory compliance accuracy. Each benchmark uses frozen evaluator-only answers;
+human review remains mandatory for real engineering decisions.
+
+### Nova end-to-end benchmark — 15 September 2026
+
+48 synthetic requirements across 12 technical PDFs and 147 evaluator-only atomic conditions.
+The run used Llama 4 Maverick for discovery, atomic decomposition, and verification.
+
+| Metric | Result |
+|---|---:|
+| Final requirement-verdict accuracy | **91.67%** (44/48) |
+| Final-verdict macro F1 | **91.48%** |
+| Retrieval Recall@3 | **100.00%** |
+| Document-role accuracy | **100.00%** |
+| Structured atom precision / recall / F1 | **38.26% / 38.78% / 38.51%** |
+| Combined extraction + atomic-status score | **38.10%** |
+| Atomic-status accuracy on aligned atoms | **98.25%** (38.78% alignment coverage) |
+| Strict logic equivalence | **35.42%** (17/48) |
+| Unsafe false auto-closes | **0** |
+
+The final-verdict score does not mean the contracts are complete: only 57 of 147 reference
+atoms aligned under strict structured matching. This run also recorded no targeted ai_extract
+enrichments and no retrieved figures analyzed, so it does not measure those optional stages.
+See the immutable [Nova run report](<evaluation/results/runs/20260915T140120.543292Z/report.md>).
+
+### FMVSS 305 public-document benchmark — scoped run
+
+11 manually labelled clauses and 30 atomic conditions from public FMVSS 305 requirements and
+an NHTSA/Calspan laboratory report. This diagnostic run used Llama 3.3 70B with local-hybrid
+retrieval; it is not a legal compliance determination.
+
+| Metric | Result |
+|---|---:|
+| Final requirement-verdict accuracy | **90.91%** (10/11) |
+| Final-verdict macro F1 | **90.00%** |
+| Selected-clause extraction recall | **100.00%** |
+| Evidence-page Recall@3 | **78.95%** |
+| Targeted evidence enrichments | **10/11** |
+| Final atomic alignment coverage | **10.00%** |
+| Final atomic accuracy on aligned atoms | **100.00%** |
+| Unsafe false auto-closes | **0** |
+
+The aligned-atom accuracy covers only 10% of the labelled atomic set; the atomic end-to-end
+score is 10.00%. See [the FMVSS 305 benchmark guide](<evaluation/fmvss305_benchmark/README.md>).
+
+## Historical Benchmark Suites
+
+The following historical summaries use earlier datasets and runners. They are retained for
+development context and are not comparable with the current production-contract results above.
 
 TraceAudit AI is evaluated across two distinct benchmark suites:
 

@@ -578,6 +578,7 @@ async def call_databricks_chat_completions(
     image_bytes: Optional[bytes] = None,
     image_mime_type: str = "image/png",
     diagnostics: Optional[dict[str, Any]] = None,
+    temperature: float = 0.0,
 ) -> Optional[str]:
     """Call Databricks Model Serving AI Gateway via OpenAI-compatible endpoint."""
     import time
@@ -604,7 +605,7 @@ async def call_databricks_chat_completions(
     payload: dict[str, Any] = {
         "model": model,
         "messages": messages,
-        "temperature": 0.1,
+        "temperature": temperature,
         "max_tokens": max_output_tokens,
     }
     is_gpt_oss = model.rsplit(".", 1)[-1] in {
@@ -1282,7 +1283,7 @@ def resolve_llm_provider(model: Optional[str] = None) -> str:
     return "gemini"
 
 
-async def generate_structured(
+async def _generate_structured_unlimited(
     prompt: str,
     response_model: Type[T],
     model: Optional[str] = None,
@@ -1434,6 +1435,34 @@ async def generate_structured(
         return None
 
 
+async def generate_structured(
+    prompt: str,
+    response_model: Type[T],
+    model: Optional[str] = None,
+    system_instruction: Optional[str] = None,
+    thinking_level: Optional[str] = None,
+    max_output_tokens: Optional[int] = None,
+    allow_model_fallback: bool = True,
+    diagnostics: Optional[dict[str, Any]] = None,
+) -> Optional[T]:
+    """Generate schema-valid output while respecting shared provider capacity."""
+    from app.services.request_limits import outbound_slot
+
+    async with outbound_slot("llm") as queue_seconds:
+        if diagnostics is not None:
+            diagnostics["capacity_queue_seconds"] = round(queue_seconds, 4)
+        return await _generate_structured_unlimited(
+            prompt=prompt,
+            response_model=response_model,
+            model=model,
+            system_instruction=system_instruction,
+            thinking_level=thinking_level,
+            max_output_tokens=max_output_tokens,
+            allow_model_fallback=allow_model_fallback,
+            diagnostics=diagnostics,
+        )
+
+
 async def generate_text(
     prompt: str,
     model: Optional[str] = None,
@@ -1476,7 +1505,6 @@ async def generate_text(
         # Bare qwen3.8-* IDs are DashScope-only. Never cascade them to a
         # different provider after a DashScope timeout or API error.
         return None
-
     # 3. Gemini
     if provider == "gemini" and settings.effective_gemini_api_key:
         res = await call_gemini_generate_content(

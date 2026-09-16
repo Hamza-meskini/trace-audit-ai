@@ -26,6 +26,7 @@ export function useSaveReview(projectId: string, reqId: string) {
     mutationFn: (data: ReviewRequest) => api.saveReview(projectId, reqId, data),
     onSuccess: () => {
       client.invalidateQueries({ queryKey: ["requirements", projectId] });
+      client.invalidateQueries({ queryKey: ["requirements", projectId, reqId] });
       client.invalidateQueries({ queryKey: ["findings", projectId] });
     },
   });

@@ -1,10 +1,8 @@
 import { Link, useRouterState, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import {
-  Bell,
   Boxes,
   ChevronDown,
-  CircleHelp,
   FileStack,
   FileText,
   GitBranch,
@@ -16,7 +14,6 @@ import {
   Settings,
   ShieldAlert,
   Sparkles,
-  Layers,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -25,7 +22,6 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
@@ -36,7 +32,6 @@ import {
   CommandItem,
   CommandList,
 } from "@/components/ui/command";
-import { currentUser, notifications, projects, searchIndex } from "@/lib/mock-data";
 
 const nav = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard },
@@ -46,7 +41,6 @@ const nav = [
   { to: "/findings", label: "Findings", icon: ShieldAlert },
   { to: "/traceability", label: "Traceability", icon: GitBranch },
   { to: "/reports", label: "Reports", icon: FileText },
-  { to: "/frameworks", label: "Frameworks", icon: Layers },
   { to: "/settings", label: "Settings", icon: Settings },
 ] as const;
 
@@ -65,12 +59,22 @@ const labels: Record<string, string> = {
 
 import { useActiveProject } from "@/hooks/use-active-project";
 import { AuditProgressPanel } from "@/components/audit-progress";
+import { useRequirements } from "@/hooks/use-requirements";
+import { useDocuments } from "@/hooks/use-documents";
+import { useFindings } from "@/hooks/use-findings";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const [collapsed, setCollapsed] = useState(false);
   const [openSearch, setOpenSearch] = useState(false);
-  const { activeProject, projects: apiProjects, selectProject } = useActiveProject();
-  const [unread, setUnread] = useState(3);
+  const {
+    activeProject,
+    activeProjectId,
+    projects: apiProjects,
+    selectProject,
+  } = useActiveProject();
+  const requirements = useRequirements(activeProjectId);
+  const documents = useDocuments(activeProjectId);
+  const findings = useFindings(activeProjectId);
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const navigate = useNavigate();
 
@@ -112,8 +116,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
         <nav className="flex-1 space-y-0.5 overflow-y-auto p-2.5">
           {nav.map((item) => {
-            const active =
-              item.to === "/" ? pathname === "/" : pathname.startsWith(item.to);
+            const active = item.to === "/" ? pathname === "/" : pathname.startsWith(item.to);
             return (
               <Link
                 key={item.to}
@@ -134,18 +137,16 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </nav>
 
         <div className="space-y-1 border-t border-sidebar-border p-2.5">
-          <button className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-sm text-muted-foreground transition-colors hover:bg-sidebar-accent/60">
-            <CircleHelp className="size-4 shrink-0" />
-            {!collapsed && "Help"}
-          </button>
           <div className="flex items-center gap-2.5 rounded-md px-2 py-2">
             <div className="grid size-7 shrink-0 place-items-center rounded-full bg-accent text-[11px] font-semibold">
-              {currentUser.initials}
+              LR
             </div>
             {!collapsed && (
               <div className="min-w-0 leading-tight">
-                <div className="truncate text-xs font-medium">{currentUser.name}</div>
-                <div className="truncate text-[11px] text-muted-foreground">{currentUser.title}</div>
+                <div className="truncate text-xs font-medium">Local reviewer</div>
+                <div className="truncate text-[11px] text-muted-foreground">
+                  Authentication not configured
+                </div>
               </div>
             )}
           </div>
@@ -181,7 +182,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <DropdownMenuTrigger asChild>
                 <Button variant="outline" size="sm" className="hidden gap-2 sm:inline-flex">
                   <span className="size-1.5 rounded-full bg-success" />
-                  <span className="max-w-[180px] truncate">{activeProject?.name || "Select Project"}</span>
+                  <span className="max-w-[180px] truncate">
+                    {activeProject?.name || "Select Project"}
+                  </span>
                   <ChevronDown className="size-3.5 opacity-60" />
                 </Button>
               </DropdownMenuTrigger>
@@ -197,7 +200,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   >
                     <div className="flex w-full items-center justify-between">
                       <span className="text-sm font-medium">{p.name}</span>
-                      {p.id === activeProject.id && (
+                      {p.id === activeProjectId && (
                         <span className="size-1.5 rounded-full bg-primary" />
                       )}
                     </div>
@@ -222,63 +225,78 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               </kbd>
             </Button>
 
-            <DropdownMenu onOpenChange={(o) => o && setUnread(0)}>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon" aria-label="Notifications" className="relative">
-                  <Bell className="size-4" />
-                  {unread > 0 && (
-                    <span className="absolute right-1.5 top-1.5 size-1.5 rounded-full bg-critical" />
-                  )}
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-80">
-                <DropdownMenuLabel>Notifications</DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                {notifications.map((n) => (
-                  <DropdownMenuItem key={n.id} className="flex-col items-start gap-0.5 py-2">
-                    <span className="text-sm">{n.text}</span>
-                    <span className="text-[11px] text-muted-foreground">{n.time}</span>
-                  </DropdownMenuItem>
-                ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
-
-            <Button variant="ghost" size="icon" aria-label="Help">
-              <CircleHelp className="size-4" />
-            </Button>
-
             <div className="ml-1 grid size-7 place-items-center rounded-full bg-accent text-[11px] font-semibold">
-              {currentUser.initials}
+              LR
             </div>
           </div>
         </header>
 
-        <main className="min-w-0 flex-1 px-4 py-6 md:px-8 md:py-8"><AuditProgressPanel key={activeProject.id} projectId={activeProject.id} />{children}</main>
+        <main className="min-w-0 flex-1 px-4 py-6 md:px-8 md:py-8">
+          <AuditProgressPanel key={activeProjectId} projectId={activeProjectId} />
+          {children}
+        </main>
       </div>
 
       <CommandDialog open={openSearch} onOpenChange={setOpenSearch}>
         <CommandInput placeholder="Search requirements, documents, findings..." />
         <CommandList>
           <CommandEmpty>No results found.</CommandEmpty>
-          {["Requirement", "Document", "Finding", "Project"].map((group) => (
-            <CommandGroup key={group} heading={group + "s"}>
-              {searchIndex
-                .filter((r) => r.type === group)
-                .map((r) => (
-                  <CommandItem
-                    key={r.id}
-                    value={`${r.id} ${r.label}`}
-                    onSelect={() => {
-                      setOpenSearch(false);
-                      navigate({ to: r.to });
-                    }}
-                  >
-                    <span className="font-mono text-xs text-muted-foreground">{r.id}</span>
-                    <span className="truncate">{r.label}</span>
-                  </CommandItem>
-                ))}
-            </CommandGroup>
-          ))}
+          <CommandGroup heading="Requirements">
+            {(requirements.data || []).map((item) => (
+              <CommandItem
+                key={item.id}
+                value={`${item.req_code} ${item.title}`}
+                onSelect={() => {
+                  setOpenSearch(false);
+                  navigate({
+                    to: "/requirements/$id",
+                    params: { id: item.id },
+                    search: {
+                      tab: "All",
+                      query: "",
+                      category: "all",
+                      severity: "all",
+                      document: "all",
+                      issue: "all",
+                      sort: "asc",
+                    },
+                  });
+                }}
+              >
+                <span className="font-mono text-xs text-muted-foreground">{item.req_code}</span>
+                <span className="truncate">{item.title}</span>
+              </CommandItem>
+            ))}
+          </CommandGroup>
+          <CommandGroup heading="Documents">
+            {(documents.data || []).map((item) => (
+              <CommandItem
+                key={item.id}
+                value={item.original_filename}
+                onSelect={() => {
+                  setOpenSearch(false);
+                  navigate({ to: "/documents" });
+                }}
+              >
+                <span className="truncate">{item.original_filename}</span>
+              </CommandItem>
+            ))}
+          </CommandGroup>
+          <CommandGroup heading="Findings">
+            {(findings.data || []).map((item) => (
+              <CommandItem
+                key={item.id}
+                value={`${item.finding_code} ${item.description || ""}`}
+                onSelect={() => {
+                  setOpenSearch(false);
+                  navigate({ to: "/findings" });
+                }}
+              >
+                <span className="font-mono text-xs text-muted-foreground">{item.finding_code}</span>
+                <span className="truncate">{item.description}</span>
+              </CommandItem>
+            ))}
+          </CommandGroup>
         </CommandList>
       </CommandDialog>
     </div>

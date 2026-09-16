@@ -15,6 +15,8 @@ import httpx
 from app.config import settings
 from app.services.databricks_document_ai import _workspace_hostname
 from app.services.observability import trace_span
+from app.services.pipeline_cache import get_json, set_json, stable_key
+from app.services.request_limits import outbound_slot
 from app.services.retrieval import RetrievedChunk, _chunk_key, _condition_aware_rerank
 
 
@@ -123,9 +125,44 @@ async def rerank_candidates(
         if query and query.strip()
     ))[:max(1, int(settings.DATABRICKS_CUSTOM_RERANKER_MAX_QUERIES))]
     documents = [item.content for item in bounded]
+    cache_key = stable_key({
+        "version": settings.AUDIT_CACHE_VERSION,
+        "endpoint": _endpoint_name(),
+        "queries": queries,
+        "candidates": [
+            {"key": _chunk_key(item), "content": item.content, "retrieval_score": item.score}
+            for item in bounded
+        ],
+        "top_k": top_k,
+    })
+    cached = await asyncio.to_thread(get_json, "custom-reranker", cache_key)
+    if isinstance(cached, dict) and isinstance(cached.get("items"), list):
+        by_key = {_chunk_key(item): item for item in bounded}
+        selected: list[RetrievedChunk] = []
+        for saved in cached["items"]:
+            item = by_key.get(str(saved.get("key")))
+            if item is None:
+                selected = []
+                break
+            item.score = float(saved.get("score", item.score))
+            item.metadata = dict(saved.get("metadata") or item.metadata or {})
+            selected.append(item)
+        if selected:
+            return selected[:top_k], {
+                "enabled": True,
+                "used": True,
+                "cache_hit": True,
+                "endpoint": _endpoint_name(),
+                "queries": len(queries),
+                "candidates": len(bounded),
+                "seconds": 0.0,
+            }
     started = time.perf_counter()
+    queue_seconds = 0.0
     try:
-        score_rows = await asyncio.to_thread(_invoke_reranker, queries, documents)
+        async with outbound_slot("reranker") as waited:
+            queue_seconds = waited
+            score_rows = await asyncio.to_thread(_invoke_reranker, queries, documents)
     except Exception as exc:
         if strict:
             raise
@@ -170,9 +207,20 @@ async def rerank_candidates(
         item.metadata = metadata
 
     selected = _condition_aware_rerank(bounded, rankings[1:], top_k)
+    await asyncio.to_thread(
+        set_json,
+        "custom-reranker",
+        cache_key,
+        {"items": [
+            {"key": _chunk_key(item), "score": item.score, "metadata": item.metadata or {}}
+            for item in selected
+        ]},
+    )
     return selected, {
         "enabled": True,
         "used": True,
+        "cache_hit": False,
+        "capacity_queue_seconds": round(queue_seconds, 4),
         "endpoint": _endpoint_name(),
         "queries": len(queries),
         "candidates": len(bounded),

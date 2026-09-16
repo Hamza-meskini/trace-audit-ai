@@ -3,7 +3,9 @@
  * Typed HTTP client connecting frontend to the FastAPI backend.
  */
 
-const API_BASE_URL = import.meta.env["VITE_API_URL"] || "http://localhost:8000/api";
+const API_BASE_URL =
+  import.meta.env["VITE_API_URL"] ||
+  (import.meta.env.PROD ? "/api" : "http://localhost:8000/api");
 
 export interface ApiProject {
   id: string;
@@ -93,6 +95,7 @@ export interface AtomicCondition {
   description?: string | null;
   parameter?: string | null;
   operator?: string | null;
+  right_operand?: string | null;
   threshold?: string | number | boolean | null;
   unit?: string | null;
   min_value?: number | null;
@@ -132,17 +135,30 @@ export interface ReviewEvent {
   comment: string;
   created_at: string;
   ai_verdict: string;
+  previous_review_state?: string;
+  resolution_type?: ReviewResolutionType;
+  human_verdict?: CoverageStatus | null;
 }
+export type CoverageStatus =
+  "Supported" | "Partial" | "Missing" | "Conflict" | "Unknown" | "Not applicable";
+export type ReviewResolutionType =
+  | "Confirm AI assessment"
+  | "Override verdict"
+  | "Evidence issue"
+  | "Contract correction"
+  | "Comment";
 export interface ReviewRequest {
   action: "Approved" | "Rejected" | "Reviewed" | "Needs review" | "Comment";
   reviewer: string;
   comment: string;
+  resolution_type?: ReviewResolutionType;
+  human_verdict?: CoverageStatus | null;
 }
 export interface AuditProgress {
   run_id: string;
   project_id: string;
   model: string | null;
-  status: "queued" | "running" | "complete" | "failed" | "interrupted";
+  status: "queued" | "running" | "cancelling" | "cancelled" | "complete" | "failed" | "interrupted";
   stage: string;
   completed: number;
   total: number;
@@ -169,7 +185,7 @@ export interface ApiRequirement {
     | string;
   source_document: string | null;
   sources_count: number;
-  coverage_status: "Supported" | "Partial" | "Missing" | "Conflict" | "Unknown" | "Not applicable";
+  coverage_status: CoverageStatus;
   confidence: number;
   review_state: "Reviewed" | "Needs review" | "Open" | "Approved" | "Rejected";
   severity: "Critical" | "High" | "Medium" | "Low";
@@ -189,6 +205,9 @@ export interface ApiRequirement {
     contract_complete?: boolean;
     unmapped_obligations?: string[];
     clause_coverage?: Record<string, unknown>[];
+    validation_issues?: string[];
+    ambiguities?: string[];
+    logic_tree?: Record<string, unknown>;
   };
   condition_results?: ConditionResult[];
   diagnostics?: {
@@ -207,6 +226,15 @@ export interface ApiRequirement {
   source_document_id?: string | null;
   source_blocks?: DocumentBlock[];
   review_history?: ReviewEvent[];
+  human_verdict?: CoverageStatus | null;
+  human_assessment?: ReviewEvent | null;
+  contract_complete?: boolean | null;
+  validation_issue_count?: number;
+  unresolved_condition_count?: number;
+  review_blocker_count?: number;
+  assessment_run_id?: string | null;
+  assessed_at?: string | null;
+  source_sync_status?: string | null;
 }
 
 export interface ApiFinding {
@@ -423,6 +451,8 @@ export const api = {
         thinking_level: options?.thinking_level || undefined,
       }),
     }),
+  cancelAudit: (projectId: string) =>
+    request<AuditProgress>(`/projects/${projectId}/audit/cancel`, { method: "POST" }),
 
   // AI Configuration Settings
   getAiSettings: () => request<ApiAiSettings>("/settings/ai"),

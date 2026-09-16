@@ -3,15 +3,15 @@
 import logging
 from typing import Optional
 from pydantic import BaseModel
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.database import get_db, async_session
+from app.database import get_db
 from app.models.project import Project
 from app.models.document import Document
 from app.services import audit_progress
-from app.services.pipeline import run_audit_pipeline
+from app.services import audit_worker
 
 logger = logging.getLogger("traceaudit.api")
 
@@ -21,21 +21,6 @@ router = APIRouter(prefix="/projects/{project_id}/audit", tags=["Audit"])
 class AuditRunRequest(BaseModel):
     model: Optional[str] = None           # e.g. "gemini-3.7-flash", "system.ai.qwen35-122b-a10b"
     thinking_level: Optional[str] = None  # "HIGH", "MEDIUM", "LOW", "MINIMAL"
-
-
-async def _execute(project_id, model, thinking):
-    try:
-        async with async_session() as db:
-            result = await run_audit_pipeline(
-                project_id, db, model=model, thinking_level=thinking,
-                progress=lambda stage, completed=0, total=0, message="": audit_progress.update(
-                    project_id, stage, completed, total, message),
-            )
-        audit_progress.update(project_id, "complete", message="Audit results saved", status="complete", result=result)
-    except Exception:
-        logger.exception("Background audit failed for %s", project_id)
-        audit_progress.update(project_id, "failed", status="failed",
-                              error="The audit failed. Previous committed results are retained. Check server logs and retry.")
 
 
 @router.get("")
@@ -48,7 +33,6 @@ async def audit_status(project_id: str, db: AsyncSession = Depends(get_db)):
 @router.post("", status_code=202)
 async def trigger_audit(
     project_id: str,
-    background_tasks: BackgroundTasks,
     body: Optional[AuditRunRequest] = None,
     db: AsyncSession = Depends(get_db),
 ):
@@ -61,11 +45,21 @@ async def trigger_audit(
     try:
         model_name = body.model if body and body.model else None
         thinking = body.thinking_level if body and body.thinking_level else None
-        job = audit_progress.start(project_id, model_name)
-        background_tasks.add_task(_execute, project_id, model_name, thinking)
+        job = audit_progress.start(project_id, model_name, thinking)
+        audit_worker.wake()
         return job
     except ValueError as ve:
         raise HTTPException(status_code=409, detail=str(ve))
     except Exception:
         logger.exception(f"Audit pipeline failed for project '{project_id}'")
         raise HTTPException(status_code=500, detail="Audit pipeline error. Check server logs for details.")
+
+
+@router.post("/cancel")
+async def cancel_audit(project_id: str, db: AsyncSession = Depends(get_db)):
+    if not await db.get(Project, project_id):
+        raise HTTPException(404, "Project not found")
+    job = audit_progress.request_cancel(project_id)
+    if job is None:
+        raise HTTPException(404, "No audit run found")
+    return job

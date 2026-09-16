@@ -1,5 +1,6 @@
 """Structured multi-condition LLM reasoner with non-mutating audit diagnostics."""
 
+import asyncio
 import json
 import re
 import logging
@@ -1448,6 +1449,7 @@ async def evaluate_batch_verification(
         )
         if batch_resp and batch_resp.batch_results:
             item_by_code = {it["contract"].req_code: it for it in batch_items}
+            grounding_jobs = []
             for item_res in batch_resp.batch_results:
                 it = item_by_code.get(item_res.req_code)
                 if it:
@@ -1499,6 +1501,17 @@ async def evaluate_batch_verification(
                         "llm_provisional_status": provisional.status,
                         "llm_provisional_confidence": provisional.confidence,
                     }
+                    grounding_jobs.append(
+                        (item_res.req_code, contract, cand_chunks, qual_contents, quals, provisional)
+                    )
+
+            citation_semaphore = asyncio.Semaphore(
+                max(1, int(settings.AUDIT_CITATION_CONCURRENCY))
+            )
+
+            async def finish_grounding(job):
+                code, contract, cand_chunks, qual_contents, quals, provisional = job
+                async with citation_semaphore:
                     provisional.condition_results, citation_diagnostics = (
                         await _ground_condition_citations(
                             contract,
@@ -1508,27 +1521,44 @@ async def evaluate_batch_verification(
                             active_model,
                         )
                     )
-                    provisional._diagnostics.update(citation_diagnostics)
-                    original_conditions = _snapshot_condition_results(provisional.condition_results)
-                    provisional = _audit_llm_condition_metadata(contract, provisional)
-                    _record_reconciliation_diagnostics(provisional, original_conditions)
-                    # Always recompute final verdict in Python
-                    results[item_res.req_code] = finalize_verdict(
-                        contract=contract,
-                        analysis=provisional,
-                        qualifications=quals,
-                        qualified_contents=qual_contents,
-                    )
+                provisional._diagnostics.update(citation_diagnostics)
+                original_conditions = _snapshot_condition_results(provisional.condition_results)
+                provisional = _audit_llm_condition_metadata(contract, provisional)
+                _record_reconciliation_diagnostics(provisional, original_conditions)
+                return code, finalize_verdict(
+                    contract=contract,
+                    analysis=provisional,
+                    qualifications=quals,
+                    qualified_contents=qual_contents,
+                )
+
+            if grounding_jobs:
+                grounded = await asyncio.gather(
+                    *(finish_grounding(job) for job in grounding_jobs),
+                    return_exceptions=True,
+                )
+                for outcome in grounded:
+                    if isinstance(outcome, BaseException):
+                        logger.warning("Citation grounding failed for one batch item: %s", outcome)
+                        continue
+                    code, result = outcome
+                    results[code] = result
     except Exception as ex:
         logger.warning(f"Batch verification LLM call failed: {ex}. Retrying missing items individually.")
 
     # A malformed item must not discard its valid siblings or trigger semantic
     # guessing. Retry only missing requirements through the single-item LLM
     # path; repeated failures become explicit UNKNOWN operational results.
-    for item in batch_items:
+    retry_items = [
+        item for item in batch_items
+        if item["contract"].req_code not in results
+    ]
+    retry_semaphore = asyncio.Semaphore(max(1, int(settings.AUDIT_RETRY_CONCURRENCY)))
+
+    async def retry_item(item):
         code = item["contract"].req_code
-        if code not in results:
-            results[code] = await evaluate_requirement_verification(
+        async with retry_semaphore:
+            result = await evaluate_requirement_verification(
                 contract=item["contract"],
                 evidence_chunks=item["candidate_chunks"],
                 model=model,
@@ -1537,6 +1567,31 @@ async def evaluate_batch_verification(
                 allow_deterministic_fallback=False,
                 targeted_extraction=item.get("targeted_extraction"),
             )
+        return code, result
+
+    if retry_items:
+        retried = await asyncio.gather(
+            *(retry_item(item) for item in retry_items),
+            return_exceptions=True,
+        )
+        for item, outcome in zip(retry_items, retried):
+            code = item["contract"].req_code
+            if isinstance(outcome, BaseException):
+                logger.error("Individual verification failed for %s: %s", code, outcome)
+                failure = VerificationAnalysisResult(
+                    status="UNKNOWN",
+                    confidence=0,
+                    condition_results=[],
+                    reason="Verification could not complete because the model provider failed.",
+                )
+                failure._diagnostics = {
+                    "decision_source": "operational_failure",
+                    "error_type": type(outcome).__name__,
+                }
+                results[code] = failure
+                continue
+            result_code, result = outcome
+            results[result_code] = result
 
     return results
 

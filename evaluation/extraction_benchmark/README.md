@@ -96,3 +96,28 @@ Results from this runner revision are not directly comparable to the old adapter
 dropped nested trees and omitted targeted evidence discovery.
 
 Do not tune evidence wording or expected outcomes after inspecting a model's errors. Fix the pipeline generically, preserve this frozen corpus, and use a separately versioned holdout when Nova becomes a development target.
+
+## Latest measured result
+
+The latest end-to-end run completed on **15 September 2026** with runner
+3.0-production-contracts and Llama 4 Maverick for discovery, atomic decomposition,
+and verification.
+
+| Metric | Result |
+|---|---:|
+| Final verdict accuracy | **91.67%** (44/48) |
+| Final verdict macro F1 | **91.48%** |
+| Retrieval Recall@3 | **100.00%** |
+| Document-role accuracy | **100.00%** |
+| Structured atom precision / recall / F1 | **38.26% / 38.78% / 38.51%** |
+| Combined extraction + atomic-status score | **38.10%** |
+| Atomic-status accuracy on aligned atoms | **98.25%** (57/147; 38.78% coverage) |
+| Strict logic equivalence | **35.42%** (17/48) |
+| Unsafe false auto-closes | **0** |
+
+The run is stored at
+[evaluation/results/runs/20260915T140120.543292Z](../results/runs/20260915T140120.543292Z/).
+The high atomic-status number applies only after strict alignment; it is not an overall
+atomic-extraction score. This run recorded zero targeted ai_extract attempts and zero
+retrieved figures analyzed, so it does not measure those optional stages. Nova is a synthetic
+development set and is not a held-out generalization claim.

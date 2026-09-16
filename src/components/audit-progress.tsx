@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { AlertCircle, CheckCircle2, Loader2 } from "lucide-react";
-import { useAuditProgress } from "@/hooks/use-audit";
+import { useAuditProgress, useCancelAudit } from "@/hooks/use-audit";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -16,6 +16,8 @@ const stages = [
 ];
 const labels: Record<string, string> = {
   queued: "Queued",
+  cancelling: "Cancelling audit",
+  cancelled: "Audit cancelled",
   ingestion: "Read documents",
   profiling: "Identify sources",
   extraction: "Extract requirements",
@@ -31,9 +33,12 @@ export function AuditProgressPanel({ projectId }: { projectId: string }) {
   const query = useAuditProgress(projectId);
   const client = useQueryClient();
   const lastTerminal = useRef("");
+  const lastVisibleCheckpoint = useRef("");
   const [now, setNow] = useState(Date.now());
   const job = query.data;
-  const active = job?.status === "queued" || job?.status === "running";
+  const cancel = useCancelAudit(projectId);
+  const active =
+    job?.status === "queued" || job?.status === "running" || job?.status === "cancelling";
   useEffect(() => {
     if (!active) return;
     const timer = window.setInterval(() => setNow(Date.now()), 1000);
@@ -49,6 +54,14 @@ export function AuditProgressPanel({ projectId }: { projectId: string }) {
       ["projects"],
     ])
       client.invalidateQueries({ queryKey: key });
+  }, [job, active, client, projectId]);
+  useEffect(() => {
+    if (!job || !active || job.stage !== "reasoning") return;
+    const checkpoint = `${job.run_id}-${job.completed}`;
+    if (checkpoint === lastVisibleCheckpoint.current) return;
+    lastVisibleCheckpoint.current = checkpoint;
+    client.invalidateQueries({ queryKey: ["requirements", projectId] });
+    client.invalidateQueries({ queryKey: ["findings", projectId] });
   }, [job, active, client, projectId]);
   if (query.isError)
     return (
@@ -67,7 +80,8 @@ export function AuditProgressPanel({ projectId }: { projectId: string }) {
   const end = active ? now : Date.parse(job.updated_at);
   const seconds = Math.max(0, Math.floor((end - Date.parse(job.started_at)) / 1000));
   const stageIndex = stages.indexOf(job.stage);
-  const failed = job.status === "failed" || job.status === "interrupted";
+  const failed =
+    job.status === "failed" || job.status === "interrupted" || job.status === "cancelled";
   return (
     <section
       className={cn("mb-5 rounded-xl border bg-card p-4", failed && "border-critical/30")}
@@ -83,12 +97,26 @@ export function AuditProgressPanel({ projectId }: { projectId: string }) {
             <CheckCircle2 className="size-4 text-success" />
           )}
           <span aria-live="polite">
-            {job.status === "interrupted" ? "Audit interrupted" : labels[job.stage] || job.stage}
+            {job.status === "interrupted"
+              ? "Audit interrupted"
+              : labels[job.status] || labels[job.stage] || job.stage}
           </span>
         </div>
-        <span className="font-mono text-xs text-muted-foreground">
-          {Math.floor(seconds / 60)}m {seconds % 60}s · {job.run_id.slice(0, 8)}
-        </span>
+        <div className="flex items-center gap-2">
+          {active && job.status !== "cancelling" && (
+            <Button
+              size="sm"
+              variant="ghost"
+              disabled={cancel.isPending}
+              onClick={() => cancel.mutate()}
+            >
+              {cancel.isPending ? "Cancelling…" : "Cancel"}
+            </Button>
+          )}
+          <span className="font-mono text-xs text-muted-foreground">
+            {Math.floor(seconds / 60)}m {seconds % 60}s · {job.run_id.slice(0, 8)}
+          </span>
+        </div>
       </div>
       <p className="mt-2 text-xs text-muted-foreground">
         {job.error || job.message}

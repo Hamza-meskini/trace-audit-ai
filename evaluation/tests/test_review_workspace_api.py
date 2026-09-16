@@ -66,8 +66,9 @@ class ReviewWorkspaceTests(unittest.IsolatedAsyncioTestCase):
                                coverage_status="Supported", extracted_parameters={
                                    "conditions": [{"condition_id": "C1", "description": "Open within 20 ms"}],
                                    "logic": {"operator": "ALL_OF"}, "source_document_id": "d1",
-                                   "verification": {"condition_results": [{"condition_id": "C1", "status": "PROVEN"}],
-                                                    "diagnostics": {"review_gate": {"required": False}}, "evidence_catalog": []},
+                                   "contract_complete": False, "validation_issues": ["Source association needs review"],
+                                   "verification": {"condition_results": [{"condition_id": "C1", "status": "PROVEN", "validation_state": "UNRESOLVED"}],
+                                                    "diagnostics": {"review_gate": {"required": True, "reasons": ["Confirm test subject"]}}, "evidence_catalog": []},
                                }))
             await db.commit()
 
@@ -84,6 +85,10 @@ class ReviewWorkspaceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(data["source_document_id"], "d1")
         self.assertEqual(len(data["source_blocks"]), 3)
         self.assertEqual(data["condition_results"][0]["status"], "PROVEN")
+        self.assertFalse(data["contract_complete"])
+        self.assertEqual(data["validation_issue_count"], 1)
+        self.assertEqual(data["unresolved_condition_count"], 1)
+        self.assertEqual(data["review_blocker_count"], 1)
         self.assertNotIn("storage_path", data["source_blocks"][2]["metadata"])
 
     async def test_review_survives_reload_without_rewriting_ai_verdict(self):
@@ -96,6 +101,21 @@ class ReviewWorkspaceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(data["coverage_status"], "Supported")
         self.assertEqual(len(data["review_history"]), 1)
         self.assertEqual(len(data["condition_results"]), 1)
+
+    async def test_human_verdict_is_versioned_separately_from_ai_verdict(self):
+        response = await self.client.post("/api/projects/p1/requirements/r1/reviews", json={
+            "action": "Reviewed", "reviewer": "Reviewer", "comment": "Test record is inconclusive.",
+            "resolution_type": "Override verdict", "human_verdict": "Unknown",
+        })
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["human_verdict"], "Unknown")
+        data = (await self.client.get("/api/projects/p1/requirements/r1")).json()
+        self.assertEqual(data["coverage_status"], "Supported")
+        self.assertEqual(data["human_verdict"], "Unknown")
+        self.assertEqual(data["human_assessment"]["ai_verdict"], "Supported")
+
+        listing = (await self.client.get("/api/projects/p1/requirements")).json()
+        self.assertEqual(listing[0]["human_verdict"], "Unknown")
 
     async def test_original_page_and_inspection_are_project_scoped(self):
         self.assertEqual((await self.client.get("/api/projects/p2/documents/d1/file")).status_code, 404)
@@ -118,6 +138,9 @@ class ReviewWorkspaceTests(unittest.IsolatedAsyncioTestCase):
             "file": ("new.pdf", b"test", "application/pdf"),
         })
         self.assertEqual(response.status_code, 409)
+        cancelled = await self.client.post("/api/projects/p1/audit/cancel")
+        self.assertEqual(cancelled.status_code, 200)
+        self.assertEqual(cancelled.json()["status"], "cancelled")
 
     async def test_pipeline_persists_condition_provenance_and_keeps_review_history(self):
         from app.services.pipeline import run_audit_pipeline
@@ -159,8 +182,7 @@ class ReviewWorkspaceTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("saving", [event[0] for event in progress])
 
     async def test_job_start_returns_accepted_and_prevents_duplicate(self):
-        with patch("app.api.audit._execute", new=AsyncMock()):
-            response = await self.client.post("/api/projects/p1/audit", json={"model": "test-model"})
+        response = await self.client.post("/api/projects/p1/audit", json={"model": "test-model"})
         self.assertEqual(response.status_code, 202)
         self.assertEqual(response.json()["status"], "queued")
         self.assertEqual((await self.client.post("/api/projects/p1/audit", json={})).status_code, 409)
@@ -173,3 +195,19 @@ class ReviewWorkspaceTests(unittest.IsolatedAsyncioTestCase):
         audit_progress.start("p1", "test-model")
         audit_progress.update("p1", "complete", status="complete", result={"status": "success"})
         self.assertEqual(audit_progress.latest("p1")["status"], "complete")
+
+    async def test_durable_job_can_resume_or_cancel(self):
+        queued = audit_progress.start("p1", "test-model", "LOW")
+        claimed = audit_progress.claim_next("worker-1")
+        self.assertEqual(claimed["run_id"], queued["run_id"])
+        self.assertEqual(claimed["thinking_level"], "LOW")
+        self.assertEqual(claimed["attempt"], 1)
+
+        audit_progress.recover_interrupted(requeue=True)
+        self.assertEqual(audit_progress.latest("p1")["status"], "queued")
+        claimed = audit_progress.claim_next("worker-2")
+        self.assertEqual(claimed["attempt"], 2)
+
+        cancelling = audit_progress.request_cancel("p1")
+        self.assertEqual(cancelling["status"], "cancelling")
+        self.assertTrue(audit_progress.is_cancel_requested("p1"))

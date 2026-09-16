@@ -28,3 +28,11 @@ export function useAuditProgress(projectId: string) {
     retry: 1,
   });
 }
+
+export function useCancelAudit(projectId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.cancelAudit(projectId),
+    onSuccess: (job) => queryClient.setQueryData(["audit-progress", projectId], job),
+  });
+}

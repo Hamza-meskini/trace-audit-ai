@@ -26,7 +26,7 @@ MAX_UPLOAD_SIZE_BYTES = 50 * 1024 * 1024
 
 def _require_idle(project_id):
     job = audit_progress.latest(project_id)
-    if job and job["status"] in ("queued", "running"):
+    if job and job["status"] in ("queued", "running", "cancelling"):
         raise HTTPException(409, "Documents cannot change while this audit is running")
 
 # Map file extensions and filename keywords to realistic engineering document types

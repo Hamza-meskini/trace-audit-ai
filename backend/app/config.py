@@ -19,6 +19,10 @@ class Settings(BaseSettings):
     # File storage (local filesystem for MVP)
     UPLOAD_DIR: str = "./uploads"
 
+    # Frontend static files directory (for single-server serving in Databricks Apps)
+    FRONTEND_DIR: str = os.getenv("FRONTEND_DIR", "../dist/client")
+    ROOT_PATH: str = os.getenv("DATABRICKS_APP_ROOT_PATH", os.getenv("ROOT_PATH", ""))
+
     # Layout parser used by document ingestion. ``databricks-auto`` uses
     # ai_parse_document when configured and falls back to the local parser if
     # the remote service is unavailable.
@@ -66,6 +70,20 @@ class Settings(BaseSettings):
     # Global cap for independent per-requirement contract calls. Repairs reuse
     # the same slots so a failing section cannot create an endpoint burst.
     ATOMIC_CONTRACT_CONCURRENCY: int = 4
+
+    # Process-wide outbound capacity. Stage-specific limits below prevent one
+    # audit from monopolising all model or reranker slots when several projects
+    # run at the same time.
+    LLM_GLOBAL_CONCURRENCY: int = 8
+    AUDIT_RETRIEVAL_CONCURRENCY: int = 4
+    AUDIT_VERIFICATION_BATCH_CONCURRENCY: int = 2
+    AUDIT_CITATION_CONCURRENCY: int = 4
+    AUDIT_RETRY_CONCURRENCY: int = 3
+    AUDIT_RERANKER_CONCURRENCY: int = 4
+    AUDIT_WORKER_CONCURRENCY: int = 2
+    AUDIT_WORKER_POLL_SECONDS: float = 1.0
+    AUDIT_CACHE_VERSION: str = "audit-v1"
+    AUDIT_CACHE_MAX_ENTRIES: int = 50_000
     
     # Gemini Thinking Configuration (https://ai.google.dev/gemini-api/docs/thinking)
     # Supported thinking levels for Gemini 3 series: "LOW", "MEDIUM", "HIGH", "MINIMAL"

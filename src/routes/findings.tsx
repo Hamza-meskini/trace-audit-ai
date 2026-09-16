@@ -224,7 +224,7 @@ function FindingsPage() {
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full min-w-[1040px] text-sm">
-              <thead className="sticky top-14 bg-card">
+              <thead className="border-b border-border bg-card">
                 <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted-foreground">
                   <th className="px-5 py-2.5 font-medium">ID</th>
                   <th className="px-5 py-2.5 font-medium">Type</th>

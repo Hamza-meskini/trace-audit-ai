@@ -11,6 +11,7 @@ verification reasoner.
 """
 
 import asyncio
+import inspect
 import time
 import re
 from typing import Optional, Any
@@ -29,6 +30,7 @@ from app.services.validators import ValidationOutcome
 from app.services.verification_reasoner import SPEC_DOC_KEYWORDS
 from app.services.taxonomy import display_status, review_state_for
 from app.schemas.verification_result import ConditionVerificationResult
+from app.config import settings
 
 
 @dataclass
@@ -817,6 +819,7 @@ async def batch_assess_requirements(
     batch_size: int = 3,
     spec_doc_names: Optional[set[str]] = None,
     progress=None,
+    on_results=None,
 ) -> dict[str, RequirementAssessment]:
     """Assess a batch of requirements: deterministic checks first, batched LLM reasoning for the rest.
 
@@ -826,6 +829,7 @@ async def batch_assess_requirements(
     from app.services.verification_reasoner import evaluate_batch_verification
 
     assessments: dict[str, RequirementAssessment] = {}
+    deterministic_assessments: dict[str, RequirementAssessment] = {}
     pre_processed = []
 
     # Step 1: deterministic pre-checks and type-specific validators per requirement
@@ -859,6 +863,7 @@ async def batch_assess_requirements(
         )
         if decided:
             assessments[req_code] = decided
+            deterministic_assessments[req_code] = decided
             continue
 
         _evidence_items, non_spec_items, _claims = context
@@ -875,22 +880,32 @@ async def batch_assess_requirements(
         })
 
 
-    # Step 2: process queued requirements in batches
-    import time
+    if deterministic_assessments and on_results:
+        callback_result = on_results(deterministic_assessments)
+        if inspect.isawaitable(callback_result):
+            await callback_result
+    if progress and deterministic_assessments:
+        progress(len(assessments), len(req_items))
+
+    # Step 2: process queued requirements in bounded concurrent batches.
     total_batches = (len(pre_processed) + batch_size - 1) // max(batch_size, 1)
     print(f"  • Evaluating {len(pre_processed)} queued requirements across {total_batches} batches (batch_size={batch_size})...", flush=True)
+    batch_semaphore = asyncio.Semaphore(
+        max(1, int(settings.AUDIT_VERIFICATION_BATCH_CONCURRENCY))
+    )
 
-    for b_idx, i in enumerate(range(0, len(pre_processed), batch_size), 1):
-        batch = pre_processed[i : i + batch_size]
+    async def process_batch(b_idx: int, i: int):
+        batch = pre_processed[i:i + batch_size]
         t0 = time.time()
         batch_codes = [it["req_code"] for it in batch]
-        batch_results = await evaluate_batch_verification(
-            batch_items=batch,
-            model=model,
-            thinking_level=thinking_level,
-        )
+        async with batch_semaphore:
+            batch_results = await evaluate_batch_verification(
+                batch_items=batch,
+                model=model,
+                thinking_level=thinking_level,
+            )
         dt = time.time() - t0
-
+        completed: dict[str, RequirementAssessment] = {}
         for item in batch:
             req_code = item["req_code"]
             res = batch_results.get(req_code)
@@ -913,21 +928,39 @@ async def batch_assess_requirements(
                 # Preserve the exact condition facts, confidence scores, and
                 # source spans that were exposed to the reasoner.
                 pipeline_diagnostics["targeted_extraction"] = item["targeted_extraction"]
-            assessments[req_code] = _finalize_assessment(
+            completed[req_code] = _finalize_assessment(
                 item["contract"],
                 item["non_spec_items"],
                 outcome,
                 pipeline_diagnostics=pipeline_diagnostics,
             )
+        return b_idx, batch_codes, dt, completed
 
-        done_count = min(i + len(batch), len(pre_processed))
-        if progress:
-            progress(len(assessments), len(req_items))
-        first_code = batch_codes[0] if batch_codes else "?"
-        last_code = batch_codes[-1] if batch_codes else "?"
-        print(f"    -> [Batch {b_idx:02d}/{total_batches:02d}] {first_code}..{last_code} ({len(batch)} reqs) in {dt:.2f}s | Done: {done_count}/{len(pre_processed)} ({done_count/len(pre_processed)*100:.0f}%)", flush=True)
-
-        if i + batch_size < len(pre_processed):
-            await asyncio.sleep(0.5)
+    tasks = [
+        asyncio.create_task(process_batch(b_idx, i))
+        for b_idx, i in enumerate(range(0, len(pre_processed), batch_size), 1)
+    ]
+    processed_count = 0
+    try:
+        for task in asyncio.as_completed(tasks):
+            b_idx, batch_codes, dt, completed = await task
+            assessments.update(completed)
+            processed_count += len(completed)
+            if on_results:
+                callback_result = on_results(completed)
+                if inspect.isawaitable(callback_result):
+                    await callback_result
+            if progress:
+                progress(len(assessments), len(req_items))
+            first_code = batch_codes[0] if batch_codes else "?"
+            last_code = batch_codes[-1] if batch_codes else "?"
+            pct = (processed_count / len(pre_processed) * 100) if pre_processed else 100
+            print(f"    -> [Batch {b_idx:02d}/{total_batches:02d}] {first_code}..{last_code} ({len(completed)} reqs) in {dt:.2f}s | Done: {processed_count}/{len(pre_processed)} ({pct:.0f}%)", flush=True)
+    finally:
+        unfinished = [task for task in tasks if not task.done()]
+        for task in unfinished:
+            task.cancel()
+        if unfinished:
+            await asyncio.gather(*unfinished, return_exceptions=True)
 
     return assessments

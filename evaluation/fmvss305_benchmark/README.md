@@ -73,6 +73,27 @@ contains role, confidence, verification basis, standards, and page/quote cues;
 the filename is only a weak fallback. Document authority, passage modality, and
 requirement relevance are scored independently.
 
+## Latest measured scoped end-to-end result
+
+The latest saved scoped run used Llama 3.3 70B with local-hybrid retrieval. It assessed
+11 selected clauses and 30 labelled atomic conditions from the public documents.
+
+| Metric | Result |
+|---|---:|
+| Requirement accuracy | **90.91%** (10/11) |
+| Requirement macro F1 | **90.00%** |
+| Selected-clause extraction recall | **100.00%** |
+| Evidence-page Recall@3 | **78.95%** |
+| Targeted evidence enrichments | **10/11** |
+| Final atomic alignment coverage | **10.00%** |
+| Final atomic accuracy on aligned conditions | **100.00%** |
+| Final atomic end-to-end accuracy | **10.00%** |
+| Unsafe false auto-closes | **0** |
+
+The aligned-condition accuracy covers only a small portion of the labelled atomic set and
+must not be read as 100% condition-level pipeline accuracy. The run report is
+[evaluation/results/fmvss305_end-to-end_scoped_report.md](../results/fmvss305_end-to-end_scoped_report.md).
+
 ## How to interpret mode differences
 
 - If `oracle-contracts-evidence` is weak, the problem is downstream: source
