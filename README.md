@@ -245,6 +245,13 @@ DATABRICKS_TARGETED_EXTRACTION_ENABLED="true"
 DATABRICKS_TARGETED_EXTRACTION_MAX_INPUT_CHARS="800000"
 DATABRICKS_TARGETED_EXTRACTION_MAX_CANDIDATES="24"
 DATABRICKS_TARGETED_EXTRACTION_RETRY_UNCOVERED="true"
+
+# Optional Databricks MLflow traces and benchmark history
+# Install first: pip install -r requirements-mlflow.txt
+DATABRICKS_MLFLOW_TRACING_ENABLED="true"
+DATABRICKS_MLFLOW_EXPERIMENT="/Shared/auditrace"
+# Keep false for customer documents unless trace storage is access-controlled.
+DATABRICKS_MLFLOW_CAPTURE_CONTENT="false"
 ```
 
 Start the FastAPI backend:

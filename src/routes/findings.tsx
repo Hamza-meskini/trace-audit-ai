@@ -64,7 +64,7 @@ function FindingsPage() {
 
   const allFindings = findingsList || [];
   const reviewers = Array.from(
-    new Set(allFindings.map((f) => f.assigned_to).filter(Boolean) as string[])
+    new Set(allFindings.map((f) => f.assigned_to).filter(Boolean) as string[]),
   );
 
   const rows = useMemo(
@@ -73,7 +73,9 @@ function FindingsPage() {
         if (reviewer !== "all" && f.assigned_to !== reviewer) return false;
         if (
           query &&
-          !`${f.finding_code} ${f.requirement_title || ""}`.toLowerCase().includes(query.toLowerCase())
+          !`${f.finding_code} ${f.requirement_title || ""}`
+            .toLowerCase()
+            .includes(query.toLowerCase())
         )
           return false;
         return true;
@@ -260,11 +262,15 @@ function FindingsPage() {
                     <td className="px-5 py-3">
                       <SeverityBadge severity={f.severity} />
                     </td>
-                    <td className="px-5 py-3 tabular text-muted-foreground">{f.sources_count} sources</td>
+                    <td className="px-5 py-3 tabular text-muted-foreground">
+                      {f.sources_count} sources
+                    </td>
                     <td className="px-5 py-3">
                       <ReviewBadge state={f.review_state} />
                     </td>
-                    <td className="px-5 py-3 text-muted-foreground">{f.assigned_to || "Unassigned"}</td>
+                    <td className="px-5 py-3 text-muted-foreground">
+                      {f.assigned_to || "Unassigned"}
+                    </td>
                     <td className="px-5 py-3 text-muted-foreground">
                       {new Date(f.updated_at).toLocaleDateString()}
                     </td>

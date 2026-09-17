@@ -52,6 +52,7 @@ from app.schemas.evidence_qualification import (
     parameters_compatible,
 )
 from app.services.evidence_qualification import condition_evidence_compatible
+from app.services.observability import set_span_outputs, trace_span
 from app.services.units import convert_value, are_units_compatible
 
 logger = logging.getLogger("traceaudit.aggregator")
@@ -1167,7 +1168,7 @@ def aggregate_condition_statuses(
 
 # ── Finalization for LLM-produced analyses ───────────────────────────────────
 
-def finalize_verdict(
+def _finalize_verdict_impl(
     contract: RequirementContract,
     analysis: VerificationAnalysisResult,
     qualifications: list[EvidenceQualification],
@@ -1308,6 +1309,57 @@ def finalize_verdict(
     })
     finalized._diagnostics = diagnostics
     return finalized
+
+
+def finalize_verdict(
+    contract: RequirementContract,
+    analysis: VerificationAnalysisResult,
+    qualifications: list[EvidenceQualification],
+    qualified_contents: Optional[dict[str, str]] = None,
+    has_relevant_evidence: bool = True,
+    evidence_absent: bool = False,
+) -> VerificationAnalysisResult:
+    """Trace the single Python-owned final-status decision boundary."""
+    with trace_span(
+        "traceaudit.finalize_verdict",
+        span_type="CHAIN",
+        inputs={
+            "requirement_id": contract.req_code,
+            "contract_schema_version": getattr(contract, "contract_schema_version", None),
+            "contract_complete": contract.contract_complete,
+            "condition_count": len(contract.atomic_conditions or []),
+            "qualification_count": len(qualifications),
+            "llm_provisional_status": analysis.status,
+            "condition_results": [
+                {
+                    "condition_id": item.condition_id,
+                    "status": item.status,
+                    "validation_state": item.validation_state,
+                }
+                for item in (analysis.condition_results or [])
+            ],
+        },
+        attributes={"requirement_id": contract.req_code},
+    ) as span:
+        finalized = _finalize_verdict_impl(
+            contract=contract,
+            analysis=analysis,
+            qualifications=qualifications,
+            qualified_contents=qualified_contents,
+            has_relevant_evidence=has_relevant_evidence,
+            evidence_absent=evidence_absent,
+        )
+        diagnostics = getattr(finalized, "_diagnostics", {}) or {}
+        set_span_outputs(span, {
+            "final_status": finalized.status,
+            "confidence": finalized.confidence,
+            "atomic_aggregate_status": diagnostics.get("atomic_aggregate_status"),
+            "aggregator_decision": diagnostics.get("aggregator_decision"),
+            "aggregator_abstained": diagnostics.get("aggregator_abstained"),
+            "aggregator_blocking_issues": diagnostics.get("aggregator_blocking_issues", []),
+            "review_gate": diagnostics.get("review_gate"),
+        })
+        return finalized
 
 
 # ── Deterministic condition mapping from evidence claims ────────────────────

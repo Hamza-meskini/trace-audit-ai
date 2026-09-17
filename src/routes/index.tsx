@@ -1,13 +1,6 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { Cell, Pie, PieChart, ResponsiveContainer } from "recharts";
-import {
-  ArrowRight,
-  FileUp,
-  ListPlus,
-  Plus,
-  ChevronRight,
-  Loader2,
-} from "lucide-react";
+import { ArrowRight, FileUp, ListPlus, Plus, ChevronRight, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { EmptyState, KpiCard, PageHeader, Panel } from "@/components/primitives";
 import { CoverageBadge, Mono, ReviewBadge, SeverityBadge } from "@/components/status";
@@ -92,7 +85,7 @@ function Dashboard() {
 
   const severityTotal = Math.max(
     Object.values(severityCounts).reduce((a, b) => a + b, 0),
-    1
+    1,
   );
 
   return (
@@ -251,9 +244,7 @@ function Dashboard() {
                   <span className={`size-2 rounded-[3px] ${s.color}`} />
                   {s.key}
                 </div>
-                <div className="mt-1.5 text-2xl font-semibold tabular">
-                  {severityCounts[s.key]}
-                </div>
+                <div className="mt-1.5 text-2xl font-semibold tabular">{severityCounts[s.key]}</div>
               </div>
             ))}
           </div>

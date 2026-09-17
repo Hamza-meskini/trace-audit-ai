@@ -62,11 +62,7 @@ export function ReviewBadge({ state }: { state: ReviewState | string }) {
 export function Tag({ children, className }: { children: ReactNode; className?: string }) {
   return (
     <span
-      className={cn(
-        base,
-        "border-border bg-muted text-muted-foreground font-normal",
-        className,
-      )}
+      className={cn(base, "border-border bg-muted text-muted-foreground font-normal", className)}
     >
       {children}
     </span>

@@ -3,9 +3,33 @@
  * Typed HTTP client connecting frontend to the FastAPI backend.
  */
 
-const API_BASE_URL =
-  import.meta.env["VITE_API_URL"] ||
-  (import.meta.env.PROD ? "/api" : "http://localhost:8000/api");
+declare global {
+  interface Window {
+    __DATABRICKS_ROOT_PATH__?: string;
+  }
+}
+
+export function getApiBaseUrl(): string {
+  if (typeof import.meta !== "undefined" && import.meta.env?.["VITE_API_URL"]) {
+    return import.meta.env["VITE_API_URL"];
+  }
+  if (typeof window !== "undefined" && window.__DATABRICKS_ROOT_PATH__) {
+    const root = window.__DATABRICKS_ROOT_PATH__.replace(/\/+$/, "");
+    return `${root}/api`;
+  }
+  if (typeof import.meta !== "undefined" && !import.meta.env?.PROD) {
+    return "http://localhost:8000/api";
+  }
+  return "/api";
+}
+
+export const API_BASE_URL = getApiBaseUrl();
+
+export interface ApiCurrentUser {
+  user: string;
+  email: string | null;
+  provider: string;
+}
 
 export interface ApiProject {
   id: string;
@@ -272,7 +296,7 @@ export interface AuditRunResponse {
 // ── HTTP Helper ─────────────────────────────────────────────────────────────
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
-  const url = `${API_BASE_URL}${path}`;
+  const url = `${getApiBaseUrl()}${path}`;
   const headers = new Headers(options.headers || {});
 
   if (!(options.body instanceof FormData)) {
@@ -322,9 +346,9 @@ export const api = {
       `/projects/${projectId}/documents/${docId}/inspection?page=${page}`,
     ),
   documentUrl: (projectId: string, docId: string) =>
-    `${API_BASE_URL}/projects/${encodeURIComponent(projectId)}/documents/${encodeURIComponent(docId)}/file`,
+    `${getApiBaseUrl()}/projects/${encodeURIComponent(projectId)}/documents/${encodeURIComponent(docId)}/file`,
   pageUrl: (projectId: string, docId: string, page: number) =>
-    `${API_BASE_URL}/projects/${encodeURIComponent(projectId)}/documents/${encodeURIComponent(docId)}/pages/${page}.png`,
+    `${getApiBaseUrl()}/projects/${encodeURIComponent(projectId)}/documents/${encodeURIComponent(docId)}/pages/${page}.png`,
   saveReview: (projectId: string, reqId: string, data: ReviewRequest) =>
     request<ReviewEvent>(`/projects/${projectId}/requirements/${reqId}/reviews`, {
       method: "POST",
@@ -461,4 +485,7 @@ export const api = {
       method: "POST",
       body: JSON.stringify(data),
     }),
+
+  // Current Authenticated User / Databricks SSO Identity
+  getCurrentUser: () => request<ApiCurrentUser>("/me"),
 };

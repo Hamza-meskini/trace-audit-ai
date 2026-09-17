@@ -21,6 +21,7 @@ from app.schemas.verification_result import (
     BatchVerificationResult,
 )
 from app.services.llm_client import generate_structured
+from app.services.observability import observation_context
 from app.services.units import (
     UnitCompatibility,
     convert_value,
@@ -1424,29 +1425,38 @@ async def evaluate_batch_verification(
     if len(batch_items) == 1:
         item = batch_items[0]
         contract: RequirementContract = item["contract"]
-        return {
-            contract.req_code: await evaluate_requirement_verification(
-                contract=contract,
-                evidence_chunks=item.get("candidate_chunks", []),
-                model=model,
-                thinking_level=thinking_level,
-                spec_doc_names=item.get("spec_doc_names"),
-                allow_deterministic_fallback=False,
-                targeted_extraction=item.get("targeted_extraction"),
-            )
-        }
+        with observation_context(
+            requirement_id=contract.req_code,
+            stage="verification.single",
+        ):
+            return {
+                contract.req_code: await evaluate_requirement_verification(
+                    contract=contract,
+                    evidence_chunks=item.get("candidate_chunks", []),
+                    model=model,
+                    thinking_level=thinking_level,
+                    spec_doc_names=item.get("spec_doc_names"),
+                    allow_deterministic_fallback=False,
+                    targeted_extraction=item.get("targeted_extraction"),
+                )
+            }
 
     prompt, system_instruction = build_batch_verification_prompt(batch_items)
 
     try:
-        batch_resp: Optional[BatchVerificationResult] = await generate_structured(
-            prompt=prompt,
-            response_model=BatchVerificationResult,
-            model=active_model,
-            system_instruction=system_instruction,
-            thinking_level=thinking_level or settings.GEMINI_THINKING_LEVEL,
-            max_output_tokens=8192,
-        )
+        batch_codes = [item["contract"].req_code for item in batch_items]
+        with observation_context(
+            requirement_ids=",".join(batch_codes),
+            stage="verification.batch",
+        ):
+            batch_resp: Optional[BatchVerificationResult] = await generate_structured(
+                prompt=prompt,
+                response_model=BatchVerificationResult,
+                model=active_model,
+                system_instruction=system_instruction,
+                thinking_level=thinking_level or settings.GEMINI_THINKING_LEVEL,
+                max_output_tokens=8192,
+            )
         if batch_resp and batch_resp.batch_results:
             item_by_code = {it["contract"].req_code: it for it in batch_items}
             grounding_jobs = []
@@ -1511,16 +1521,20 @@ async def evaluate_batch_verification(
 
             async def finish_grounding(job):
                 code, contract, cand_chunks, qual_contents, quals, provisional = job
-                async with citation_semaphore:
-                    provisional.condition_results, citation_diagnostics = (
-                        await _ground_condition_citations(
-                            contract,
-                            cand_chunks,
-                            qual_contents,
-                            provisional.condition_results,
-                            active_model,
+                with observation_context(
+                    requirement_id=code,
+                    stage="verification.citation_grounding",
+                ):
+                    async with citation_semaphore:
+                        provisional.condition_results, citation_diagnostics = (
+                            await _ground_condition_citations(
+                                contract,
+                                cand_chunks,
+                                qual_contents,
+                                provisional.condition_results,
+                                active_model,
+                            )
                         )
-                    )
                 provisional._diagnostics.update(citation_diagnostics)
                 original_conditions = _snapshot_condition_results(provisional.condition_results)
                 provisional = _audit_llm_condition_metadata(contract, provisional)
@@ -1557,16 +1571,20 @@ async def evaluate_batch_verification(
 
     async def retry_item(item):
         code = item["contract"].req_code
-        async with retry_semaphore:
-            result = await evaluate_requirement_verification(
-                contract=item["contract"],
-                evidence_chunks=item["candidate_chunks"],
-                model=model,
-                thinking_level=thinking_level,
-                spec_doc_names=item.get("spec_doc_names"),
-                allow_deterministic_fallback=False,
-                targeted_extraction=item.get("targeted_extraction"),
-            )
+        with observation_context(
+            requirement_id=code,
+            stage="verification.retry",
+        ):
+            async with retry_semaphore:
+                result = await evaluate_requirement_verification(
+                    contract=item["contract"],
+                    evidence_chunks=item["candidate_chunks"],
+                    model=model,
+                    thinking_level=thinking_level,
+                    spec_doc_names=item.get("spec_doc_names"),
+                    allow_deterministic_fallback=False,
+                    targeted_extraction=item.get("targeted_extraction"),
+                )
         return code, result
 
     if retry_items:

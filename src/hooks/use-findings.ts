@@ -3,7 +3,7 @@ import { api } from "@/lib/api-client";
 
 export function useFindings(
   projectId: string,
-  filters?: { severity?: string; finding_type?: string; review_state?: string; category?: string }
+  filters?: { severity?: string; finding_type?: string; review_state?: string; category?: string },
 ) {
   return useQuery({
     queryKey: ["findings", projectId, filters],

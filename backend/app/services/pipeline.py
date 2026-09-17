@@ -50,6 +50,12 @@ from app.services.document_classifier import (
 )
 from app.services.visual_analysis import describe_retrieved_figures
 from app.services.requirement_visual_recovery import recover_requirement_text_from_pages
+from app.services.observability import (
+    new_correlation_id,
+    observation_context,
+    set_span_outputs,
+    trace_span,
+)
 
 logger = logging.getLogger("traceaudit.pipeline")
 
@@ -174,7 +180,7 @@ def _cache_matches_source(existing_chunks: list[EvidenceChunk], storage_path: st
     return True
 
 
-async def run_audit_pipeline(
+async def _run_audit_pipeline_impl(
     project_id: str,
     db: AsyncSession,
     model: Optional[str] = None,
@@ -929,3 +935,48 @@ async def run_audit_pipeline(
             "reasoning": reasoning_diagnostics,
         },
     }
+
+
+async def run_audit_pipeline(
+    project_id: str,
+    db: AsyncSession,
+    model: Optional[str] = None,
+    thinking_level: Optional[str] = None,
+    progress=None,
+    run_id: Optional[str] = None,
+) -> dict:
+    """Execute one correlated, end-to-end observable audit run."""
+    correlation_id = run_id or new_correlation_id("audit")
+    active_model = model or settings.LLM_MODEL
+    with observation_context(
+        audit_run_id=correlation_id,
+        project_id=project_id,
+        stage="audit_pipeline",
+    ):
+        with trace_span(
+            "traceaudit.audit_pipeline",
+            span_type="CHAIN",
+            inputs={
+                "audit_run_id": correlation_id,
+                "project_id": project_id,
+                "model": active_model,
+                "thinking_level": thinking_level or settings.GEMINI_THINKING_LEVEL,
+            },
+        ) as span:
+            result = await _run_audit_pipeline_impl(
+                project_id=project_id,
+                db=db,
+                model=model,
+                thinking_level=thinking_level,
+                progress=progress,
+                run_id=correlation_id,
+            )
+            result["audit_run_id"] = correlation_id
+            set_span_outputs(span, {
+                "status": result.get("status"),
+                "requirements_analyzed": result.get("requirements_analyzed"),
+                "documents_indexed": result.get("documents_indexed"),
+                "findings_generated": result.get("findings_generated"),
+                "stage_timings": result.get("diagnostics", {}).get("stage_timings"),
+            })
+            return result

@@ -4,10 +4,10 @@ import logging
 from contextlib import asynccontextmanager
 
 from pathlib import Path
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, HTMLResponse
 
 from app.config import settings
 from app.database import init_db, async_session
@@ -82,6 +82,20 @@ async def health_check():
     return {"status": "ok", "version": settings.APP_VERSION}
 
 
+@app.get("/api/me")
+async def current_user(request: Request):
+    """Expose authenticated user identity from Databricks SSO proxy headers."""
+    user = (
+        request.headers.get("X-Forwarded-User")
+        or request.headers.get("X-Databricks-User")
+        or request.headers.get("X-Forwarded-Email")
+    )
+    if user:
+        email = request.headers.get("X-Forwarded-Email", user)
+        return {"username": user, "email": email, "authenticated": True}
+    return {"username": "Local reviewer", "email": None, "authenticated": False}
+
+
 def _resolve_frontend_dir() -> Path | None:
     """Find the compiled React frontend directory."""
     candidates = [
@@ -113,8 +127,20 @@ if frontend_dir and (frontend_dir / "assets").is_dir():
 if frontend_dir and (frontend_dir / "index.html").is_file():
     logger.info("Configured SPA fallback for frontend from %s", frontend_dir)
 
+    def _render_index(index_path: Path, request: Request) -> Response:
+        effective_root = (request.scope.get("root_path") or settings.ROOT_PATH or "").rstrip("/")
+        if effective_root:
+            html = index_path.read_text(encoding="utf-8")
+            script = f'<script>window.__DATABRICKS_ROOT_PATH__ = "{effective_root}";</script>'
+            if "</head>" in html:
+                html = html.replace("</head>", f"{script}</head>", 1)
+            html = html.replace('href="/assets/', f'href="{effective_root}/assets/')
+            html = html.replace('src="/assets/', f'src="{effective_root}/assets/')
+            return HTMLResponse(html)
+        return FileResponse(index_path)
+
     @app.get("/{full_path:path}", include_in_schema=False)
-    async def serve_frontend(full_path: str):
+    async def serve_frontend(full_path: str, request: Request):
         # Do not catch API or documentation routes
         if full_path.startswith("api/") or full_path == "api" or full_path in ("docs", "redoc", "openapi.json"):
             raise HTTPException(status_code=404, detail="Endpoint not found")
@@ -122,18 +148,20 @@ if frontend_dir and (frontend_dir / "index.html").is_file():
         # 1. Exact static file match (favicon.ico, robots.txt, subpage index.html, etc.)
         target_file = frontend_dir / full_path
         if target_file.is_file():
+            if target_file.name == "index.html":
+                return _render_index(target_file, request)
             return FileResponse(target_file)
 
         # 2. Sub-directory with index.html (e.g. /requirements/ -> requirements/index.html)
         if target_file.is_dir():
             sub_index = target_file / "index.html"
             if sub_index.is_file():
-                return FileResponse(sub_index)
+                return _render_index(sub_index, request)
 
         # 3. Fallback to main index.html for client-side routing
         main_index = frontend_dir / "index.html"
         if main_index.is_file():
-            return FileResponse(main_index)
+            return _render_index(main_index, request)
 
         raise HTTPException(status_code=404, detail="File not found")
 else:

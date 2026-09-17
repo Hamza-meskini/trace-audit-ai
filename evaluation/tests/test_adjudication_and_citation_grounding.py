@@ -1,7 +1,11 @@
-"""Focused tests for second-model adjudication and extractive provenance."""
-
+from pathlib import Path
+import sys
 import unittest
 from unittest.mock import AsyncMock, patch
+
+BACKEND_DIR = Path(__file__).resolve().parents[2] / "backend"
+if str(BACKEND_DIR) not in sys.path:
+    sys.path.insert(0, str(BACKEND_DIR))
 
 from app.schemas.contract import AtomicConditionContract, RequirementContract
 from app.schemas.verification_result import (

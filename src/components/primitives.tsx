@@ -37,19 +37,12 @@ export function Panel({
   bodyClassName?: string;
 }) {
   return (
-    <section
-      className={cn(
-        "rounded-xl border border-border bg-card shadow-subtle",
-        className,
-      )}
-    >
+    <section className={cn("rounded-xl border border-border bg-card shadow-subtle", className)}>
       {(title || actions) && (
         <header className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-5 py-3.5">
           <div>
             {title && <h2 className="text-sm font-semibold">{title}</h2>}
-            {description && (
-              <p className="mt-0.5 text-xs text-muted-foreground">{description}</p>
-            )}
+            {description && <p className="mt-0.5 text-xs text-muted-foreground">{description}</p>}
           </div>
           {actions}
         </header>

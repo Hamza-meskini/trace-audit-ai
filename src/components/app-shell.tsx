@@ -62,10 +62,12 @@ import { AuditProgressPanel } from "@/components/audit-progress";
 import { useRequirements } from "@/hooks/use-requirements";
 import { useDocuments } from "@/hooks/use-documents";
 import { useFindings } from "@/hooks/use-findings";
+import { useCurrentUser } from "@/hooks/use-current-user";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const [collapsed, setCollapsed] = useState(false);
   const [openSearch, setOpenSearch] = useState(false);
+  const currentUser = useCurrentUser();
   const {
     activeProject,
     activeProjectId,
@@ -137,19 +139,35 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </nav>
 
         <div className="space-y-1 border-t border-sidebar-border p-2.5">
-          <div className="flex items-center gap-2.5 rounded-md px-2 py-2">
-            <div className="grid size-7 shrink-0 place-items-center rounded-full bg-accent text-[11px] font-semibold">
-              LR
-            </div>
-            {!collapsed && (
-              <div className="min-w-0 leading-tight">
-                <div className="truncate text-xs font-medium">Local reviewer</div>
-                <div className="truncate text-[11px] text-muted-foreground">
-                  Authentication not configured
+          {(() => {
+            const userName = currentUser.data?.user || "Local reviewer";
+            const userSubtitle =
+              currentUser.data?.email ||
+              (currentUser.data?.provider === "databricks_sso"
+                ? "Databricks SSO"
+                : "Local workspace");
+            const initials = currentUser.data?.user
+              ? currentUser.data.user
+                  .split(/[\s@._-]+/)
+                  .filter(Boolean)
+                  .slice(0, 2)
+                  .map((s) => s[0]?.toUpperCase())
+                  .join("")
+              : "LR";
+            return (
+              <div className="flex items-center gap-2.5 rounded-md px-2 py-2">
+                <div className="grid size-7 shrink-0 place-items-center rounded-full bg-accent text-[11px] font-semibold">
+                  {initials || "LR"}
                 </div>
+                {!collapsed && (
+                  <div className="min-w-0 leading-tight">
+                    <div className="truncate text-xs font-medium">{userName}</div>
+                    <div className="truncate text-[11px] text-muted-foreground">{userSubtitle}</div>
+                  </div>
+                )}
               </div>
-            )}
-          </div>
+            );
+          })()}
         </div>
       </aside>
 

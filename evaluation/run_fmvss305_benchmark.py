@@ -62,7 +62,14 @@ from app.services.retrieval import (
 )
 from app.services.databricks_ai_search import retrieve_with_fallback, sync_project_chunks
 from app.services.databricks_document_ai import enrich_targeted_evidence_items
-from app.services.observability import log_benchmark_metrics
+from app.services.llm_client import DEFAULT_DATABRICKS_TEMPERATURE
+from app.services.observability import (
+    log_benchmark_metrics,
+    new_correlation_id,
+    observation_context,
+    set_span_outputs,
+    trace_span,
+)
 
 
 FINAL_CLASSES = ["SUPPORTED", "PARTIAL", "CONFLICT", "MISSING", "UNKNOWN", "NOT_APPLICABLE"]
@@ -1017,7 +1024,7 @@ def _report_markdown(results: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-async def run_benchmark(
+async def _run_benchmark_impl(
     mode: str,
     model: Optional[str],
     thinking_level: Optional[str],
@@ -1433,6 +1440,14 @@ async def run_benchmark(
         "mode": mode,
         "model": active_model,
         "thinking_level": active_thinking,
+        "generation_config": {
+            "provider": settings.LLM_PROVIDER,
+            "temperature": DEFAULT_DATABRICKS_TEMPERATURE,
+            "batch_size": batch_size,
+            "retrieval_backend": retrieval_backend,
+            "targeted_extraction": targeted_extraction,
+            "custom_reranker": custom_reranker,
+        },
         "extraction_scope": {
             "mode": "clause_ids" if scope_clauses else "full_document",
             "scope_id": scope_metadata.get("scope_id"),
@@ -1463,6 +1478,8 @@ async def run_benchmark(
             "benchmark_version": dataset["version"],
             "mode": mode,
             "model": active_model,
+            "temperature": DEFAULT_DATABRICKS_TEMPERATURE,
+            "batch_size": batch_size,
             "retrieval_backend": results["retrieval_backend"]["used"],
             "scope": results["extraction_scope"]["mode"],
         },
@@ -1495,6 +1512,63 @@ async def run_benchmark(
     print(f"  JSON: {json_path}")
     print(f"  Report: {report_path}")
     return results
+
+
+async def run_benchmark(
+    mode: str,
+    model: Optional[str],
+    thinking_level: Optional[str],
+    batch_size: int,
+    provider: Optional[str] = None,
+    allow_rule_fallback: bool = True,
+    targeted_extraction: bool = False,
+    scope_file: Optional[Path] = None,
+    retrieval_backend: str = "local",
+    custom_reranker: bool = False,
+    contracts_file: Optional[Path] = None,
+) -> dict[str, Any]:
+    """Run FMVSS under one correlated MLflow trace."""
+    correlation_id = new_correlation_id("fmvss305")
+    with observation_context(
+        audit_run_id=correlation_id,
+        benchmark_id="fmvss305",
+        stage="benchmark",
+    ):
+        with trace_span(
+            "traceaudit.fmvss305_benchmark",
+            span_type="CHAIN",
+            inputs={
+                "mode": mode,
+                "model": model or settings.LLM_MODEL,
+                "temperature": DEFAULT_DATABRICKS_TEMPERATURE,
+                "batch_size": batch_size,
+                "retrieval_backend": retrieval_backend,
+                "targeted_extraction": targeted_extraction,
+                "custom_reranker": custom_reranker,
+            },
+        ) as span:
+            result = await _run_benchmark_impl(
+                mode=mode,
+                model=model,
+                thinking_level=thinking_level,
+                batch_size=batch_size,
+                provider=provider,
+                allow_rule_fallback=allow_rule_fallback,
+                targeted_extraction=targeted_extraction,
+                scope_file=scope_file,
+                retrieval_backend=retrieval_backend,
+                custom_reranker=custom_reranker,
+                contracts_file=contracts_file,
+            )
+            set_span_outputs(span, {
+                "run_id": result.get("run_id"),
+                "runtime_seconds": result.get("runtime_seconds"),
+                "final_verdict": result.get("metrics", {}).get("final_verdict"),
+                "unsafe_false_auto_closes": result.get("metrics", {}).get(
+                    "review_gate", {}
+                ).get("unsafe_false_auto_closes"),
+            })
+            return result
 
 
 def main() -> None:

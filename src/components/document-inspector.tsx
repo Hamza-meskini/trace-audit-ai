@@ -34,7 +34,7 @@ export function StructuredText({ text }: { text: string }) {
             </p>
           );
         const rows = group.lines
-          .filter((line) => !/^\|[\s|:\-]+\|$/.test(line.trim()))
+          .filter((line) => !/^\|[\s|:-]+\|$/.test(line.trim()))
           .map((line) =>
             line
               .trim()

@@ -106,7 +106,7 @@ async def describe_figure_candidates(
         if cache_valid:
             stats["vision_cache_hits"] += 1
         elif not any((
-            settings.DATABRICKS_VISION_MODEL and settings.effective_databricks_token and settings.DATABRICKS_BASE_URL,
+            settings.DATABRICKS_VISION_MODEL and settings.effective_databricks_token and settings.effective_databricks_base_url,
             settings.effective_openrouter_api_key,
             settings.effective_gemini_api_key,
             settings.effective_groq_api_key,

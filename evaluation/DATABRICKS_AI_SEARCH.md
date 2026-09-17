@@ -67,3 +67,20 @@ the fallback reason.
 For MLflow traces and benchmark metrics, install
 `backend/requirements-mlflow.txt`, set an experiment path, and enable
 `DATABRICKS_MLFLOW_TRACING_ENABLED=true`.
+
+TraceAudit creates one root trace per production audit or benchmark, child LLM
+spans for every logical Databricks call, and final-verdict spans containing the
+atomic aggregate, abstention decision, and blocking issues. Every provider call
+also carries a stable `client_request_id`, including retries, so it can be
+joined to an AI Gateway inference-table row.
+
+Raw prompts and responses are excluded by default. Set
+`DATABRICKS_MLFLOW_CAPTURE_CONTENT=true` only for governed development data;
+otherwise the trace stores SHA-256 hashes, sizes, model settings, response
+metadata, latency, token usage, retry counts, and outcomes.
+
+To retain the serving-side request/response history too, enable an inference
+table on the Databricks AI Gateway/model-serving endpoint and select a governed
+Unity Catalog catalog and schema. Application traces and inference rows are
+complementary: MLflow records pipeline causality, while the inference table
+records the actual gateway payload, status, and serving latency.

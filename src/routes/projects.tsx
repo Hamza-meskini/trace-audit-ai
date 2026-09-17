@@ -30,7 +30,14 @@ export const Route = createFileRoute("/projects")({
   component: ProjectPage,
 });
 
-const tabs = ["Overview", "Requirements", "Documents", "Findings", "Traceability", "Reports"] as const;
+const tabs = [
+  "Overview",
+  "Requirements",
+  "Documents",
+  "Findings",
+  "Traceability",
+  "Reports",
+] as const;
 
 import { useActiveProject } from "@/hooks/use-active-project";
 
@@ -38,7 +45,12 @@ function ProjectPage() {
   const [tab, setTab] = useState<(typeof tabs)[number]>("Overview");
   const navigate = useNavigate();
 
-  const { activeProject: project, activeProjectId, projects: projectsList, selectProject } = useActiveProject();
+  const {
+    activeProject: project,
+    activeProjectId,
+    projects: projectsList,
+    selectProject,
+  } = useActiveProject();
 
   const { data: stats } = useProjectStats(activeProjectId);
   const { data: docs } = useDocuments(activeProjectId);
@@ -82,11 +94,11 @@ function ProjectPage() {
           <MetaItem label="Project ID" value={<Mono>{project.audit_id}</Mono>} />
           <MetaItem label="Product category" value={project.product_category} />
           <MetaItem label="Created" value={new Date(project.created_at).toLocaleDateString()} />
-          <MetaItem label="Last analysis" value={new Date(project.updated_at).toLocaleDateString()} />
           <MetaItem
-            label="Status"
-            value={<span className="text-success">{project.status}</span>}
+            label="Last analysis"
+            value={new Date(project.updated_at).toLocaleDateString()}
           />
+          <MetaItem label="Status" value={<span className="text-success">{project.status}</span>} />
         </div>
       </Panel>
 
@@ -149,7 +161,7 @@ function ProjectPage() {
                       onClick={() => selectProject(p.id)}
                       className={cn(
                         "cursor-pointer border-b border-border/70 last:border-0 hover:bg-accent/50",
-                        p.id === project.id ? "bg-accent/30 font-medium" : ""
+                        p.id === project.id ? "bg-accent/30 font-medium" : "",
                       )}
                     >
                       <td className="px-5 py-3 font-medium">{p.name}</td>
@@ -214,7 +226,10 @@ function ProjectPage() {
             <table className="w-full text-sm">
               <tbody>
                 {(docs || []).map((d) => (
-                  <tr key={d.id} className="border-b border-border/70 last:border-0 hover:bg-accent/50">
+                  <tr
+                    key={d.id}
+                    className="border-b border-border/70 last:border-0 hover:bg-accent/50"
+                  >
                     <td className="px-5 py-3 font-medium">{d.original_filename}</td>
                     <td className="px-5 py-3 text-muted-foreground">{d.doc_type}</td>
                     <td className="px-5 py-3">
@@ -243,7 +258,10 @@ function ProjectPage() {
             <table className="w-full text-sm">
               <tbody>
                 {(findingsList || []).slice(0, 6).map((f) => (
-                  <tr key={f.id} className="border-b border-border/70 last:border-0 hover:bg-accent/50">
+                  <tr
+                    key={f.id}
+                    className="border-b border-border/70 last:border-0 hover:bg-accent/50"
+                  >
                     <td className="px-5 py-3">
                       <Mono>{f.finding_code}</Mono>
                     </td>

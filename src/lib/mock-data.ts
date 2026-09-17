@@ -1,4 +1,5 @@
-export type CoverageStatus = "Supported" | "Partial" | "Missing" | "Conflict" | "Unknown" | "Not applicable";
+export type CoverageStatus =
+  "Supported" | "Partial" | "Missing" | "Conflict" | "Unknown" | "Not applicable";
 export type ReviewState = "Reviewed" | "Needs review" | "Open" | "Approved" | "Rejected";
 export type Severity = "Critical" | "High" | "Medium" | "Low";
 export type FindingType =
@@ -10,12 +11,7 @@ export type FindingType =
   | "Ambiguous requirement"
   | "Inconclusive evidence";
 export type Category =
-  | "Electrical"
-  | "Safety"
-  | "Environmental"
-  | "Mechanical"
-  | "Cybersecurity"
-  | "Documentation";
+  "Electrical" | "Safety" | "Environmental" | "Mechanical" | "Cybersecurity" | "Documentation";
 
 export interface User {
   id: string;
@@ -718,7 +714,12 @@ export const frameworks: Framework[] = [
 
 export const notifications = [
   { id: "n1", text: "14 potential conflicts detected.", time: "2h ago", unread: true },
-  { id: "n2", text: "Technical_Specification.pdf finished processing.", time: "3h ago", unread: true },
+  {
+    id: "n2",
+    text: "Technical_Specification.pdf finished processing.",
+    time: "3h ago",
+    unread: true,
+  },
   { id: "n3", text: "REQ-004 requires human review.", time: "5h ago", unread: true },
   { id: "n4", text: "Audit report generated.", time: "Yesterday", unread: false },
 ];
@@ -764,12 +765,42 @@ export const categories: Category[] = [
 ];
 
 export const searchIndex = [
-  { type: "Requirement", id: "REQ-001", label: "Operating voltage must remain within 18–32 V DC", to: "/requirements/REQ-001" },
-  { type: "Requirement", id: "REQ-005", label: "Controller input voltage tolerance shall comply with supplier specification", to: "/requirements/REQ-005" },
-  { type: "Requirement", id: "REQ-003", label: "Device shall operate from -20°C to +70°C", to: "/requirements/REQ-003" },
-  { type: "Requirement", id: "REQ-004", label: "Manufacturer shall document identified product risks", to: "/requirements/REQ-004" },
+  {
+    type: "Requirement",
+    id: "REQ-001",
+    label: "Operating voltage must remain within 18–32 V DC",
+    to: "/requirements/REQ-001",
+  },
+  {
+    type: "Requirement",
+    id: "REQ-005",
+    label: "Controller input voltage tolerance shall comply with supplier specification",
+    to: "/requirements/REQ-005",
+  },
+  {
+    type: "Requirement",
+    id: "REQ-003",
+    label: "Device shall operate from -20°C to +70°C",
+    to: "/requirements/REQ-003",
+  },
+  {
+    type: "Requirement",
+    id: "REQ-004",
+    label: "Manufacturer shall document identified product risks",
+    to: "/requirements/REQ-004",
+  },
   { type: "Document", id: "DOC-01", label: "Product_Specification_X200.pdf", to: "/documents" },
-  { type: "Document", id: "DOC-04", label: "Supplier_Datasheet_MainController.pdf", to: "/documents" },
-  { type: "Finding", id: "F-001", label: "Potential conflict — REQ-005 voltage tolerance", to: "/findings" },
+  {
+    type: "Document",
+    id: "DOC-04",
+    label: "Supplier_Datasheet_MainController.pdf",
+    to: "/documents",
+  },
+  {
+    type: "Finding",
+    id: "F-001",
+    label: "Potential conflict — REQ-005 voltage tolerance",
+    to: "/findings",
+  },
   { type: "Project", id: "TA-2026-0042", label: "Industrial Controller X200", to: "/projects" },
 ];

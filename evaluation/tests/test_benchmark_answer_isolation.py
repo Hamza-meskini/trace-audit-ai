@@ -1,6 +1,12 @@
-"""Regression tests for answer-key isolation and unearned scoring credit."""
+from pathlib import Path
+import sys
 import copy
 import pytest
+
+BACKEND_DIR = Path(__file__).resolve().parents[2] / "backend"
+if str(BACKEND_DIR) not in sys.path:
+    sys.path.insert(0, str(BACKEND_DIR))
+
 from app.services.extraction import ExtractedRequirement
 from evaluation.run_fmvss305_benchmark import _atomic_metrics, _oracle_contracts
 from evaluation.run_nova_end_to_end_benchmark import prediction_contracts

@@ -136,6 +136,11 @@ class Settings(BaseSettings):
     # development and test environments usable without MLflow installed.
     DATABRICKS_MLFLOW_TRACING_ENABLED: bool = False
     DATABRICKS_MLFLOW_EXPERIMENT: str = ""
+    # Raw prompts and responses can contain customer-controlled technical data.
+    # Keep content capture opt-in; hashes, sizes, configuration, outcomes and
+    # correlation IDs are recorded even when this is disabled.
+    DATABRICKS_MLFLOW_CAPTURE_CONTENT: bool = False
+    DATABRICKS_MLFLOW_MAX_CONTENT_CHARS: int = 100_000
 
     # TokenRouter Settings (Multi-Model OpenAI-Compatible Gateway)
     TOKENROUTER_API_KEY: str = ""
@@ -245,6 +250,19 @@ class Settings(BaseSettings):
     def effective_databricks_token(self) -> str:
         """Return Databricks token from DATABRICKS_TOKEN or environment."""
         return self.DATABRICKS_TOKEN or os.environ.get("DATABRICKS_TOKEN", "")
+
+    @property
+    def effective_databricks_base_url(self) -> str:
+        """Return Databricks AI Gateway base URL, deriving from DATABRICKS_HOST if not explicitly set."""
+        url = self.DATABRICKS_BASE_URL or os.environ.get("DATABRICKS_BASE_URL", "")
+        if url:
+            return url.rstrip("/")
+        host = self.DATABRICKS_HOST or os.environ.get("DATABRICKS_HOST", "")
+        if host:
+            if not host.startswith("http"):
+                host = f"https://{host}"
+            return f"{host.rstrip('/')}/ai-gateway/mlflow/v1"
+        return ""
 
 
 settings = Settings()

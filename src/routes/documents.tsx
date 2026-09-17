@@ -73,8 +73,8 @@ function DocumentsPage() {
         toast.info(`Uploading ${file.name}...`);
         await uploadDocMutation.mutateAsync({ file });
         toast.success(`${file.name} uploaded successfully!`);
-      } catch (err: any) {
-        toast.error(`Upload failed: ${err.message || err}`);
+      } catch (err: unknown) {
+        toast.error(`Upload failed: ${err instanceof Error ? err.message : String(err)}`);
       }
     }
   };

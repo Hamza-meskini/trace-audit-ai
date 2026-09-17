@@ -89,9 +89,16 @@ backend/.cache/
 
 # ── Temporary & scratch directories ─────────────────────────
 tmp/
+**/tmp/
 .review-tmp/
+**/.review-tmp/
 sample_documents/
 .pytest-tmp-*/
+**/.pytest-tmp-*/
+mlruns/
+**/mlruns/
+.trash/
+**/.trash/
 
 # ── Generated documents ─────────────────────────────────────
 TraceAudit_AI_Product_Strategy_Report.docx

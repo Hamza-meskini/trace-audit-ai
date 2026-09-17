@@ -3,7 +3,7 @@
 import re
 import uuid
 from datetime import datetime, timezone
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -214,7 +214,7 @@ async def get_requirement(project_id: str, requirement_id: str, db: AsyncSession
 
 @router.post("/{requirement_id}/reviews")
 async def save_review(project_id: str, requirement_id: str, body: RequirementReviewRequest,
-                      db: AsyncSession = Depends(get_db)):
+                      request: Request, db: AsyncSession = Depends(get_db)):
     job = audit_progress.latest(project_id)
     if job and job["status"] in ("queued", "running", "cancelling"):
         raise HTTPException(409, "Wait for the active audit to finish before saving a review")
@@ -223,12 +223,22 @@ async def save_review(project_id: str, requirement_id: str, body: RequirementRev
     ).with_for_update())).scalar_one_or_none()
     if req is None:
         raise HTTPException(404, "Requirement not found")
-    if not body.reviewer.strip() or not body.comment.strip():
+
+    forwarded_user = (
+        request.headers.get("X-Forwarded-User")
+        or request.headers.get("X-Databricks-User")
+        or request.headers.get("X-Forwarded-Email")
+    )
+    reviewer = body.reviewer.strip()
+    if forwarded_user and (not reviewer or reviewer == "Local reviewer"):
+        reviewer = forwarded_user.strip()
+
+    if not reviewer or not body.comment.strip():
         raise HTTPException(422, "Reviewer and rationale cannot be blank")
     if body.resolution_type == "Override verdict" and body.human_verdict is None:
         raise HTTPException(422, "A human-assessed verdict is required when overriding the AI verdict")
     human_verdict = req.coverage_status if body.resolution_type == "Confirm AI assessment" else body.human_verdict
-    event = {"id": str(uuid.uuid4()), "action": body.action, "reviewer": body.reviewer.strip(),
+    event = {"id": str(uuid.uuid4()), "action": body.action, "reviewer": reviewer,
              "comment": body.comment.strip(), "created_at": datetime.now(timezone.utc).isoformat(),
              "ai_verdict": req.coverage_status, "previous_review_state": req.review_state,
              "assessment_at": (req.extracted_parameters or {}).get("verification", {}).get("assessed_at"),

@@ -19,6 +19,13 @@ import httpx
 from pydantic import BaseModel
 
 from app.config import settings
+from app.services.observability import (
+    new_correlation_id,
+    set_span_attribute,
+    set_span_outputs,
+    trace_span,
+    traced_content,
+)
 
 logger = logging.getLogger("traceaudit.llm")
 
@@ -29,6 +36,7 @@ GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models"
 # Transient failures worth retrying: rate limit + gateway/capacity errors
 RETRYABLE_STATUS_CODES = {429, 502, 503, 504}
 MAX_ATTEMPTS = 3
+DEFAULT_DATABRICKS_TEMPERATURE = 0.0
 
 # Endpoint capability is stable for the life of a worker. Once a serving
 # endpoint rejects JSON Schema, subsequent calls use JSON Object mode directly
@@ -466,7 +474,7 @@ async def call_vision_with_fallback(
     skipped = {provider.lower() for provider in (skip_providers or set())}
 
     if ("databricks" not in skipped and settings.DATABRICKS_VISION_MODEL
-            and settings.effective_databricks_token and settings.DATABRICKS_BASE_URL):
+            and settings.effective_databricks_token and settings.effective_databricks_base_url):
         attempted.append({"provider": "databricks", "model": settings.DATABRICKS_VISION_MODEL})
         text = await call_databricks_chat_completions(
             prompt, model=settings.DATABRICKS_VISION_MODEL,
@@ -565,7 +573,7 @@ def _unsupported_response_format(error_text: str) -> bool:
     )
 
 
-async def call_databricks_chat_completions(
+async def _call_databricks_chat_completions_untraced(
     prompt: str,
     model: str = "system.ai.llama-4-maverick",
     system_instruction: Optional[str] = None,
@@ -578,15 +586,16 @@ async def call_databricks_chat_completions(
     image_bytes: Optional[bytes] = None,
     image_mime_type: str = "image/png",
     diagnostics: Optional[dict[str, Any]] = None,
-    temperature: float = 0.0,
+    temperature: float = DEFAULT_DATABRICKS_TEMPERATURE,
+    client_request_id: Optional[str] = None,
 ) -> Optional[str]:
     """Call Databricks Model Serving AI Gateway via OpenAI-compatible endpoint."""
     import time
     token = settings.effective_databricks_token
-    if not token or not settings.DATABRICKS_BASE_URL:
+    base_url = settings.effective_databricks_base_url
+    if not token or not base_url:
         return None
 
-    base_url = settings.DATABRICKS_BASE_URL.rstrip("/")
     url = f"{base_url}/chat/completions"
 
     messages = []
@@ -608,6 +617,10 @@ async def call_databricks_chat_completions(
         "temperature": temperature,
         "max_tokens": max_output_tokens,
     }
+    if client_request_id:
+        # AI Gateway inference tables expose this value, allowing provider
+        # payload rows to be joined to application-level MLflow traces.
+        payload["client_request_id"] = client_request_id
     is_gpt_oss = model.rsplit(".", 1)[-1] in {
         "gpt-oss-120b", "gpt-oss-20b", "databricks-gpt-oss-120b", "databricks-gpt-oss-20b"
     }
@@ -638,14 +651,29 @@ async def call_databricks_chat_completions(
         "Content-Type": "application/json",
     }
 
+    if diagnostics is not None:
+        diagnostics.update({
+            "client_request_id": client_request_id,
+            "temperature": temperature,
+            "attempt_count": 0,
+            "rate_limit_retries": 0,
+        })
+
     for attempt in range(MAX_ATTEMPTS):
         try:
+            if diagnostics is not None:
+                diagnostics["attempt_count"] = attempt + 1
             t0 = time.time()
             print(f"  [LLM Request -> Databricks] Sending prompt to {model} ({len(prompt)} chars, reasoning={payload.get('reasoning_effort', 'default')}, timeout={timeout}s)...", flush=True)
             async with httpx.AsyncClient(timeout=timeout) as client:
                 resp = await client.post(url, json=payload, headers=headers)
                 elapsed = time.time() - t0
                 if resp.status_code in RETRYABLE_STATUS_CODES:
+                    if diagnostics is not None:
+                        diagnostics["rate_limit_retries"] = int(
+                            diagnostics.get("rate_limit_retries", 0)
+                        ) + 1
+                        diagnostics["last_http_status"] = resp.status_code
                     print(f"  [LLM Warning] Databricks rate/capacity [{resp.status_code}]. Retrying (attempt {attempt+1}/{MAX_ATTEMPTS})...", flush=True)
                     logger.warning(
                         f"Databricks API rate/capacity [{resp.status_code}] for model {model}. "
@@ -688,7 +716,8 @@ async def call_databricks_chat_completions(
                 if diagnostics is not None:
                     diagnostics.update({"finish_reason": finish_reason, "usage": data.get("usage"),
                                         "elapsed_seconds": elapsed, "max_output_tokens": max_output_tokens,
-                                        "served_model": data.get("model", model)})
+                                        "served_model": data.get("model", model),
+                                        "last_http_status": resp.status_code})
                 if isinstance(content, list):
                     parts = []
                     for p in content:
@@ -740,6 +769,80 @@ async def call_databricks_chat_completions(
             )
             await asyncio.sleep(20.0)
     return None
+
+
+async def call_databricks_chat_completions(
+    prompt: str,
+    model: str = "system.ai.llama-4-maverick",
+    system_instruction: Optional[str] = None,
+    json_mode: bool = False,
+    response_schema: Optional[dict[str, Any]] = None,
+    schema_name: str = "structured_response",
+    max_output_tokens: int = 4096,
+    timeout: Optional[float] = None,
+    thinking_level: Optional[str] = None,
+    image_bytes: Optional[bytes] = None,
+    image_mime_type: str = "image/png",
+    diagnostics: Optional[dict[str, Any]] = None,
+    temperature: float = DEFAULT_DATABRICKS_TEMPERATURE,
+    client_request_id: Optional[str] = None,
+) -> Optional[str]:
+    """Trace one logical Databricks request, including internal retries."""
+    request_id = client_request_id or new_correlation_id("llm")
+    call_diagnostics = diagnostics if diagnostics is not None else {}
+    with trace_span(
+        "databricks.chat_completion",
+        span_type="LLM",
+        inputs={
+            "client_request_id": request_id,
+            "prompt": traced_content(prompt),
+            "system_instruction": traced_content(system_instruction or ""),
+            "response_schema": traced_content(response_schema or {}),
+            "image": {
+                "present": image_bytes is not None,
+                "bytes": len(image_bytes or b""),
+                "mime_type": image_mime_type if image_bytes is not None else None,
+            },
+        },
+        attributes={
+            "client_request_id": request_id,
+            "model": model,
+            "temperature": temperature,
+            "json_mode": json_mode,
+            "schema_name": schema_name,
+            "max_output_tokens": max_output_tokens,
+            "thinking_level": thinking_level or "default",
+        },
+    ) as span:
+        result = await _call_databricks_chat_completions_untraced(
+            prompt=prompt,
+            model=model,
+            system_instruction=system_instruction,
+            json_mode=json_mode,
+            response_schema=response_schema,
+            schema_name=schema_name,
+            max_output_tokens=max_output_tokens,
+            timeout=timeout,
+            thinking_level=thinking_level,
+            image_bytes=image_bytes,
+            image_mime_type=image_mime_type,
+            diagnostics=call_diagnostics,
+            temperature=temperature,
+            client_request_id=request_id,
+        )
+        set_span_attribute(span, "attempt_count", call_diagnostics.get("attempt_count", 0))
+        set_span_attribute(span, "rate_limit_retries", call_diagnostics.get("rate_limit_retries", 0))
+        set_span_attribute(span, "served_model", call_diagnostics.get("served_model", model))
+        set_span_attribute(span, "success", bool(result))
+        set_span_outputs(span, {
+            "response": traced_content(result or ""),
+            "finish_reason": call_diagnostics.get("finish_reason"),
+            "usage": call_diagnostics.get("usage"),
+            "elapsed_seconds": call_diagnostics.get("elapsed_seconds"),
+            "http_status": call_diagnostics.get("last_http_status"),
+            "error": call_diagnostics.get("error"),
+        })
+        return result
 
 
 async def call_groq_chat_completions(

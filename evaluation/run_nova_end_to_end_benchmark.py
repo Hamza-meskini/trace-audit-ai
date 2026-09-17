@@ -37,6 +37,14 @@ from app.services.retrieval import precompute_chunk_embeddings, build_requiremen
 from app.services.databricks_ai_search import retrieve_with_fallback, sync_project_chunks
 from app.services.databricks_document_ai import enrich_targeted_evidence_items
 from app.services.visual_analysis import describe_figure_candidates
+from app.services.llm_client import DEFAULT_DATABRICKS_TEMPERATURE
+from app.services.observability import (
+    log_benchmark_metrics,
+    new_correlation_id,
+    observation_context,
+    set_span_outputs,
+    trace_span,
+)
 from evaluation.run_extraction_benchmark import run as run_extraction_stage
 from evaluation.atomic_evaluation import POLICY, SCORING_VERSION, decomposition, verification_metrics
 from evaluation.run_fmvss305_benchmark import (
@@ -270,7 +278,7 @@ def markdown_report(result: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-async def run(
+async def _run_impl(
     mode: str,
     model: str,
     thinking_level: str | None,
@@ -282,6 +290,7 @@ async def run(
     batch_size: int,
     resume: bool,
     retrieval_backend: str = "auto",
+    run_id: str | None = None,
 ) -> dict[str, Any]:
     if mode not in MODES:
         raise ValueError(f"Unknown mode: {mode}")
@@ -539,7 +548,7 @@ async def run(
         },
     }
     result = {
-        "run_id": datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S.%fZ"),
+        "run_id": run_id or datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S.%fZ"),
         "evaluated_contracts": evaluated_contracts,
         "verification_inputs": verification_inputs,
         "benchmark_id": dataset["benchmark_id"],
@@ -551,6 +560,13 @@ async def run(
         "atomic_thinking_level": atomic_thinking_level,
         "verification_thinking_level": verification_thinking_level,
         "thinking_level": thinking_level,
+        "generation_config": {
+            "provider": settings.LLM_PROVIDER,
+            "temperature": DEFAULT_DATABRICKS_TEMPERATURE,
+            "batch_size": batch_size,
+            "retrieval_backend": retrieval_backend,
+            "resume": resume,
+        },
         "runtime_seconds": round(time.time() - started, 2),
         "validation": validation,
         "documents": {"requirements": dataset["documents"], "evidence": dataset["evidence_documents"]},
@@ -560,6 +576,25 @@ async def run(
         "metrics": metrics,
         "requirements": rows,
     }
+    result["mlflow"] = log_benchmark_metrics(
+        run_name=f"nova-{mode}-{result['run_id']}",
+        metrics=metrics,
+        parameters={
+            "benchmark_id": dataset["benchmark_id"],
+            "benchmark_version": dataset["version"],
+            "mode": mode,
+            "provider": settings.LLM_PROVIDER,
+            "model": model,
+            "atomic_model": atomic_model,
+            "verification_model": verification_model,
+            "temperature": DEFAULT_DATABRICKS_TEMPERATURE,
+            "batch_size": batch_size,
+            "retrieval_backend": retrieval_backend,
+            "resume": resume,
+            "runner_sha256": metrics["integrity"]["runner_sha256"],
+            "ground_truth_sha256": metrics["integrity"]["ground_truth_sha256"],
+        },
+    )
     model_slug = re.sub(r"[^a-z0-9]+", "-", model.lower()).strip("-")
     atomic_slug = re.sub(r"[^a-z0-9]+", "-", atomic_model.lower()).strip("-")
     verification_slug = re.sub(r"[^a-z0-9]+", "-", verification_model.lower()).strip("-")
@@ -584,6 +619,73 @@ async def run(
     print(f"JSON: {json_path}")
     print(f"Report: {report_path}")
     return result
+
+
+async def run(
+    mode: str,
+    model: str,
+    thinking_level: str | None,
+    atomic_model: str,
+    atomic_thinking_level: str | None,
+    atomic_fallback_model: str,
+    verification_model: str,
+    verification_thinking_level: str | None,
+    batch_size: int,
+    resume: bool,
+    retrieval_backend: str = "auto",
+) -> dict[str, Any]:
+    """Run Nova under one root trace and persist its reproducibility settings."""
+    benchmark_run_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S.%fZ")
+    correlation_id = new_correlation_id("nova")
+    with observation_context(
+        audit_run_id=correlation_id,
+        benchmark_run_id=benchmark_run_id,
+        benchmark_id="nova-48",
+        stage="benchmark",
+    ):
+        with trace_span(
+            "traceaudit.nova_benchmark",
+            span_type="CHAIN",
+            inputs={
+                "run_id": benchmark_run_id,
+                "mode": mode,
+                "model": model,
+                "atomic_model": atomic_model,
+                "verification_model": verification_model,
+                "temperature": DEFAULT_DATABRICKS_TEMPERATURE,
+                "batch_size": batch_size,
+                "retrieval_backend": retrieval_backend,
+                "resume": resume,
+            },
+        ) as span:
+            result = await _run_impl(
+                mode=mode,
+                model=model,
+                thinking_level=thinking_level,
+                atomic_model=atomic_model,
+                atomic_thinking_level=atomic_thinking_level,
+                atomic_fallback_model=atomic_fallback_model,
+                verification_model=verification_model,
+                verification_thinking_level=verification_thinking_level,
+                batch_size=batch_size,
+                resume=resume,
+                retrieval_backend=retrieval_backend,
+                run_id=benchmark_run_id,
+            )
+            set_span_outputs(span, {
+                "run_id": result["run_id"],
+                "runtime_seconds": result["runtime_seconds"],
+                "final_verdict": result["metrics"]["final_verdict"],
+                "structured_decomposition": {
+                    key: result["metrics"]["structured_decomposition"].get(key)
+                    for key in ("precision", "recall", "f1")
+                },
+                "retrieval_recall_at_3": result["metrics"]["retrieval"].get("recall_at_3"),
+                "unsafe_false_auto_closes": result["metrics"]["review_gate"].get(
+                    "unsafe_false_auto_closes"
+                ),
+            })
+            return result
 
 
 def configure_provider(provider: str | None, model: str) -> None:

@@ -28,8 +28,13 @@ export function useProjectStats(id: string) {
 export function useCreateProject() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (data: { name: string; product_name: string; product_category?: string; company?: string; description?: string }) =>
-      api.createProject(data),
+    mutationFn: (data: {
+      name: string;
+      product_name: string;
+      product_category?: string;
+      company?: string;
+      description?: string;
+    }) => api.createProject(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["projects"] });
     },

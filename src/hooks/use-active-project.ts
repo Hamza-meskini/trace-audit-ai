@@ -37,8 +37,7 @@ export function useActiveProject() {
   }, [selectedId]);
 
   // Find active project from list or default to proj-001
-  const activeProject: ApiProject =
-    projects?.find((p) => p.id === selectedId) ||
+  const activeProject: ApiProject = projects?.find((p) => p.id === selectedId) ||
     projects?.[0] || {
       id: "proj-001",
       name: "Industrial Controller X200",
@@ -47,7 +46,8 @@ export function useActiveProject() {
       product_category: "Industrial electronic controller",
       company: "Atlas Motion Systems",
       status: "Analysis complete",
-      description: "EU technical documentation audit for the X200 industrial electronic controller.",
+      description:
+        "EU technical documentation audit for the X200 industrial electronic controller.",
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     };
