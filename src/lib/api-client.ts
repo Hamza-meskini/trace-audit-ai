@@ -31,6 +31,38 @@ export interface ApiCurrentUser {
   provider: string;
 }
 
+export interface ApiVisitor {
+  id: string;
+  email: string;
+  full_name: string | null;
+  company: string | null;
+  role: string | null;
+  notes: string | null;
+  source: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface RegisterVisitorRequest {
+  email: string;
+  full_name?: string | undefined;
+  company?: string | undefined;
+  role?: string | undefined;
+  notes?: string | undefined;
+  source?: string | undefined;
+}
+
+export interface VisitorListResponse {
+  total: number;
+  items: ApiVisitor[];
+}
+
+export interface VisitorRegisterResponse {
+  status: string;
+  message: string;
+  lead: ApiVisitor;
+}
+
 export interface ApiProject {
   id: string;
   name: string;
@@ -488,4 +520,20 @@ export const api = {
 
   // Current Authenticated User / Databricks SSO Identity
   getCurrentUser: () => request<ApiCurrentUser>("/me"),
+
+  // Visitor Lead Registration & Management
+  registerVisitor: (data: RegisterVisitorRequest) =>
+    request<VisitorRegisterResponse>("/visitors", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+  getVisitors: (search?: string) => {
+    const query = search ? `?search=${encodeURIComponent(search)}` : "";
+    return request<VisitorListResponse>(`/visitors${query}`);
+  },
+  deleteVisitor: (id: string) =>
+    request<{ status: string; message: string }>(`/visitors/${encodeURIComponent(id)}`, {
+      method: "DELETE",
+    }),
+  getVisitorsExportUrl: () => `${getApiBaseUrl()}/visitors/export`,
 };

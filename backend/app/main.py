@@ -20,6 +20,7 @@ from app.api.requirements import router as requirements_router
 from app.api.findings import router as findings_router
 from app.api.audit import router as audit_router
 from app.api.settings import router as settings_router
+from app.api.visitors import router as visitors_router
 
 logger = logging.getLogger("traceaudit")
 
@@ -75,6 +76,7 @@ app.include_router(requirements_router, prefix="/api")
 app.include_router(findings_router, prefix="/api")
 app.include_router(audit_router, prefix="/api")
 app.include_router(settings_router, prefix="/api")
+app.include_router(visitors_router, prefix="/api")
 
 
 @app.get("/api/health")

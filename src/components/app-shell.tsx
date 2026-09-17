@@ -63,10 +63,13 @@ import { useRequirements } from "@/hooks/use-requirements";
 import { useDocuments } from "@/hooks/use-documents";
 import { useFindings } from "@/hooks/use-findings";
 import { useCurrentUser } from "@/hooks/use-current-user";
+import { VisitorCaptureModal, useAutoVisitorPrompt } from "@/components/visitor-capture-modal";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const [collapsed, setCollapsed] = useState(false);
   const [openSearch, setOpenSearch] = useState(false);
+  const [manualVisitorOpen, setManualVisitorOpen] = useState(false);
+  const { isOpen: autoVisitorOpen, setIsOpen: setAutoVisitorOpen } = useAutoVisitorPrompt();
   const currentUser = useCurrentUser();
   const {
     activeProject,
@@ -243,8 +246,25 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               </kbd>
             </Button>
 
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setManualVisitorOpen(true)}
+              className="hidden md:inline-flex gap-1.5 border-primary/30 bg-primary/5 hover:bg-primary/10 text-primary text-xs font-medium"
+            >
+              <Sparkles className="size-3.5 text-primary" />
+              <span>Request Access</span>
+            </Button>
+
             <div className="ml-1 grid size-7 place-items-center rounded-full bg-accent text-[11px] font-semibold">
-              LR
+              {(currentUser.data?.user
+                ? currentUser.data.user
+                    .split(/[\s@._-]+/)
+                    .filter(Boolean)
+                    .slice(0, 2)
+                    .map((s) => s[0]?.toUpperCase())
+                    .join("")
+                : "LR") || "LR"}
             </div>
           </div>
         </header>
@@ -317,6 +337,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </CommandGroup>
         </CommandList>
       </CommandDialog>
+
+      <VisitorCaptureModal
+        open={manualVisitorOpen || autoVisitorOpen}
+        onOpenChange={(next) => {
+          setManualVisitorOpen(next);
+          setAutoVisitorOpen(next);
+        }}
+        source={manualVisitorOpen ? "header_request_button" : "auto_visitor_prompt"}
+      />
     </div>
   );
 }
