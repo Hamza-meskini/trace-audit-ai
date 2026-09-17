@@ -13,7 +13,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { PageHeader, Panel } from "@/components/primitives";
-import { categories } from "@/lib/mock-data";
 import { useCreateProject } from "@/hooks/use-projects";
 import { useUploadDocument, useDocuments } from "@/hooks/use-documents";
 import { useTriggerAudit } from "@/hooks/use-audit";
@@ -34,6 +33,14 @@ export const Route = createFileRoute("/new-audit")({
 });
 
 const steps = ["Project", "Requirements", "Evidence", "Review & Model"];
+const categories = [
+  "Electrical",
+  "Safety",
+  "Environmental",
+  "Mechanical",
+  "Cybersecurity",
+  "Documentation",
+] as const;
 
 function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error);

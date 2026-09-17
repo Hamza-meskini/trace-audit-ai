@@ -25,6 +25,19 @@ export function getApiBaseUrl(): string {
 
 export const API_BASE_URL = getApiBaseUrl();
 
+export type ReviewState = "Reviewed" | "Needs review" | "Open" | "Approved" | "Rejected";
+
+export type Severity = "Critical" | "High" | "Medium" | "Low";
+
+export type FindingType =
+  | "Missing evidence"
+  | "Partial evidence"
+  | "Potential conflict"
+  | "Unsupported requirement"
+  | "Duplicate requirement"
+  | "Ambiguous requirement"
+  | "Inconclusive evidence";
+
 export interface ApiCurrentUser {
   user: string;
   email: string | null;

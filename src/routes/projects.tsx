@@ -58,17 +58,17 @@ function ProjectPage() {
   const { data: findingsList } = useFindings(activeProjectId);
 
   const projectStats = stats || {
-    requirements: 12,
-    coverage: 58,
-    supported: 7,
-    partial: 1,
-    missing: 2,
-    conflict: 2,
+    requirements: 0,
+    coverage: 0,
+    supported: 0,
+    partial: 0,
+    missing: 0,
+    conflict: 0,
     unknown: 0,
     not_applicable: 0,
-    documents: 6,
-    evidence_segments: 15,
-    findings: 5,
+    documents: 0,
+    evidence_segments: 0,
+    findings: 0,
   };
 
   return (

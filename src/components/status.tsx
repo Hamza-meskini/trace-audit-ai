@@ -1,5 +1,5 @@
 import { cn } from "@/lib/utils";
-import type { CoverageStatus, ReviewState, Severity } from "@/lib/mock-data";
+import type { CoverageStatus, ReviewState, Severity } from "@/lib/api-client";
 import type { ReactNode } from "react";
 
 const base =

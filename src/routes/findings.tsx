@@ -14,7 +14,6 @@ import { EmptyState, PageHeader, Panel } from "@/components/primitives";
 import { Mono, ReviewBadge, SeverityBadge } from "@/components/status";
 import { useActiveProject } from "@/hooks/use-active-project";
 import { useFindings, useUpdateFinding } from "@/hooks/use-findings";
-import { categories } from "@/lib/mock-data";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/findings")({
@@ -65,6 +64,9 @@ function FindingsPage() {
   const allFindings = findingsList || [];
   const reviewers = Array.from(
     new Set(allFindings.map((f) => f.assigned_to).filter(Boolean) as string[]),
+  );
+  const categories = Array.from(
+    new Set(allFindings.map((f) => f.category).filter(Boolean) as string[]),
   );
 
   const rows = useMemo(

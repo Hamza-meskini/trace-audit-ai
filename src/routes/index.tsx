@@ -52,17 +52,17 @@ function Dashboard() {
   const { data: findings } = useFindings(activeProjectId);
 
   const projectStats = stats || {
-    requirements: 12,
-    coverage: 58,
-    supported: 7,
-    partial: 1,
-    missing: 2,
-    conflict: 2,
+    requirements: 0,
+    coverage: 0,
+    supported: 0,
+    partial: 0,
+    missing: 0,
+    conflict: 0,
     unknown: 0,
     not_applicable: 0,
-    documents: 6,
-    evidence_segments: 15,
-    findings: 5,
+    documents: 0,
+    evidence_segments: 0,
+    findings: 0,
   };
 
   const coverageData = [
@@ -77,9 +77,9 @@ function Dashboard() {
   const recentFindings = (findings || []).slice(0, 4);
 
   const severityCounts = {
-    Critical: findings?.filter((f) => f.severity === "Critical").length ?? 1,
-    High: findings?.filter((f) => f.severity === "High").length ?? 2,
-    Medium: findings?.filter((f) => f.severity === "Medium").length ?? 2,
+    Critical: findings?.filter((f) => f.severity === "Critical").length ?? 0,
+    High: findings?.filter((f) => f.severity === "High").length ?? 0,
+    Medium: findings?.filter((f) => f.severity === "Medium").length ?? 0,
     Low: findings?.filter((f) => f.severity === "Low").length ?? 0,
   };
 
@@ -107,7 +107,7 @@ function Dashboard() {
                 <ArrowRight className="size-4" />
               </Button>
               <Button variant="outline" onClick={() => navigate({ to: "/projects" })}>
-                View demo audit
+                View project workspace
               </Button>
             </div>
           </div>

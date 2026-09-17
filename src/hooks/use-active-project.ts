@@ -36,18 +36,17 @@ export function useActiveProject() {
     };
   }, [selectedId]);
 
-  // Find active project from list or default to proj-001
+  // Find active project from list or default to clean placeholder
   const activeProject: ApiProject = projects?.find((p) => p.id === selectedId) ||
     projects?.[0] || {
-      id: "proj-001",
-      name: "Industrial Controller X200",
-      audit_id: "TA-2026-0042",
-      product_name: "Industrial Controller X200",
-      product_category: "Industrial electronic controller",
-      company: "Atlas Motion Systems",
-      status: "Analysis complete",
-      description:
-        "EU technical documentation audit for the X200 industrial electronic controller.",
+      id: selectedId || "",
+      name: isLoading ? "Loading project…" : "No active project",
+      audit_id: "—",
+      product_name: "",
+      product_category: "",
+      company: "",
+      status: "—",
+      description: null,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     };
