@@ -1393,7 +1393,7 @@ def build_batch_verification_prompt(
 
     prompt = f"""Evaluate the following batch of {len(batch_items)} engineering requirements against their respective retrieved technical evidence excerpts:
 
-{"\n".join(req_blocks)}
+{chr(10).join(req_blocks)}
 
 {_AUDIT_RULEBOOK.replace("Return every declared condition exactly once in `condition_results`, using its exact condition ID. Never omit a condition.", "For each requirement item, return every defined condition exactly once using its exact ID and one state: PROVEN, FAILED, PENDING, UNTESTED, NOT_APPLICABLE, or INCONCLUSIVE.").replace("Apply the stated Regulatory Logic.", "Apply each item's explicit Regulatory Logic: ALL_OF, ANY_OF, or IF_THEN. Do not treat alternative branches as mandatory siblings.")}
 

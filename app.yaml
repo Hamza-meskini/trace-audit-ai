@@ -2,19 +2,149 @@
 # Ref: https://docs.databricks.com/en/dev-tools/databricks-apps/app-yaml.html
 
 command:
-  - "python"
-  - "-m"
-  - "uvicorn"
-  - "app.main:app"
-  - "--app-dir"
-  - "backend"
-  - "--host"
-  - "0.0.0.0"
-  - "--port"
-  - "${DATABRICKS_APP_PORT}"
+  - "/bin/sh"
+  - "-c"
+  - |
+    set -e
+    
+    # Install Bun if not present
+    if ! command -v bun &> /dev/null; then
+      echo "📦 Installing Bun..."
+      curl -fsSL https://bun.sh/install | bash
+      export BUN_INSTALL="$HOME/.bun"
+      export PATH="$BUN_INSTALL/bin:$PATH"
+    else
+      export BUN_INSTALL="$HOME/.bun"
+      export PATH="$BUN_INSTALL/bin:$PATH"
+      echo "✅ Bun already installed: $(bun --version)"
+    fi
+    
+    # Build frontend
+    echo "🔨 Building frontend..."
+    bun install --frozen-lockfile
+    bun run build
+    
+    # Verify build output
+    if [ ! -f "dist/client/index.html" ]; then
+      echo "❌ Build failed: dist/client/index.html not found"
+      exit 1
+    fi
+    
+    echo "✅ Frontend built successfully"
+    echo "🚀 Starting backend..."
+    
+    # Start backend
+    python -m uvicorn app.main:app --app-dir backend --host 0.0.0.0 --port ${DATABRICKS_APP_PORT}
 
 env:
+  # ========================================
+  # Application Configuration (non-sensitive)
+  # ========================================
   - name: "FRONTEND_DIR"
     value: "dist/client"
   - name: "PYTHONUNBUFFERED"
     value: "1"
+  - name: "DEBUG"
+    value: "true"
+  
+  # ========================================
+  # Database & Storage
+  # ========================================
+  - name: "DATABASE_URL"
+    value: "sqlite+aiosqlite:///./traceaudit.db"
+  - name: "UPLOAD_DIR"
+    value: "./uploads"
+  
+  # ========================================
+  # LLM Provider Configuration
+  # ========================================
+  - name: "LLM_PROVIDER"
+    value: "databricks"
+  - name: "LLM_MODEL"
+    value: "system.ai.meta-llama-3-3-70b-instruct"
+  - name: "GEMINI_THINKING_LEVEL"
+    value: "HIGH"
+  
+  # ========================================
+  # Databricks Configuration
+  # ========================================
+  - name: "DATABRICKS_BASE_URL"
+    value: "https://dbc-4973b3f3-18e4.cloud.databricks.com/ai-gateway/mlflow/v1"
+  - name: "DATABRICKS_MODEL"
+    value: "system.ai.llama-4-maverick"
+  - name: "TRACEAUDIT_DOCUMENT_PARSER"
+    value: "databricks-auto"
+  - name: "DATABRICKS_SQL_WAREHOUSE_ID"
+    value: "c29920ca9f9ac243"
+  - name: "DATABRICKS_DOCUMENT_VOLUME"
+    value: "/Volumes/workspace/traceaudit/documents"
+  - name: "DATABRICKS_TARGETED_EXTRACTION_ENABLED"
+    value: "false"
+  - name: "DATABRICKS_TARGETED_EXTRACTION_CONCURRENCY"
+    value: "2"
+  
+  # ========================================
+  # Vision Model Configuration
+  # ========================================
+  - name: "GROQ_VISION_MODEL"
+    value: "qwen/qwen3.6-27b"
+  - name: "HF_VISION_MODEL"
+    value: "Qwen/Qwen2.5-VL-3B-Instruct"
+  - name: "OPENROUTER_VISION_MODEL"
+    value: "openrouter/free"
+  
+  # ========================================
+  # TokenRouter Configuration
+  # ========================================
+  - name: "TOKENROUTER_BASE_URL"
+    value: "https://api.tokenrouter.com/v1"
+  - name: "TOKENROUTER_MODEL"
+    value: "z-ai/glm-5.3-free"
+  
+  # ========================================
+  # DashScope Configuration
+  # ========================================
+  - name: "DASHSCOPE_BASE_URL"
+    value: "https://dashscope-intl.aliyuncs.com/api/v2/apps/protocols/compatible-mode/v1"
+  - name: "DASHSCOPE_MODEL"
+    value: "qwen3.8-flash"
+  
+  # ========================================
+  # OpenRouter Configuration
+  # ========================================
+  - name: "OPENROUTER_BASE_URL"
+    value: "https://openrouter.ai/api/v1"
+  
+  # ========================================
+  # OpenAI Configuration
+  # ========================================
+  - name: "OPENAI_BASE_URL"
+    value: "https://api.openai.com/v1"
+  
+  # ========================================
+  # CORS Configuration
+  # ========================================
+  - name: "CORS_ORIGINS"
+    value: '["http://localhost:5173","http://localhost:3000","http://localhost:8080"]'
+  
+  # ========================================
+  # API KEYS (Secured via Databricks Secrets)
+  # ========================================
+  - name: "GEMINI_API_KEY"
+    value: "{{secrets/traceaudit-secrets/gemini-api-key}}"
+  - name: "GROQ_API_KEY"
+    value: "{{secrets/traceaudit-secrets/groq-api-key}}"
+  - name: "HF_TOKEN"
+    value: "{{secrets/traceaudit-secrets/hf-token}}"
+  - name: "DATABRICKS_TOKEN"
+    value: "{{secrets/traceaudit-secrets/databricks-token}}"
+  - name: "TOKENROUTER_API_KEY"
+    value: "{{secrets/traceaudit-secrets/tokenrouter-api-key}}"
+  - name: "DASHSCOPE_API_KEY"
+    value: "{{secrets/traceaudit-secrets/dashscope-api-key}}"
+  - name: "OPENROUTER_API_KEY"
+    value: "{{secrets/traceaudit-secrets/openrouter-api-key}}"
+  
+  # Empty keys (optional - can be set later if needed)
+  - name: "OPENAI_API_KEY"
+    value: ""

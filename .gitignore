@@ -15,6 +15,7 @@ package-lock.json
 bun.lock
 
 # ── Build output ─────────────────────────────────────────────
+# Build artifacts (built in workspace via notebook, not committed)
 dist/
 dist-ssr/
 .output/
@@ -119,3 +120,4 @@ evaluation/*.ps1
 
 # ── Codex visualizations / analysis artifacts ────────────────
 .codex/
+app.yaml.backup

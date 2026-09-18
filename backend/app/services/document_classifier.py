@@ -382,7 +382,7 @@ its verification_basis remains physical_test when those calculations derive resu
 from measured physical testing.
 
 Documents:
-{"\n".join(docs_block)}
+{chr(10).join(docs_block)}
 """
     system_instruction = "Classify technical engineering documents into their exact audit role based on content and structure."
 
