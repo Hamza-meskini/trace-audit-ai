@@ -85,7 +85,7 @@ logger.info("Initializing database subsystem with backend: %s", active_backend)
 
 if active_backend == "databricks":
     url = settings.databricks_sqlalchemy_url
-    logger.info("Using Databricks SQL Warehouse engine (%s.%s)", settings.DATABRICKS_CATALOG, settings.DATABRICKS_SCHEMA)
+    logger.info("Using Databricks SQL Warehouse engine (%s.%s)", settings.effective_databricks_catalog, settings.effective_databricks_schema)
     sync_engine = create_engine(url, echo=settings.DEBUG, pool_pre_ping=True)
     databricks_session_factory = sessionmaker(bind=sync_engine, expire_on_commit=False)
     engine = None
@@ -135,14 +135,14 @@ async def init_db() -> None:
     if backend == "databricks":
         logger.info(
             "Creating Delta Lake tables on Databricks SQL Warehouse in catalog '%s', schema '%s'...",
-            settings.DATABRICKS_CATALOG,
-            settings.DATABRICKS_SCHEMA,
+            settings.effective_databricks_catalog,
+            settings.effective_databricks_schema,
         )
         def _sync_init():
             with sync_engine.connect() as conn:
                 # Ensure catalog and schema exist
                 try:
-                    conn.exec_driver_sql(f"CREATE SCHEMA IF NOT EXISTS {settings.DATABRICKS_CATALOG}.{settings.DATABRICKS_SCHEMA}")
+                    conn.exec_driver_sql(f"CREATE SCHEMA IF NOT EXISTS {settings.effective_databricks_catalog}.{settings.effective_databricks_schema}")
                 except Exception as e:
                     logger.warning("Could not auto-create schema: %s", e)
             Base.metadata.create_all(bind=sync_engine)

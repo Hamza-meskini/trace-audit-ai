@@ -1,8 +1,54 @@
-"""TraceAudit AI — Application configuration."""
-
+import base64
+import logging
 import os
 from pathlib import Path
+import re
+from typing import Any
 from pydantic_settings import BaseSettings
+
+logger = logging.getLogger("config")
+
+
+_secret_cache: dict[str, str] = {}
+
+
+def resolve_secret(val: str) -> str:
+    """If val is a Databricks secret template '{{secrets/scope/key}}', resolve it via Databricks SDK."""
+    if not val or not isinstance(val, str):
+        return val or ""
+    val = val.strip()
+    if not (val.startswith("{{secrets/") and val.endswith("}}")):
+        return val
+    match = re.match(r"^\{\{secrets/([^/]+)/([^}]+)\}\}$", val)
+    if not match:
+        return val
+    scope, key = match.group(1), match.group(2)
+    cache_key = f"{scope}/{key}"
+    if cache_key in _secret_cache:
+        return _secret_cache[cache_key]
+    try:
+        from databricks.sdk import WorkspaceClient
+
+        orig_token = os.environ.get("DATABRICKS_TOKEN")
+        if orig_token and orig_token.startswith("{{"):
+            os.environ.pop("DATABRICKS_TOKEN", None)
+        try:
+            w = WorkspaceClient()
+            resp = w.secrets.get_secret(scope=scope, key=key)
+            raw_val = resp.value or ""
+            try:
+                decoded = base64.b64decode(raw_val).decode("utf-8")
+            except Exception:
+                decoded = raw_val
+            _secret_cache[cache_key] = decoded
+            logger.info("Successfully resolved Databricks secret template {{secrets/%s/%s}}", scope, key)
+            return decoded
+        finally:
+            if orig_token and orig_token.startswith("{{"):
+                os.environ["DATABRICKS_TOKEN"] = orig_token
+    except Exception as exc:
+        logger.warning("Could not auto-resolve Databricks secret template {{secrets/%s/%s}}: %s", scope, key, exc)
+        return ""
 
 
 class Settings(BaseSettings):
@@ -166,6 +212,7 @@ class Settings(BaseSettings):
     SECONDARY_ADJUDICATOR_ENABLED: bool = True
     SECONDARY_ADJUDICATOR_MODEL: str = ""
 
+
     # Extractive citation grounding runs only when an attributed condition's
     # current quote is not a literal span of its cited evidence excerpt.
     CITATION_GROUNDING_ENABLED: bool = True
@@ -188,14 +235,16 @@ class Settings(BaseSettings):
             key = self.OPENAI_API_KEY
         if not key:
             key = os.environ.get("GEMINI_API_KEY", "") or os.environ.get("GOOGLE_API_KEY", "")
-        return key
+        return resolve_secret(key)
 
     @property
     def effective_openai_api_key(self) -> str:
         """Return OpenAI API key if present and starts with sk-."""
-        if self.OPENAI_API_KEY and self.OPENAI_API_KEY.startswith("sk-"):
-            return self.OPENAI_API_KEY
-        return os.environ.get("OPENAI_API_KEY", "")
+        key = self.OPENAI_API_KEY or os.environ.get("OPENAI_API_KEY", "")
+        resolved = resolve_secret(key)
+        if resolved and resolved.startswith("sk-"):
+            return resolved
+        return ""
 
     @property
     def effective_openai_base_url(self) -> str:
@@ -206,7 +255,8 @@ class Settings(BaseSettings):
     @property
     def effective_tokenrouter_api_key(self) -> str:
         """Return TokenRouter API key from TOKENROUTER_API_KEY or environment."""
-        return self.TOKENROUTER_API_KEY or os.environ.get("TOKENROUTER_API_KEY", "")
+        key = self.TOKENROUTER_API_KEY or os.environ.get("TOKENROUTER_API_KEY", "")
+        return resolve_secret(key)
 
     @property
     def effective_tokenrouter_base_url(self) -> str:
@@ -217,12 +267,14 @@ class Settings(BaseSettings):
     @property
     def effective_dashscope_api_key(self) -> str:
         """Return the DashScope key without exposing it to diagnostics."""
-        return self.DASHSCOPE_API_KEY or os.environ.get("DASHSCOPE_API_KEY", "")
+        key = self.DASHSCOPE_API_KEY or os.environ.get("DASHSCOPE_API_KEY", "")
+        return resolve_secret(key)
 
     @property
     def effective_openrouter_api_key(self) -> str:
         """Return the OpenRouter credential used only by the vision cascade."""
-        return self.OPENROUTER_API_KEY or os.environ.get("OPENROUTER_API_KEY", "")
+        key = self.OPENROUTER_API_KEY or os.environ.get("OPENROUTER_API_KEY", "")
+        return resolve_secret(key)
 
     @property
     def effective_dashscope_base_url(self) -> str:
@@ -237,22 +289,25 @@ class Settings(BaseSettings):
     @property
     def effective_groq_api_key(self) -> str:
         """Return the active Groq API key without exposing it to diagnostics."""
-        return self.GROQ_API_KEY or os.environ.get("GROQ_API_KEY", "")
+        key = self.GROQ_API_KEY or os.environ.get("GROQ_API_KEY", "")
+        return resolve_secret(key)
 
     @property
     def effective_hf_token(self) -> str:
         """Return a Hugging Face Inference Providers token."""
-        return (
+        key = (
             self.HF_TOKEN
             or self.HUGGINGFACE_TOKEN
             or os.environ.get("HF_TOKEN", "")
             or os.environ.get("HUGGINGFACE_TOKEN", "")
         )
+        return resolve_secret(key)
 
     @property
     def effective_databricks_token(self) -> str:
         """Return Databricks token from DATABRICKS_TOKEN or environment."""
-        return self.DATABRICKS_TOKEN or os.environ.get("DATABRICKS_TOKEN", "")
+        token = self.DATABRICKS_TOKEN or os.environ.get("DATABRICKS_TOKEN", "")
+        return resolve_secret(token)
 
     @property
     def effective_databricks_host(self) -> str:
@@ -288,7 +343,7 @@ class Settings(BaseSettings):
         # Auto mode: if running inside Databricks Apps runtime, use Databricks
         if os.environ.get("DATABRICKS_APP_PORT") or os.environ.get("DATABRICKS_APP_ROOT_PATH"):
             warehouse_id = self.DATABRICKS_SQL_WAREHOUSE_ID or os.environ.get("DATABRICKS_SQL_WAREHOUSE_ID", "")
-            if warehouse_id and self.effective_databricks_token and self.effective_databricks_host:
+            if warehouse_id and (self.effective_databricks_token or os.environ.get("DATABRICKS_CLIENT_ID")) and self.effective_databricks_host:
                 return "databricks"
         return "sqlite"
 
@@ -315,6 +370,12 @@ class Settings(BaseSettings):
         warehouse_id = self.effective_databricks_warehouse_id
         catalog = self.effective_databricks_catalog
         schema = self.effective_databricks_schema
+        client_id = os.environ.get("DATABRICKS_CLIENT_ID", "")
+        client_secret = os.environ.get("DATABRICKS_CLIENT_SECRET", "")
+        if token:
+            return f"databricks://token:{token}@{host}:443?http_path=/sql/1.0/warehouses/{warehouse_id}&catalog={catalog}&schema={schema}"
+        if client_id and client_secret and client_secret != "***":
+            return f"databricks://@{host}:443?http_path=/sql/1.0/warehouses/{warehouse_id}&catalog={catalog}&schema={schema}&client_id={client_id}&client_secret={client_secret}"
         return f"databricks://token:{token}@{host}:443?http_path=/sql/1.0/warehouses/{warehouse_id}&catalog={catalog}&schema={schema}"
 
 
