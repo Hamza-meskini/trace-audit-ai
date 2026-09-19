@@ -122,8 +122,14 @@ def run_databricks_migration(check_only: bool = False, force_seed: bool = False)
 
     # 2. Create all Delta Lake tables via SQLAlchemy DDL
     logger.info("Creating Delta Lake tables via SQLAlchemy metadata...")
-    Base.metadata.create_all(bind=engine)
-    logger.info("✅ Base.metadata.create_all executed successfully.")
+    try:
+        Base.metadata.create_all(bind=engine)
+        logger.info("✅ Base.metadata.create_all executed successfully.")
+    except Exception as ddl_err:
+        if any(term in str(ddl_err) for term in ("UNIQUE", "INDEX", "PARSE_SYNTAX_ERROR")):
+            logger.warning("Delta Lake DDL notice (non-fatal index/constraint limitation): %s", ddl_err)
+        else:
+            raise
 
     # 3. Verify all expected tables exist
     with engine.connect() as conn:

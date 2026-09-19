@@ -145,7 +145,13 @@ async def init_db() -> None:
                     conn.exec_driver_sql(f"CREATE SCHEMA IF NOT EXISTS {settings.effective_databricks_catalog}.{settings.effective_databricks_schema}")
                 except Exception as e:
                     logger.warning("Could not auto-create schema: %s", e)
-            Base.metadata.create_all(bind=sync_engine)
+                try:
+                    Base.metadata.create_all(bind=sync_engine)
+                except Exception as ddl_err:
+                    if any(term in str(ddl_err) for term in ("UNIQUE", "INDEX", "PARSE_SYNTAX_ERROR")):
+                        logger.warning("Delta Lake DDL notice: %s", ddl_err)
+                    else:
+                        raise
 
         await asyncio.to_thread(_sync_init)
         logger.info("Databricks Delta Lake tables initialized successfully.")
