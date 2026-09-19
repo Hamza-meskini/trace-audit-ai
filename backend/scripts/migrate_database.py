@@ -55,6 +55,42 @@ EXPECTED_TABLES = [
 ]
 
 
+def reconcile_delta_columns(conn, catalog: str, schema: str):
+    """Ensure all columns declared on SQLAlchemy models exist on Delta Lake tables."""
+    from sqlalchemy import Integer, Float, DateTime, Text, String
+    from app.models.types import JSONType
+
+    def _type_str(sa_type) -> str:
+        if isinstance(sa_type, Integer):
+            return "INT"
+        elif isinstance(sa_type, Float):
+            return "DOUBLE"
+        elif isinstance(sa_type, DateTime):
+            return "TIMESTAMP_NTZ"
+        elif isinstance(sa_type, (String, Text, JSONType)):
+            return "STRING"
+        return "STRING"
+
+    for table in Base.metadata.sorted_tables:
+        t_name = table.name
+        try:
+            res = conn.execute(text(f"DESCRIBE TABLE {catalog}.{schema}.{t_name}"))
+            existing_cols = {r[0].lower() for r in res.fetchall()}
+        except Exception as e:
+            logger.debug("Could not inspect table %s: %s", t_name, e)
+            continue
+
+        for col in table.columns:
+            if col.name.lower() not in existing_cols:
+                col_type = _type_str(col.type)
+                logger.info("⚡ Adding missing column %s.%s.%s (%s)...", t_name, col.name, col_type)
+                try:
+                    conn.execute(text(f"ALTER TABLE {catalog}.{schema}.{t_name} ADD COLUMN ({col.name} {col_type})"))
+                    logger.info("✅ Added missing column %s to %s", col.name, t_name)
+                except Exception as alter_err:
+                    logger.warning("Could not add column %s to %s: %s", col.name, t_name, alter_err)
+
+
 def run_databricks_migration(check_only: bool = False, force_seed: bool = False) -> bool:
     """Provision Databricks SQL Warehouse schema and Delta Lake tables."""
     host = settings.effective_databricks_host
@@ -131,7 +167,13 @@ def run_databricks_migration(check_only: bool = False, force_seed: bool = False)
         else:
             raise
 
-    # 3. Verify all expected tables exist
+    # 3. Synchronize any missing columns on existing tables
+    logger.info("Synchronizing column schemas across all Delta Lake tables...")
+    with engine.connect() as conn:
+        reconcile_delta_columns(conn, catalog, schema)
+        logger.info("✅ Column synchronization complete.")
+
+    # 4. Verify all expected tables exist
     with engine.connect() as conn:
         res = conn.execute(text(f"SHOW TABLES IN {catalog}.{schema}"))
         found_tables = {r[1].lower() for r in res.fetchall()}

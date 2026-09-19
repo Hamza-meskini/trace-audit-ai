@@ -7,7 +7,7 @@ import logging
 import uuid
 
 from app.config import settings
-from app.database import async_session
+from app.database import get_db_context
 from app.services import audit_progress
 from app.services.pipeline import run_audit_pipeline
 
@@ -36,7 +36,7 @@ async def _execute(job: dict) -> None:
         audit_progress.update(project_id, stage, completed, total, message)
 
     try:
-        async with async_session() as db:
+        async with get_db_context() as db:
             result = await run_audit_pipeline(
                 project_id,
                 db,

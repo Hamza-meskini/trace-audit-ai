@@ -153,6 +153,42 @@ async def init_db() -> None:
                     else:
                         raise
 
+                # Reconcile any missing columns on existing Delta tables
+                try:
+                    from sqlalchemy import Integer, Float, DateTime, Text, String, text
+                    from app.models.types import JSONType
+
+                    def _type_str(sa_type) -> str:
+                        if isinstance(sa_type, Integer):
+                            return "INT"
+                        elif isinstance(sa_type, Float):
+                            return "DOUBLE"
+                        elif isinstance(sa_type, DateTime):
+                            return "TIMESTAMP_NTZ"
+                        elif isinstance(sa_type, (String, Text, JSONType)):
+                            return "STRING"
+                        return "STRING"
+
+                    catalog = settings.effective_databricks_catalog
+                    schema = settings.effective_databricks_schema
+                    for table in Base.metadata.sorted_tables:
+                        t_name = table.name
+                        try:
+                            res = conn.execute(text(f"DESCRIBE TABLE {catalog}.{schema}.{t_name}"))
+                            existing_cols = {r[0].lower() for r in res.fetchall()}
+                        except Exception:
+                            continue
+                        for col in table.columns:
+                            if col.name.lower() not in existing_cols:
+                                col_type = _type_str(col.type)
+                                logger.info("⚡ Adding missing column %s.%s (%s)...", t_name, col.name, col_type)
+                                try:
+                                    conn.execute(text(f"ALTER TABLE {catalog}.{schema}.{t_name} ADD COLUMN ({col.name} {col_type})"))
+                                except Exception as alter_err:
+                                    logger.warning("Could not add column %s to %s: %s", col.name, t_name, alter_err)
+                except Exception as rec_err:
+                    logger.warning("Delta Lake schema reconciliation notice: %s", rec_err)
+
         await asyncio.to_thread(_sync_init)
         logger.info("Databricks Delta Lake tables initialized successfully.")
     else:
