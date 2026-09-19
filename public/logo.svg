@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1092 687" width="100%" height="100%">
+  <!-- Pure Scalable Vector AudiTrace / TraceAudit Logo -->
+  <defs>
+    <!-- Subtle vibrant linear gradient for extra depth and polish -->
+    <linearGradient id="cyanGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#00E5FF" />
+      <stop offset="100%" stop-color="#00B8D9" />
+    </linearGradient>
+    <linearGradient id="blueGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#2979FF" />
+      <stop offset="100%" stop-color="#0052CC" />
+    </linearGradient>
+  </defs>
+  <path id="letter-t" d="M 80 1 L 1 150 L 239 151 L 239 685 L 409 683 L 486 565 L 485 288 L 402 384 L 402 150 L 555 150 L 682 1 Z" fill="#00D2FE" />
+  <path id="letter-a" d="M 730 1 L 486 287 L 487 563 L 699 230 L 779 408 L 618 409 L 538 540 L 830 540 L 898 682 L 1090 683 L 761 2 Z" fill="#1677FF" />
+</svg>

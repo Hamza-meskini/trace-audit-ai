@@ -118,3 +118,42 @@ def review_state_for(verdict: str) -> str:
 def finding_type_for(display: str) -> str:
     """Finding type label for a display status (defaults to Partial evidence)."""
     return FINDING_TYPES.get(display, "Partial evidence")
+
+
+SEVERITY_LEVELS = ("Critical", "High", "Medium", "Low")
+
+
+def normalize_severity(raw: Optional[str], default: str = "Medium") -> str:
+    """Normalize domain ratings (e.g. ASIL D/C/B/A, Visual) and free-text strings into canonical
+    audit severities: Critical, High, Medium, Low."""
+    if not raw:
+        return default
+    s = str(raw).strip().upper()
+    if "ASIL D" in s or "CRIT" in s:
+        return "Critical"
+    if "ASIL C" in s or "HIGH" in s:
+        return "High"
+    if "ASIL B" in s or "MED" in s:
+        return "Medium"
+    if "ASIL A" in s or "LOW" in s or "VISUAL" in s or "QM" in s:
+        return "Low"
+    return default
+
+
+def finding_severity_for(
+    req_severity: Optional[str],
+    coverage_status: Optional[str] = None,
+    default: str = "Medium",
+) -> str:
+    """Derive appropriate finding severity considering the requirement severity and audit coverage status."""
+    sev = normalize_severity(req_severity, default=default)
+    # A confirmed requirement conflict represents an active non-conformance: at least High
+    if coverage_status in ("Conflict", "Potential conflict") and sev in ("Low", "Medium"):
+        return "High"
+    # Missing evidence on safety-critical requirements is Critical
+    if coverage_status in ("Missing", "Missing evidence") and (
+        (req_severity and "ASIL D" in req_severity.upper()) or sev == "Critical"
+    ):
+        return "Critical"
+    return sev
+

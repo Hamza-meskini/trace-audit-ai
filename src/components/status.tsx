@@ -43,8 +43,17 @@ const severityStyles: Record<Severity, string> = {
   Low: "border-border bg-neutral-soft text-muted-foreground",
 };
 
-export function SeverityBadge({ severity }: { severity: Severity }) {
-  return <span className={cn(base, severityStyles[severity])}>{severity}</span>;
+export function normalizeSeverity(severity?: string): Severity {
+  const s = (severity || "").toUpperCase();
+  if (s.includes("CRIT") || s.includes("ASIL D")) return "Critical";
+  if (s.includes("HIGH") || s.includes("ASIL C")) return "High";
+  if (s.includes("MED") || s.includes("ASIL B")) return "Medium";
+  return "Low";
+}
+
+export function SeverityBadge({ severity }: { severity: Severity | string }) {
+  const key = normalizeSeverity(severity);
+  return <span className={cn(base, severityStyles[key] ?? severityStyles.Medium)}>{severity}</span>;
 }
 
 const reviewStyles: Record<string, string> = {

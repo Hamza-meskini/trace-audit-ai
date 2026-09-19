@@ -3,7 +3,7 @@ import { Cell, Pie, PieChart, ResponsiveContainer } from "recharts";
 import { ArrowRight, FileUp, ListPlus, Plus, ChevronRight, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { EmptyState, KpiCard, PageHeader, Panel } from "@/components/primitives";
-import { CoverageBadge, Mono, ReviewBadge, SeverityBadge } from "@/components/status";
+import { CoverageBadge, Mono, ReviewBadge, SeverityBadge, normalizeSeverity } from "@/components/status";
 import { AiStatus } from "@/components/app-shell";
 import { useActiveProject } from "@/hooks/use-active-project";
 import { useProjectStats } from "@/hooks/use-projects";
@@ -77,10 +77,10 @@ function Dashboard() {
   const recentFindings = (findings || []).slice(0, 4);
 
   const severityCounts = {
-    Critical: findings?.filter((f) => f.severity === "Critical").length ?? 0,
-    High: findings?.filter((f) => f.severity === "High").length ?? 0,
-    Medium: findings?.filter((f) => f.severity === "Medium").length ?? 0,
-    Low: findings?.filter((f) => f.severity === "Low").length ?? 0,
+    Critical: findings?.filter((f) => normalizeSeverity(f.severity) === "Critical").length ?? 0,
+    High: findings?.filter((f) => normalizeSeverity(f.severity) === "High").length ?? 0,
+    Medium: findings?.filter((f) => normalizeSeverity(f.severity) === "Medium").length ?? 0,
+    Low: findings?.filter((f) => normalizeSeverity(f.severity) === "Low").length ?? 0,
   };
 
   const severityTotal = Math.max(

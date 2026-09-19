@@ -31,6 +31,9 @@ command:
     fi
     
     echo "✅ Frontend built successfully"
+    echo "🗄️ Running database migration and Delta Lake schema setup..."
+    python backend/scripts/migrate_database.py
+    
     echo "🚀 Starting backend..."
     
     # Start backend
@@ -50,6 +53,12 @@ env:
   # ========================================
   # Database & Storage
   # ========================================
+  - name: "DATABASE_BACKEND"
+    value: "databricks"
+  - name: "DATABRICKS_CATALOG"
+    value: "workspace"
+  - name: "DATABRICKS_SCHEMA"
+    value: "traceaudit"
   - name: "DATABASE_URL"
     value: "sqlite+aiosqlite:///./traceaudit.db"
   - name: "UPLOAD_DIR"

@@ -3,10 +3,11 @@
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import String, Text, Integer, DateTime, ForeignKey, JSON
+from sqlalchemy import String, Text, Integer, DateTime, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
+from app.models.types import JSONType
 
 
 def _utcnow() -> datetime:
@@ -31,7 +32,7 @@ class Finding(Base):
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     sources_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     category: Mapped[str] = mapped_column(String(100), nullable=False, default="Uncategorized")
-    evidence_refs: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    evidence_refs: Mapped[dict | None] = mapped_column(JSONType, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, onupdate=_utcnow)
 

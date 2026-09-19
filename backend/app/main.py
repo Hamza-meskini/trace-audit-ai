@@ -10,7 +10,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, HTMLResponse
 
 from app.config import settings
-from app.database import init_db, async_session
+from app.database import init_db, get_db_context
 from app.seed import seed_database
 from app.api.settings import load_persisted_settings
 
@@ -35,8 +35,8 @@ async def lifespan(app: FastAPI):
     from app.services import audit_worker
     recover_interrupted(requeue=True)
 
-    # Seed mock data for development
-    async with async_session() as db:
+    # Seed mock data for development / initial deployment
+    async with get_db_context() as db:
         seeded = await seed_database(db)
         if seeded:
             logger.info("Database seeded with mock data.")

@@ -14,7 +14,10 @@ class Settings(BaseSettings):
     DEBUG: bool = True
 
     # Database
+    DATABASE_BACKEND: str = "sqlite"  # "sqlite" for local dev, "databricks" for Databricks Apps production
     DATABASE_URL: str = "sqlite+aiosqlite:///./traceaudit.db"
+    DATABRICKS_CATALOG: str = "workspace"
+    DATABRICKS_SCHEMA: str = "traceaudit"
 
     # File storage (local filesystem for MVP)
     UPLOAD_DIR: str = "./uploads"
@@ -252,17 +255,41 @@ class Settings(BaseSettings):
         return self.DATABRICKS_TOKEN or os.environ.get("DATABRICKS_TOKEN", "")
 
     @property
-    def effective_databricks_base_url(self) -> str:
-        """Return Databricks AI Gateway base URL, deriving from DATABRICKS_HOST if not explicitly set."""
-        url = self.DATABRICKS_BASE_URL or os.environ.get("DATABRICKS_BASE_URL", "")
-        if url:
-            return url.rstrip("/")
+    def effective_databricks_host(self) -> str:
+        """Return clean Databricks workspace hostname."""
         host = self.DATABRICKS_HOST or os.environ.get("DATABRICKS_HOST", "")
-        if host:
-            if not host.startswith("http"):
-                host = f"https://{host}"
-            return f"{host.rstrip('/')}/ai-gateway/mlflow/v1"
-        return ""
+        if not host and (self.DATABRICKS_BASE_URL or os.environ.get("DATABRICKS_BASE_URL")):
+            raw = self.DATABRICKS_BASE_URL or os.environ.get("DATABRICKS_BASE_URL", "")
+            from urllib.parse import urlparse
+            parsed = urlparse(raw if "://" in raw else f"https://{raw}")
+            host = parsed.hostname or ""
+        host = host.replace("https://", "").replace("http://", "").split("/")[0].strip()
+        return host
+
+    @property
+    def effective_database_backend(self) -> str:
+        """Determine whether SQLite or Databricks SQL Warehouse is active."""
+        backend = (self.DATABASE_BACKEND or os.environ.get("DATABASE_BACKEND", "sqlite")).lower()
+        if backend in ("databricks", "dbsql", "delta"):
+            return "databricks"
+        if backend == "sqlite":
+            return "sqlite"
+        # Auto mode: if running inside Databricks Apps runtime, use Databricks
+        if os.environ.get("DATABRICKS_APP_PORT") or os.environ.get("DATABRICKS_APP_ROOT_PATH"):
+            warehouse_id = self.DATABRICKS_SQL_WAREHOUSE_ID or os.environ.get("DATABRICKS_SQL_WAREHOUSE_ID", "")
+            if warehouse_id and self.effective_databricks_token and self.effective_databricks_host:
+                return "databricks"
+        return "sqlite"
+
+    @property
+    def databricks_sqlalchemy_url(self) -> str:
+        """Build the SQLAlchemy connection URL for Databricks SQL Warehouse."""
+        host = self.effective_databricks_host
+        token = self.effective_databricks_token
+        warehouse_id = self.DATABRICKS_SQL_WAREHOUSE_ID or os.environ.get("DATABRICKS_SQL_WAREHOUSE_ID", "")
+        catalog = self.DATABRICKS_CATALOG or os.environ.get("DATABRICKS_CATALOG", "workspace")
+        schema = self.DATABRICKS_SCHEMA or os.environ.get("DATABRICKS_SCHEMA", "traceaudit")
+        return f"databricks://token:{token}@{host}:443?http_path=/sql/1.0/warehouses/{warehouse_id}&catalog={catalog}&schema={schema}"
 
 
 settings = Settings()

@@ -11,7 +11,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { EmptyState, PageHeader, Panel } from "@/components/primitives";
-import { Mono, ReviewBadge, SeverityBadge } from "@/components/status";
+import { Mono, ReviewBadge, SeverityBadge, normalizeSeverity } from "@/components/status";
 import { useActiveProject } from "@/hooks/use-active-project";
 import { useFindings, useUpdateFinding } from "@/hooks/use-findings";
 import { cn } from "@/lib/utils";
@@ -86,10 +86,10 @@ function FindingsPage() {
   );
 
   const severityCounts = {
-    Critical: allFindings.filter((f) => f.severity === "Critical").length,
-    High: allFindings.filter((f) => f.severity === "High").length,
-    Medium: allFindings.filter((f) => f.severity === "Medium").length,
-    Low: allFindings.filter((f) => f.severity === "Low").length,
+    Critical: allFindings.filter((f) => normalizeSeverity(f.severity) === "Critical").length,
+    High: allFindings.filter((f) => normalizeSeverity(f.severity) === "High").length,
+    Medium: allFindings.filter((f) => normalizeSeverity(f.severity) === "Medium").length,
+    Low: allFindings.filter((f) => normalizeSeverity(f.severity) === "Low").length,
   };
 
   const summary = [

@@ -41,7 +41,7 @@ from app.services.classification import (
 )
 from app.schemas.verification_result import ConditionVerificationResult
 from app.services.pipeline_cache import stable_key
-from app.services.taxonomy import finding_type_for
+from app.services.taxonomy import finding_type_for, normalize_severity, finding_severity_for
 from app.config import settings
 from app.services.document_classifier import (
     ROLE_DISPLAY_NAMES,
@@ -428,7 +428,7 @@ async def _run_audit_pipeline_impl(
                             title=er.title,
                             description=er.description,
                             category=er.category,
-                            severity=er.severity,
+                            severity=normalize_severity(er.severity),
                             source_document=doc.original_filename,
                             extracted_parameters=refreshed,
                         )
@@ -438,7 +438,7 @@ async def _run_audit_pipeline_impl(
                         req.title = er.title
                         req.description = er.description
                         req.category = er.category
-                        req.severity = er.severity
+                        req.severity = normalize_severity(er.severity)
                         req.source_document = doc.original_filename
                         req.extracted_parameters = refreshed
                         req.coverage_status = "Unknown"
@@ -837,13 +837,14 @@ async def _run_audit_pipeline_impl(
                     index for index, candidate in enumerate(requirements, 1)
                     if candidate.req_code == code
                 )
+                finding_sev = finding_severity_for(req.severity, assessment.coverage_status)
                 db.add(Finding(
                     id=str(uuid.uuid4()),
                     project_id=project_id,
                     requirement_id=req.id,
                     finding_code=f"F-{ordinal:03d}",
                     finding_type=finding_type_for(assessment.coverage_status),
-                    severity=req.severity,
+                    severity=finding_sev,
                     review_state=assessment.review_state,
                     category=req.category,
                     sources_count=len(assessment.evidence_links),

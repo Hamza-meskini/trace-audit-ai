@@ -3,10 +3,11 @@
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import String, Text, Integer, Float, DateTime, ForeignKey, JSON
+from sqlalchemy import String, Text, Integer, Float, DateTime, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
+from app.models.types import JSONType
 
 
 def _utcnow() -> datetime:
@@ -34,7 +35,7 @@ class Requirement(Base):
     severity: Mapped[str] = mapped_column(String(50), nullable=False, default="Medium")
     ai_analysis: Mapped[str | None] = mapped_column(Text, nullable=True)
     ai_recommendation: Mapped[str | None] = mapped_column(Text, nullable=True)
-    extracted_parameters: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    extracted_parameters: Mapped[dict | None] = mapped_column(JSONType, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, onupdate=_utcnow)
 

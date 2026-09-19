@@ -16,6 +16,7 @@ from app.config import settings
 from app.services.llm_client import generate_structured
 from app.schemas.contract_logic import ConditionValue, flat_projection
 from app.schemas.predicate import ComparisonOperator, normalize_comparison, predicate_issues
+from app.services.taxonomy import normalize_severity
 
 
 CONTRACT_SCHEMA_VERSION = "2.0"
@@ -2029,7 +2030,7 @@ Return each normative requirement with:
 - req_code: preserve the exact existing identifier; never invent a replacement when one is visible
 - title: a concise source-faithful summary
 - description: the complete requirement source text, including joined clauses and relevant recovered table/figure text
-- category and severity
+- category and severity (Must be one of: Critical, High, Medium, Low. If domain integrity levels are present such as ASIL: ASIL D -> Critical, ASIL C -> High, ASIL B -> Medium, ASIL A/Visual/QM -> Low)
 
 Exclude headings, explanatory notes, and test results that do not impose an obligation. Return JSON only.
 """
@@ -2192,6 +2193,7 @@ async def _discover_requirements(
     discovered = await request(chunk_text, chunk_label)
     for item in discovered:
         item.req_code = _normalize_requirement_code(item.req_code)
+        item.severity = normalize_severity(item.severity)
     by_code = {item.req_code: item for item in discovered}
     expected_blocks = {
         code: block
