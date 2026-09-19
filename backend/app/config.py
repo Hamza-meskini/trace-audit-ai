@@ -293,13 +293,28 @@ class Settings(BaseSettings):
         return "sqlite"
 
     @property
+    def effective_databricks_warehouse_id(self) -> str:
+        """Return Databricks SQL Warehouse ID from setting or environment."""
+        return self.DATABRICKS_SQL_WAREHOUSE_ID or os.environ.get("DATABRICKS_SQL_WAREHOUSE_ID", "")
+
+    @property
+    def effective_databricks_catalog(self) -> str:
+        """Return Databricks Unity Catalog name."""
+        return self.DATABRICKS_CATALOG or os.environ.get("DATABRICKS_CATALOG", "workspace")
+
+    @property
+    def effective_databricks_schema(self) -> str:
+        """Return Databricks schema (database) name."""
+        return self.DATABRICKS_SCHEMA or os.environ.get("DATABRICKS_SCHEMA", "traceaudit")
+
+    @property
     def databricks_sqlalchemy_url(self) -> str:
         """Build the SQLAlchemy connection URL for Databricks SQL Warehouse."""
         host = self.effective_databricks_host
         token = self.effective_databricks_token
-        warehouse_id = self.DATABRICKS_SQL_WAREHOUSE_ID or os.environ.get("DATABRICKS_SQL_WAREHOUSE_ID", "")
-        catalog = self.DATABRICKS_CATALOG or os.environ.get("DATABRICKS_CATALOG", "workspace")
-        schema = self.DATABRICKS_SCHEMA or os.environ.get("DATABRICKS_SCHEMA", "traceaudit")
+        warehouse_id = self.effective_databricks_warehouse_id
+        catalog = self.effective_databricks_catalog
+        schema = self.effective_databricks_schema
         return f"databricks://token:{token}@{host}:443?http_path=/sql/1.0/warehouses/{warehouse_id}&catalog={catalog}&schema={schema}"
 
 
