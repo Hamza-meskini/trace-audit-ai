@@ -267,6 +267,17 @@ class Settings(BaseSettings):
         return host
 
     @property
+    def effective_databricks_base_url(self) -> str:
+        """Return Databricks AI Gateway base URL, deriving from DATABRICKS_HOST if not explicitly set."""
+        url = self.DATABRICKS_BASE_URL or os.environ.get("DATABRICKS_BASE_URL", "")
+        if url:
+            return url.rstrip("/")
+        host = self.effective_databricks_host
+        if host:
+            return f"https://{host}/ai-gateway/mlflow/v1"
+        return ""
+
+    @property
     def effective_database_backend(self) -> str:
         """Determine whether SQLite or Databricks SQL Warehouse is active."""
         backend = (self.DATABASE_BACKEND or os.environ.get("DATABASE_BACKEND", "sqlite")).lower()
