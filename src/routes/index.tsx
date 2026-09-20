@@ -3,7 +3,13 @@ import { Cell, Pie, PieChart, ResponsiveContainer } from "recharts";
 import { ArrowRight, FileUp, ListPlus, Plus, ChevronRight, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { EmptyState, KpiCard, PageHeader, Panel } from "@/components/primitives";
-import { CoverageBadge, Mono, ReviewBadge, SeverityBadge, normalizeSeverity } from "@/components/status";
+import {
+  CoverageBadge,
+  Mono,
+  ReviewBadge,
+  SeverityBadge,
+  normalizeSeverity,
+} from "@/components/status";
 import { AiStatus } from "@/components/app-shell";
 import { useActiveProject } from "@/hooks/use-active-project";
 import { useProjectStats } from "@/hooks/use-projects";
@@ -48,8 +54,10 @@ function Dashboard() {
   const navigate = useNavigate();
   const { activeProject, activeProjectId } = useActiveProject();
 
-  const { data: stats } = useProjectStats(activeProjectId);
-  const { data: findings } = useFindings(activeProjectId);
+  const statsQuery = useProjectStats(activeProjectId);
+  const findingsQuery = useFindings(activeProjectId);
+  const { data: stats } = statsQuery;
+  const { data: findings } = findingsQuery;
 
   const projectStats = stats || {
     requirements: 0,
@@ -88,12 +96,37 @@ function Dashboard() {
     1,
   );
 
+  if (activeProjectId && (statsQuery.isLoading || findingsQuery.isLoading)) {
+    return (
+      <div role="status" className="p-8 text-sm">
+        Loading audit overview…
+      </div>
+    );
+  }
+  if (activeProjectId && (statsQuery.isError || findingsQuery.isError)) {
+    return (
+      <div role="alert" className="rounded-xl border bg-card p-8 text-sm">
+        The audit overview could not be loaded.
+        <Button
+          className="ml-4"
+          variant="outline"
+          onClick={() => {
+            void statsQuery.refetch();
+            void findingsQuery.refetch();
+          }}
+        >
+          Retry
+        </Button>
+      </div>
+    );
+  }
+
   return (
     <div className="mx-auto max-w-[1400px]">
       <section className="mb-6 overflow-hidden rounded-xl border border-border bg-card p-6 shadow-subtle md:p-8">
         <div className="flex flex-wrap items-start justify-between gap-6">
           <div className="max-w-2xl">
-            <AiStatus />
+            <AiStatus label={activeProjectId ? activeProject.status : "Ready to start an audit"} />
             <h2 className="mt-3 text-2xl font-semibold tracking-tight md:text-[28px]">
               Turn technical documentation into traceable evidence.
             </h2>

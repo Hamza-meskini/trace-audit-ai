@@ -23,7 +23,7 @@ const colors: Record<string, string> = {
 
 function csvCell(value: unknown) {
   const raw = String(value ?? "");
-  const safe = /^[=+\-@\t\r]/.test(raw) ? `'${raw}` : raw;
+  const safe = /^\s*[=+\-@]|^[\t\r\n]/.test(raw) ? `'${raw}` : raw;
   return `"${safe.replaceAll('"', '""')}"`;
 }
 

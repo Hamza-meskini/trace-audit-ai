@@ -61,7 +61,7 @@ function FindingsPage() {
     category,
   });
 
-  const allFindings = findingsList || [];
+  const allFindings = useMemo(() => findingsList ?? [], [findingsList]);
   const reviewers = Array.from(
     new Set(allFindings.map((f) => f.assigned_to).filter(Boolean) as string[]),
   );

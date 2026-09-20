@@ -57,7 +57,8 @@ class Settings(BaseSettings):
     # Application
     APP_NAME: str = "TraceAudit AI"
     APP_VERSION: str = "0.1.0"
-    DEBUG: bool = True
+    DEBUG: bool = False
+    SEED_DEMO_DATA: bool = False
 
     # Database
     DATABASE_BACKEND: str = "sqlite"  # "sqlite" for local dev, "databricks" for Databricks Apps production

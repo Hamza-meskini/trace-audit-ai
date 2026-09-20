@@ -12,6 +12,7 @@ from app.models.project import Project
 from app.models.document import Document, EvidenceChunk
 from app.models.requirement import Requirement
 from app.models.finding import Finding
+from app.services import audit_progress
 from app.schemas.project import (
     ProjectCreate,
     ProjectUpdate,
@@ -76,6 +77,9 @@ async def update_project(project_id: str, body: ProjectUpdate, db: AsyncSession 
 
 @router.delete("/{project_id}", status_code=204)
 async def delete_project(project_id: str, db: AsyncSession = Depends(get_db)):
+    job = audit_progress.latest(project_id)
+    if job and job["status"] in ("queued", "running", "cancelling"):
+        raise HTTPException(409, "A project cannot be deleted while its audit is active")
     result = await db.execute(select(Project).where(Project.id == project_id))
     project = result.scalar_one_or_none()
     if not project:
