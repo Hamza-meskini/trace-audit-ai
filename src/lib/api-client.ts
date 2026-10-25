@@ -446,6 +446,24 @@ export const api = {
       body: formData,
     });
   },
+  uploadDocuments: (projectId: string, files: File[], docType = "", version = "v1.0") => {
+    const formData = new FormData();
+    for (const file of files) formData.append("files", file);
+    if (docType) formData.append("doc_type", docType);
+    if (version) formData.append("version", version);
+    return request<
+      {
+        id: string;
+        filename: string;
+        original_filename: string;
+        doc_type: string;
+        processing_status: string;
+      }[]
+    >(`/projects/${projectId}/documents/batch`, {
+      method: "POST",
+      body: formData,
+    });
+  },
   deleteDocument: (projectId: string, docId: string) =>
     request<void>(`/projects/${projectId}/documents/${docId}`, {
       method: "DELETE",
