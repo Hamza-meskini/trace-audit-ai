@@ -6,6 +6,7 @@ from html import escape
 from contextlib import asynccontextmanager
 
 from pathlib import Path
+from urllib.parse import unquote
 from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -147,6 +148,11 @@ if frontend_dir and (frontend_dir / "index.html").is_file():
         # Do not catch API or documentation routes
         if full_path.startswith("api/") or full_path == "api" or full_path in ("docs", "redoc", "openapi.json"):
             raise HTTPException(status_code=404, detail="Endpoint not found")
+
+        # Reject encoded and plain parent-directory segments before the SPA fallback.
+        decoded = unquote(full_path).replace("\\", "/")
+        if ".." in [part for part in decoded.split("/") if part not in ("", ".")]:
+            raise HTTPException(status_code=404, detail="File not found")
 
         # 1. Exact static file match (favicon.ico, robots.txt, subpage index.html, etc.)
         target_file = (frontend_dir / full_path).resolve()

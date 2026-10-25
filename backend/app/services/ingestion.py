@@ -93,6 +93,18 @@ def _normalize_cell(value: Any) -> str:
     return re.sub(r"\s+", " ", str(value or "")).strip()
 
 
+def _drop_empty_columns(rows: list[list[str]]) -> list[list[str]]:
+    """Remove spacer columns that table detection inserts between real cells."""
+    if not rows:
+        return rows
+    width = max(len(row) for row in rows)
+    padded = [row + [""] * (width - len(row)) for row in rows]
+    keep = [index for index in range(width) if any(row[index] for row in padded)]
+    if not keep:
+        return padded
+    return [[row[index] for index in keep] for row in padded]
+
+
 def _markdown_table(rows: list[list[str]]) -> str:
     if not rows:
         return ""
@@ -390,7 +402,9 @@ def _pymupdf_elements(file_path: str) -> tuple[list[DocumentElement], int, dict[
             tables: list[dict[str, Any]] = []
             try:
                 for table_index, table in enumerate(page.find_tables().tables):
-                    rows = [[_normalize_cell(cell) for cell in row] for row in (table.extract() or [])]
+                    rows = _drop_empty_columns([
+                        [_normalize_cell(cell) for cell in row] for row in (table.extract() or [])
+                    ])
                     if not rows or not any(any(cell for cell in row) for row in rows):
                         continue
                     table_box = _bbox(table.bbox)

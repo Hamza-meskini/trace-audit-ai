@@ -76,6 +76,7 @@ def test_citation_grounding_for_batch_items_runs_concurrently():
 
         with (
             patch.object(settings, "AUDIT_CITATION_CONCURRENCY", 2),
+            patch.object(type(settings), "effective_databricks_token", new_callable=PropertyMock, return_value="test"),
             patch("app.services.verification_reasoner.generate_structured", new=AsyncMock(return_value=response)),
             patch("app.services.verification_reasoner._ground_condition_citations", new=ground),
             patch("app.services.verification_reasoner._semantic_retry_condition_ids", return_value=[]),
