@@ -2,6 +2,7 @@
 import asyncio
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
@@ -114,3 +115,38 @@ def test_stale_visual_description_replaced_and_current_cache_reused(monkeypatch)
     third = asyncio.run(visual_analysis.describe_figure_candidates(items, {"D": "unused"}, model="text-model"))
     assert third["vision_unavailable"] == 1
     assert candidate["content"] == "Original caption"
+
+
+def test_shared_figure_is_described_once_across_requirements(monkeypatch):
+    monkeypatch.setattr(settings, "GEMINI_API_KEY", "test")
+    monkeypatch.setattr(visual_analysis, "_render_figure_png", lambda *_args: b"png")
+    call = AsyncMock(return_value={"text": "Scale reads 5 V", "provider": "gemini", "attempted": []})
+    monkeypatch.setattr(visual_analysis, "call_vision_with_fallback", call)
+    shared = SimpleNamespace(metadata_json={}, content="Caption")
+
+    def requirement_item():
+        return {"candidate_chunks": [{
+            "id": "C",
+            "document_id": "D",
+            "page_number": 1,
+            "content": "Caption",
+            "metadata": {"block_type": "figure", "bounding_boxes": [{"page_number": 1, "x0": 0, "y0": 0, "x1": 10, "y1": 10}]},
+        }]}
+
+    first = requirement_item()
+    second = requirement_item()
+
+    async def both():
+        return await asyncio.gather(
+            visual_analysis.describe_figure_candidates(
+                [first], {"D": "unused"}, model="text-model", chunk_models={"C": shared},
+            ),
+            visual_analysis.describe_figure_candidates(
+                [second], {"D": "unused"}, model="text-model", chunk_models={"C": shared},
+            ),
+        )
+
+    asyncio.run(both())
+    assert call.await_count == 1
+    assert "Scale reads 5 V" in first["candidate_chunks"][0]["content"]
+    assert "Scale reads 5 V" in second["candidate_chunks"][0]["content"]

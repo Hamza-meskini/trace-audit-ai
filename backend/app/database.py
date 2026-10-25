@@ -97,8 +97,9 @@ if active_backend == "databricks":
     engine = None
     async_session = None
 else:
-    logger.info("Using local SQLite engine: %s", settings.DATABASE_URL)
-    engine = create_async_engine(settings.DATABASE_URL, echo=settings.DEBUG)
+    db_url = settings.effective_database_url
+    logger.info("Using local SQLite engine: %s", db_url)
+    engine = create_async_engine(db_url, echo=settings.DEBUG)
     async_session = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
     sync_engine = None
     databricks_session_factory = None

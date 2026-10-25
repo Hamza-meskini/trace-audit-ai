@@ -349,6 +349,33 @@ def _focused_semantic_retry_prompt(
     )
 
 
+def _combined_repair_prompt(
+    base_prompt: str,
+    contract: RequirementContract,
+    results: list[ConditionVerificationResult],
+    missing_ids: list[str],
+    logic_ids: list[str],
+    semantic_ids: list[str],
+) -> str:
+    """Ask for every first-pass correction in one response."""
+    sections = [
+        "CORRECTION REQUIRED: Fix every issue below in this single response. "
+        "Return every declared condition exactly once. Copy every PROVEN, FAILED, or PENDING "
+        "quote as one contiguous literal span from exactly one evidence excerpt."
+    ]
+    if missing_ids:
+        sections.append(
+            "Omitted condition IDs: "
+            + ", ".join(missing_ids)
+            + ". Include each omitted ID exactly once."
+        )
+    if logic_ids:
+        sections.append(_focused_logic_retry_prompt("", contract, results, logic_ids).strip())
+    if semantic_ids:
+        sections.append(_focused_semantic_retry_prompt("", results, semantic_ids).strip())
+    return base_prompt + "\n\n" + "\n\n".join(sections)
+
+
 def _independent_secondary_model(primary_model: str) -> Optional[str]:
     """Choose a configured adjudicator that differs from the primary model."""
     configured = (settings.SECONDARY_ADJUDICATOR_MODEL or "").strip()
@@ -1127,7 +1154,7 @@ _AUDIT_STEP2_RULES = """STEP 2: CONDITION EVALUATION & COMPLIANCE RULES
    - UNTESTED means no supplied evidence addresses execution or outcome for THIS condition, even when the same report proves sibling conditions. INCONCLUSIVE means an excerpt directly addresses THIS condition but its result, authority, method, scope, or detail cannot establish a conclusion.
    - Never mark PROVEN because evidence merely implies, suggests, likely satisfies, or is assumed to satisfy a condition. If the required fact is not explicit or directly observable, use UNTESTED or INCONCLUSIVE as defined above.
    - Derive relational conditions from observed table operands. If a table gives A and B, compare them directly; do not require a separate sentence spelling out A >= B. PDF labels may separate subscripts or primes (for example `V = 1` means V1 and `V ’ = 1` means V1-prime).
-   - Every PROVEN, FAILED, or PENDING condition MUST include at least one evidence ID (E1, E2, ...) and a verbatim quote from that evidence. Never return an attributed condition status without both fields.
+   - Every PROVEN, FAILED, or PENDING condition MUST include at least one evidence ID (E1, E2, ...) and a verbatim quote from that evidence. Copy the quote as one contiguous literal span from exactly one evidence excerpt. Preserve every character, symbol, capitalization, and line break. Do not paraphrase, summarize, repair OCR, or combine non-contiguous text. Never return an attributed condition status without both fields.
    - A qualified local failure, violation, leakage, exceeded limit, or lower achieved rating dominates an earlier PASS word across the supplied evidence set when both concern the same subject and condition. Do not average a demonstrated violation into INCONCLUSIVE."""
 
 _AUDIT_RULEBOOK = (
@@ -1412,6 +1439,7 @@ async def evaluate_batch_verification(
     has_keys = bool(settings.effective_gemini_api_key or settings.effective_databricks_token or settings.effective_openai_api_key)
 
     results: dict[str, VerificationAnalysisResult] = {}
+    batch_initial_results: dict[str, VerificationAnalysisResult] = {}
 
     if not has_keys or not batch_items:
         for item in batch_items:
@@ -1464,6 +1492,13 @@ async def evaluate_batch_verification(
                 it = item_by_code.get(item_res.req_code)
                 if it:
                     contract: RequirementContract = it["contract"]
+                    batch_initial_results[item_res.req_code] = VerificationAnalysisResult(
+                        status=item_res.status,
+                        confidence=item_res.confidence,
+                        condition_results=item_res.condition_results,
+                        reason=item_res.reason,
+                        highlight=item_res.highlight,
+                    )
                     canonical, missing = _canonical_condition_results(contract, item_res.condition_results)
                     if missing:
                         logger.warning(
@@ -1584,6 +1619,7 @@ async def evaluate_batch_verification(
                     spec_doc_names=item.get("spec_doc_names"),
                     allow_deterministic_fallback=False,
                     targeted_extraction=item.get("targeted_extraction"),
+                    initial_result=batch_initial_results.get(code),
                 )
         return code, result
 
@@ -1614,6 +1650,71 @@ async def evaluate_batch_verification(
     return results
 
 
+async def refine_deferred_verification(
+    contract: RequirementContract,
+    evidence_chunks: list[dict[str, Any]],
+    analysis: VerificationAnalysisResult,
+    *,
+    model: Optional[str] = None,
+    spec_doc_names: Optional[set[str]] = None,
+) -> Optional[VerificationAnalysisResult]:
+    """Adjudicate a verdict that was already saved for review.
+
+    Returns None when the adjudicator does not change a condition, so the
+    saved row stays as the reviewer first saw it.
+    """
+    active_model = model or settings.LLM_MODEL
+    updated_conditions, secondary_diagnostics = await _apply_secondary_adjudication(
+        contract,
+        evidence_chunks,
+        list(analysis.condition_results),
+        active_model,
+    )
+    if not secondary_diagnostics.get("secondary_adjudication_resolved_ids"):
+        return None
+    refined = VerificationAnalysisResult(
+        status=analysis.status,
+        confidence=analysis.confidence,
+        condition_results=_fill_missing_conditions(contract, updated_conditions),
+        reason=analysis.reason,
+        highlight=analysis.highlight,
+    )
+    diagnostics = dict(analysis._diagnostics or {})
+    diagnostics.update(secondary_diagnostics)
+    diagnostics["secondary_adjudication_deferred"] = False
+    refined._diagnostics = diagnostics
+    qualifications = qualify_evidence_chunks(
+        contract,
+        evidence_chunks,
+        spec_doc_names=spec_doc_names,
+    )
+    qualified_contents = {
+        qualification.evidence_id: _isolate_relevant_passage(
+            (chunk.get("content") or chunk.get("quote") or ""),
+            contract,
+            chunk.get("metadata"),
+        )
+        for qualification, chunk in zip(qualifications, evidence_chunks)
+    }
+    refined.condition_results, citation_diagnostics = await _ground_condition_citations(
+        contract,
+        evidence_chunks,
+        qualified_contents,
+        refined.condition_results,
+        active_model,
+    )
+    refined._diagnostics.update(citation_diagnostics)
+    original_conditions = _snapshot_condition_results(refined.condition_results)
+    refined = _audit_llm_condition_metadata(contract, refined)
+    _record_reconciliation_diagnostics(refined, original_conditions)
+    return finalize_verdict(
+        contract=contract,
+        analysis=refined,
+        qualifications=qualifications,
+        qualified_contents=qualified_contents,
+    )
+
+
 async def evaluate_requirement_verification(
     contract: RequirementContract,
     evidence_chunks: list[dict[str, Any]],
@@ -1622,6 +1723,8 @@ async def evaluate_requirement_verification(
     spec_doc_names: Optional[set[str]] = None,
     allow_deterministic_fallback: bool = True,
     targeted_extraction: Optional[dict[str, Any]] = None,
+    initial_result: Optional[VerificationAnalysisResult] = None,
+    defer_secondary_adjudication: bool = False,
 ) -> VerificationAnalysisResult:
     """Execute LLM condition reasoning followed only by mechanical aggregation."""
     active_model = model or settings.LLM_MODEL
@@ -1638,107 +1741,41 @@ async def evaluate_requirement_verification(
     )
 
     try:
-        result: Optional[VerificationAnalysisResult] = await generate_structured(
-            prompt=prompt,
-            response_model=VerificationAnalysisResult,
-            model=active_model,
-            system_instruction=system_instruction,
-            thinking_level=thinking_level or settings.GEMINI_THINKING_LEVEL,
-            max_output_tokens=8192,
+        result: Optional[VerificationAnalysisResult] = (
+            initial_result.model_copy(deep=True) if initial_result is not None
+            else await generate_structured(
+                prompt=prompt,
+                response_model=VerificationAnalysisResult,
+                model=active_model,
+                system_instruction=system_instruction,
+                thinking_level=thinking_level or settings.GEMINI_THINKING_LEVEL,
+                max_output_tokens=8192,
+            )
         )
         if result and result.status in ("SUPPORTED", "PARTIAL", "MISSING", "UNKNOWN", "CONFLICT"):
-            logic_retry_ids: list[str] = []
-            semantic_retry_ids: list[str] = []
             canonical, missing = _canonical_condition_results(contract, result.condition_results)
             result.condition_results = canonical
-            if missing:
-                retry_prompt = (
-                    prompt
-                    + "\n\nCORRECTION REQUIRED: The previous response omitted these condition IDs: "
-                    + ", ".join(missing)
-                    + ". Re-evaluate the requirement and return EVERY declared condition exactly once."
-                )
-                try:
-                    retry = await generate_structured(
-                        prompt=retry_prompt,
-                        response_model=VerificationAnalysisResult,
-                        model=active_model,
-                        system_instruction=system_instruction,
-                        thinking_level=thinking_level or settings.GEMINI_THINKING_LEVEL,
-                        max_output_tokens=8192,
-                    )
-                except Exception as retry_error:
-                    logger.warning(
-                        "Focused condition retry failed for %s: %s",
-                        contract.req_code,
-                        retry_error,
-                    )
-                    retry = None
-                if retry:
-                    retry_canonical, _ = _canonical_condition_results(contract, retry.condition_results)
-                    by_id = {item.condition_id: item for item in canonical}
-                    by_id.update({item.condition_id: item for item in retry_canonical})
-                    result.condition_results = list(by_id.values())
-                    result.status = retry.status
-                    result.confidence = retry.confidence
-                    result.reason = retry.reason
-                    result.highlight = retry.highlight
+            # One follow-up covers every defect visible on the first response.
+            # A second and third repair used to run only after the previous
+            # repair returned, which put three model calls in series.
             logic_retry_ids = _logic_retry_condition_ids(contract, result.condition_results)
-            if logic_retry_ids:
-                logic_prompt = _focused_logic_retry_prompt(
-                    prompt,
-                    contract,
-                    result.condition_results,
-                    logic_retry_ids,
-                )
-                try:
-                    logic_retry = await generate_structured(
-                        prompt=logic_prompt,
-                        response_model=VerificationAnalysisResult,
-                        model=active_model,
-                        system_instruction=system_instruction,
-                        thinking_level=thinking_level or settings.GEMINI_THINKING_LEVEL,
-                        max_output_tokens=8192,
-                    )
-                except Exception as retry_error:
-                    logger.warning(
-                        "Focused logic retry failed for %s: %s",
-                        contract.req_code,
-                        retry_error,
-                    )
-                    logic_retry = None
-                if logic_retry:
-                    retry_canonical, _ = _canonical_condition_results(
-                        contract,
-                        logic_retry.condition_results,
-                    )
-                    replacement = {
-                        item.condition_id: item
-                        for item in retry_canonical
-                        if item.condition_id in set(logic_retry_ids)
-                    }
-                    result.condition_results = [
-                        replacement.get(item.condition_id, item)
-                        for item in result.condition_results
-                    ]
-                    result.status = logic_retry.status
-                    result.confidence = logic_retry.confidence
-                    result.reason = logic_retry.reason
-                    result.highlight = logic_retry.highlight
             semantic_retry_ids = _semantic_retry_condition_ids(
                 contract,
                 result.condition_results,
                 evidence_chunks,
             )
-            if semantic_retry_ids:
-                semantic_prompt = _focused_semantic_retry_prompt(
-                    prompt,
-                    result.condition_results,
-                    semantic_retry_ids,
-                )
+            repair_ids = list(dict.fromkeys([*missing, *logic_retry_ids, *semantic_retry_ids]))
+            if repair_ids:
                 try:
-                    semantic_retry = await generate_structured(
-                        prompt=semantic_prompt,
+                    repair = await generate_structured(
+                        prompt=_combined_repair_prompt(
+                            prompt,
+                            contract,
+                            result.condition_results,
+                            missing,
+                            logic_retry_ids,
+                            semantic_retry_ids,
+                        ),
                         response_model=VerificationAnalysisResult,
                         model=active_model,
                         system_instruction=system_instruction,
@@ -1747,40 +1784,55 @@ async def evaluate_requirement_verification(
                     )
                 except Exception as retry_error:
                     logger.warning(
-                        "Focused evidence-semantics retry failed for %s: %s",
+                        "Combined verification repair failed for %s: %s",
                         contract.req_code,
                         retry_error,
                     )
-                    semantic_retry = None
-                if semantic_retry:
+                    repair = None
+                if repair:
                     retry_canonical, _ = _canonical_condition_results(
                         contract,
-                        semantic_retry.condition_results,
+                        repair.condition_results,
                     )
-                    replacement = {
-                        item.condition_id: item
-                        for item in retry_canonical
-                        if item.condition_id in set(semantic_retry_ids)
-                    }
+                    by_id = {item.condition_id: item for item in result.condition_results}
+                    targeted = set(repair_ids)
+                    for item in retry_canonical:
+                        if item.condition_id in targeted:
+                            by_id[item.condition_id] = item
+                    order = [condition.condition_id for condition in contract.atomic_conditions]
                     result.condition_results = [
-                        replacement.get(item.condition_id, item)
-                        for item in result.condition_results
+                        by_id[condition_id]
+                        for condition_id in order
+                        if condition_id in by_id
                     ]
-                    result.status = semantic_retry.status
-                    result.confidence = semantic_retry.confidence
-                    result.reason = semantic_retry.reason
-                    result.highlight = semantic_retry.highlight
+                    result.status = repair.status
+                    result.confidence = repair.confidence
+                    result.reason = repair.reason
+                    result.highlight = repair.highlight
 
             primary_conditions_after_retry = _snapshot_condition_results(result.condition_results)
-            result.condition_results, secondary_diagnostics = await _apply_secondary_adjudication(
-                contract,
-                evidence_chunks,
-                result.condition_results,
-                active_model,
-            )
+            if defer_secondary_adjudication:
+                secondary_diagnostics = {
+                    "secondary_adjudication_deferred": True,
+                    "secondary_adjudication_condition_ids": _semantic_retry_condition_ids(
+                        contract,
+                        result.condition_results,
+                        evidence_chunks,
+                    ),
+                    "secondary_adjudication_resolved_ids": [],
+                    "secondary_adjudication_unresolved_ids": [],
+                }
+            else:
+                result.condition_results, secondary_diagnostics = await _apply_secondary_adjudication(
+                    contract,
+                    evidence_chunks,
+                    result.condition_results,
+                    active_model,
+                )
             result.condition_results = _fill_missing_conditions(contract, result.condition_results)
             result._diagnostics = {
                 "decision_source": "llm",
+                "repaired_batch_result": initial_result is not None,
                 "llm_provisional_status": result.status,
                 "llm_provisional_confidence": result.confidence,
                 "logic_retry_condition_ids": logic_retry_ids,

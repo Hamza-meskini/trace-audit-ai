@@ -54,7 +54,12 @@ function FindingsPage() {
   const [reviewer, setReviewer] = useState("all");
   const [query, setQuery] = useState("");
 
-  const { data: findingsList, isLoading } = useFindings(activeProjectId, {
+  const {
+    data: findingsList,
+    isLoading,
+    isError,
+    refetch,
+  } = useFindings(activeProjectId, {
     severity,
     finding_type: type,
     review_state: status,
@@ -99,6 +104,16 @@ function FindingsPage() {
     { label: "Medium", value: severityCounts.Medium, tone: "text-primary" },
     { label: "Low", value: severityCounts.Low, tone: "text-muted-foreground" },
   ];
+
+  if (isError)
+    return (
+      <div role="alert" className="rounded-xl border bg-card p-8 text-sm">
+        Findings could not be loaded.{" "}
+        <Button variant="outline" className="ml-3" onClick={() => void refetch()}>
+          Retry
+        </Button>
+      </div>
+    );
 
   return (
     <div className="mx-auto max-w-[1400px]">
@@ -245,14 +260,15 @@ function FindingsPage() {
                   <tr
                     key={f.id}
                     onClick={() =>
+                      f.requirement_id &&
                       navigate({
                         to: "/requirements/$id",
-                        params: { id: f.requirement_id || "req-001" },
+                        params: { id: f.requirement_id },
                       })
                     }
                     className="cursor-pointer border-b border-border/70 transition-colors last:border-0 hover:bg-accent/50"
                   >
-                    <td className="px-5 py-3">
+                    <td className="whitespace-nowrap px-5 py-3">
                       <Mono className="text-foreground">{f.finding_code}</Mono>
                     </td>
                     <td className="px-5 py-3">{f.finding_type}</td>
@@ -264,8 +280,8 @@ function FindingsPage() {
                     <td className="px-5 py-3">
                       <SeverityBadge severity={f.severity} />
                     </td>
-                    <td className="px-5 py-3 tabular text-muted-foreground">
-                      {f.sources_count} sources
+                    <td className="whitespace-nowrap px-5 py-3 tabular text-muted-foreground">
+                      {f.sources_count} {f.sources_count === 1 ? "source" : "sources"}
                     </td>
                     <td className="px-5 py-3">
                       <ReviewBadge state={f.review_state} />

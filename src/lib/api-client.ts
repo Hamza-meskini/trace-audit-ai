@@ -549,4 +549,30 @@ export const api = {
       method: "DELETE",
     }),
   getVisitorsExportUrl: () => `${getApiBaseUrl()}/visitors/export`,
+
+  // Export Project Excel (.xlsx)
+  getProjectExportXlsxUrl: (projectId: string) =>
+    `${getApiBaseUrl()}/projects/${projectId}/export/xlsx`,
+
+  downloadProjectExportXlsx: async (projectId: string, defaultFilename?: string) => {
+    const res = await fetch(`${getApiBaseUrl()}/projects/${projectId}/export/xlsx`);
+    if (!res.ok) {
+      throw new Error(`Failed to download Excel report (${res.status} ${res.statusText})`);
+    }
+    const disposition = res.headers.get("Content-Disposition");
+    let filename = defaultFilename || "TraceAudit_Report.xlsx";
+    if (disposition) {
+      const match = disposition.match(/filename="?([^";]+)"?/i);
+      if (match?.[1]) filename = match[1];
+    }
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  },
 };

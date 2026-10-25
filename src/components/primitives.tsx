@@ -12,7 +12,7 @@ export function PageHeader({
 }) {
   return (
     <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
-      <div>
+      <div className="min-w-0 max-w-full break-words">
         <h1 className="text-[22px] font-semibold tracking-tight">{title}</h1>
         {subtitle && <p className="mt-1 text-sm text-muted-foreground">{subtitle}</p>}
       </div>
@@ -37,7 +37,9 @@ export function Panel({
   bodyClassName?: string;
 }) {
   return (
-    <section className={cn("rounded-xl border border-border bg-card shadow-subtle", className)}>
+    <section
+      className={cn("min-w-0 rounded-xl border border-border bg-card shadow-subtle", className)}
+    >
       {(title || actions) && (
         <header className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-5 py-3.5">
           <div>

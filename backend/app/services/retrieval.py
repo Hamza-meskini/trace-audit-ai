@@ -41,6 +41,25 @@ class RetrievedChunk:
     metadata: Optional[dict[str, Any]] = None
 
 
+@dataclass
+class PreparedLexicalCorpus:
+    tokens_by_content: dict[str, list[str]]
+    average_length: float
+    chunk_count: int
+
+
+def prepare_lexical_corpus(chunks: list[dict[str, Any]]) -> PreparedLexicalCorpus:
+    """Tokenize an evidence corpus once for repeated requirement searches."""
+    tokens_by_content: dict[str, list[str]] = {}
+    total_tokens = 0
+    for chunk in chunks:
+        content = chunk.get("content", "")
+        if content not in tokens_by_content:
+            tokens_by_content[content] = tokenize(content)
+        total_tokens += len(tokens_by_content[content])
+    return PreparedLexicalCorpus(tokens_by_content, total_tokens / max(len(chunks), 1), len(chunks))
+
+
 REQ_CODE_REGEX = re.compile(r"\b(REQ[-_]?[A-Za-z0-9_-]*\d+)\b", re.IGNORECASE)
 CLAUSE_CODE_REGEX = re.compile(
     r"\b([A-Za-z][A-Za-z0-9_-]*\d+(?:\.\d+)+(?:\([A-Za-z0-9]+\))*)\b",
@@ -111,6 +130,7 @@ def _bm25_retrieve(
     chunks: list[dict[str, Any]],
     top_k: int = 5,
     min_score: float = 0.3,
+    prepared_corpus: Optional[PreparedLexicalCorpus] = None,
 ) -> list[RetrievedChunk]:
     """Pure BM25 retrieval with boosting (deterministic, always available)."""
     query_tokens = tokenize(requirement_text)
@@ -135,8 +155,10 @@ def _bm25_retrieve(
         "table", "formula", "calculate", "measured", "result", "v1", "v2", "resistance",
     ))
 
-    total_tokens = sum(len(tokenize(c.get("content", ""))) for c in chunks)
-    avg_len = total_tokens / max(len(chunks), 1)
+    avg_len = (
+        prepared_corpus.average_length if prepared_corpus is not None
+        else sum(len(tokenize(c.get("content", ""))) for c in chunks) / max(len(chunks), 1)
+    )
 
     candidate_pool: list[RetrievedChunk] = []
 
@@ -147,7 +169,12 @@ def _bm25_retrieve(
             # A chunk explicitly assigned to another requirement is not a
             # candidate merely because it shares generic technical words.
             continue
-        doc_tokens = tokenize(content)
+        doc_tokens = (
+            prepared_corpus.tokens_by_content.get(content)
+            if prepared_corpus is not None else None
+        )
+        if doc_tokens is None:
+            doc_tokens = tokenize(content)
         score = compute_bm25_score(query_tokens, doc_tokens, avg_doc_len=avg_len)
 
         # 1. Exact Requirement Code Boost (+5.0)
@@ -440,6 +467,8 @@ async def retrieve_candidate_evidence_hybrid(
     min_score: float = 0.3,
     exclude_doc_names: Optional[set[str]] = None,
     condition_queries: Optional[list[str]] = None,
+    prepared_corpus: Optional[PreparedLexicalCorpus] = None,
+    expand_context: bool = True,
 ) -> list[RetrievedChunk]:
     """Hybrid retrieval: BM25 + Gemini text-embedding-005 semantic similarity.
 
@@ -462,6 +491,8 @@ async def retrieve_candidate_evidence_hybrid(
                     precomputed_map[content[:2048]] = emb
 
     chunks = _filter_excluded(chunks, exclude_doc_names)
+    if prepared_corpus is not None and prepared_corpus.chunk_count != len(chunks):
+        prepared_corpus = prepare_lexical_corpus(chunks)
 
     # Step 1: BM25 retrieval (get a wider candidate pool)
     overall_pool = _bm25_retrieve(
@@ -469,9 +500,13 @@ async def retrieve_candidate_evidence_hybrid(
         chunks,
         top_k=top_k * 4,
         min_score=min_score * 0.5,
+        prepared_corpus=prepared_corpus,
     )
     condition_pools = [
-        _bm25_retrieve(query, chunks, top_k=max(top_k, 3), min_score=min_score * 0.25)
+        _bm25_retrieve(
+            query, chunks, top_k=max(top_k, 3), min_score=min_score * 0.25,
+            prepared_corpus=prepared_corpus,
+        )
         for query in (condition_queries or [])
         if query.strip()
     ]
@@ -484,7 +519,7 @@ async def retrieve_candidate_evidence_hybrid(
     # Step 2: If no embedding capability, fall back to pure BM25
     if not _has_embedding_key():
         selected = _condition_aware_rerank(bm25_pool, condition_rankings, top_k)
-        return _expand_structural_context(selected, chunks)
+        return _expand_structural_context(selected, chunks) if expand_context else selected
 
     # Step 3: Embed the whole clause and atom-specific searches in one request.
     # A candidate can therefore match either the overall obligation or one
@@ -499,7 +534,7 @@ async def retrieve_candidate_evidence_hybrid(
     if not usable_query_embeddings:
         logger.info("Embeddings unavailable for requirement queries; using pure BM25 retrieval")
         selected = _condition_aware_rerank(bm25_pool, condition_rankings, top_k)
-        return _expand_structural_context(selected, chunks)
+        return _expand_structural_context(selected, chunks) if expand_context else selected
 
     # Step 4: Lookup chunk embeddings for candidates in the pool
     needs_embedding: list[int] = []
@@ -542,7 +577,7 @@ async def retrieve_candidate_evidence_hybrid(
 
     # Step 6: Diversified rerank on hybrid scores
     selected = _condition_aware_rerank(bm25_pool, condition_rankings, top_k)
-    return _expand_structural_context(selected, chunks)
+    return _expand_structural_context(selected, chunks) if expand_context else selected
 
 
 async def precompute_chunk_embeddings(

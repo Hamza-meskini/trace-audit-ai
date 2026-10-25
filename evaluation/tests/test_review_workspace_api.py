@@ -165,9 +165,9 @@ class ReviewWorkspaceTests(unittest.IsolatedAsyncioTestCase):
             stack.enter_context(patch("app.services.pipeline._cache_matches_source", return_value=True))
             for name, value in {
                 "profile_documents": {}, "discover_specification_documents": ([], set()),
-                "precompute_chunk_embeddings": {}, "retrieve_candidate_evidence_hybrid": [candidate],
-                "rerank_candidates": ([candidate], {"enabled": True, "used": True}),
-                "describe_retrieved_figures": {}, "batch_assess_requirements": {"REQ-1": assessment},
+                "precompute_chunk_embeddings": {},
+                "retrieve_with_fallback": ([candidate], SimpleNamespace(as_dict=lambda: {"backend_used": "local-hybrid"})),
+                "describe_retrieved_figures": {}, "assess_requirement_coverage_async": assessment,
             }.items():
                 stack.enter_context(patch("app.services.pipeline." + name, new=AsyncMock(return_value=value)))
             async with self.sessions() as db:

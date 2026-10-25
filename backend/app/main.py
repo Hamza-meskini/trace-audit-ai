@@ -13,7 +13,6 @@ from fastapi.responses import FileResponse, HTMLResponse
 
 from app.config import settings
 from app.database import init_db, get_db_context
-from app.seed import seed_database
 from app.api.settings import load_persisted_settings
 
 from app.api.projects import router as projects_router
@@ -38,8 +37,6 @@ async def lifespan(app: FastAPI):
     recover_interrupted(requeue=True)
 
     async with get_db_context() as db:
-        if settings.SEED_DEMO_DATA:
-            await seed_database(db)
         await load_persisted_settings(db)
 
     audit_worker.start()

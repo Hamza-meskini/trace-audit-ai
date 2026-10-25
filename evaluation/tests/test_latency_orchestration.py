@@ -2,7 +2,7 @@
 
 import asyncio
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, PropertyMock, patch
 
 from app.config import settings
 from app.schemas.contract import parse_requirement_contract
@@ -20,7 +20,10 @@ from app.services.pipeline import (
     _verification_fingerprint,
 )
 from app.models.requirement import Requirement
-from app.services.verification_reasoner import evaluate_batch_verification
+from app.services.verification_reasoner import (
+    evaluate_batch_verification,
+    evaluate_requirement_verification,
+)
 
 
 def _contract(code: str):
@@ -88,6 +91,63 @@ def test_citation_grounding_for_batch_items_runs_concurrently():
     peak, results = asyncio.run(scenario())
     assert peak == 2
     assert set(results) == {"REQ-1", "REQ-2"}
+
+
+def test_incomplete_batch_item_reuses_its_first_response_for_correction():
+    incomplete = _contract("REQ-1")
+    complete = _contract("REQ-2")
+    batch = BatchVerificationResult(batch_results=[
+        BatchVerificationItemResult(
+            req_code=incomplete.req_code,
+            status="UNKNOWN",
+            confidence=60,
+            condition_results=[],
+            reason="Condition omitted",
+        ),
+        BatchVerificationItemResult(
+            req_code=complete.req_code,
+            status="SUPPORTED",
+            confidence=92,
+            condition_results=[ConditionVerificationResult(
+                condition_id=complete.atomic_conditions[0].condition_id,
+                status="PROVEN",
+            )],
+            reason="Supported",
+        ),
+    ])
+    correction = VerificationAnalysisResult(
+        status="SUPPORTED",
+        confidence=91,
+        condition_results=[ConditionVerificationResult(
+            condition_id=incomplete.atomic_conditions[0].condition_id,
+            status="PROVEN",
+        )],
+        reason="Corrected",
+    )
+    generate = AsyncMock(side_effect=[batch, correction])
+
+    async def ground(_contract, _chunks, _contents, results, _model):
+        return results, {}
+
+    async def scenario():
+        with (
+            patch.object(type(settings), "effective_databricks_token", new_callable=PropertyMock, return_value="test"),
+            patch("app.services.verification_reasoner.generate_structured", new=generate),
+            patch("app.services.verification_reasoner._ground_condition_citations", new=ground),
+            patch("app.services.verification_reasoner._semantic_retry_condition_ids", return_value=[]),
+            patch("app.services.verification_reasoner._logic_retry_condition_ids", return_value=[]),
+            patch("app.services.verification_reasoner.finalize_verdict", side_effect=lambda **kwargs: kwargs["analysis"]),
+        ):
+            return await evaluate_batch_verification([
+                {"contract": contract, "candidate_chunks": []}
+                for contract in (incomplete, complete)
+            ], model="test-model")
+
+    results = asyncio.run(scenario())
+    assert set(results) == {"REQ-1", "REQ-2"}
+    assert results["REQ-1"]._diagnostics["repaired_batch_result"] is True
+    assert generate.await_count == 2  # One batch request and one focused correction.
+    assert "CORRECTION REQUIRED" in generate.await_args_list[1].kwargs["prompt"]
 
 
 def test_requirement_batches_run_with_bounded_concurrency():
@@ -205,3 +265,66 @@ def test_verification_cache_is_versioned_by_the_complete_corpus():
     assert restored.evidence_links[0].chunk_id == "chunk-1"
     assert restored.pipeline_diagnostics["verification_cache_hit"] is True
     assert _cached_assessment(requirement, changed) is None
+
+
+def test_verification_repairs_share_one_follow_up_call():
+    contract = _contract("REQ-1")
+
+    async def scenario():
+        prompts = []
+
+        async def generate(**kwargs):
+            prompts.append(kwargs["prompt"])
+            if len(prompts) == 1:
+                return VerificationAnalysisResult(
+                    status="UNKNOWN",
+                    confidence=50,
+                    condition_results=[],
+                    reason="Omitted",
+                )
+            return VerificationAnalysisResult(
+                status="SUPPORTED",
+                confidence=90,
+                condition_results=[ConditionVerificationResult(
+                    condition_id="REQ-1-C1",
+                    status="PROVEN",
+                    evidence_ids=["E1"],
+                    quote="Opening 18 ms",
+                )],
+                reason="Corrected",
+            )
+
+        with (
+            patch.object(type(settings), "effective_databricks_token", new_callable=PropertyMock, return_value="test"),
+            patch("app.services.verification_reasoner.generate_structured", new=generate),
+            patch("app.services.verification_reasoner._logic_retry_condition_ids", return_value=["REQ-1-C1"]),
+            patch("app.services.verification_reasoner._semantic_retry_condition_ids", return_value=["REQ-1-C1"]),
+            patch(
+                "app.services.verification_reasoner._ground_condition_citations",
+                new=AsyncMock(side_effect=lambda *args, **_kwargs: (args[3], {})),
+            ),
+            patch(
+                "app.services.verification_reasoner._apply_secondary_adjudication",
+                new=AsyncMock(side_effect=AssertionError("adjudication stays deferred")),
+            ),
+            patch(
+                "app.services.verification_reasoner.finalize_verdict",
+                side_effect=lambda **kwargs: kwargs["analysis"],
+            ),
+        ):
+            result = await evaluate_requirement_verification(
+                contract,
+                [{"content": "Opening 18 ms"}],
+                defer_secondary_adjudication=True,
+            )
+        return prompts, result
+
+    prompts, result = asyncio.run(scenario())
+    assert len(prompts) == 2
+    assert "contiguous literal span" in prompts[0]
+    repair = prompts[1]
+    assert "CORRECTION REQUIRED" in repair
+    assert "Omitted condition IDs" in repair
+    assert "FOCUSED REGULATORY-LOGIC REVIEW REQUIRED" in repair
+    assert "FOCUSED EVIDENCE-SEMANTICS REVIEW REQUIRED" in repair
+    assert result._diagnostics["secondary_adjudication_deferred"] is True

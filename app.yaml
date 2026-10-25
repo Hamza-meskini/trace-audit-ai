@@ -72,7 +72,7 @@ env:
   - name: "LLM_PROVIDER"
     value: "databricks"
   - name: "LLM_MODEL"
-    value: "system.ai.meta-llama-3-3-70b-instruct"
+    value: "system.ai.llama-4-maverick"
   - name: "GEMINI_THINKING_LEVEL"
     value: "HIGH"
   

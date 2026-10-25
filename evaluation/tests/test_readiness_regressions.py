@@ -135,3 +135,77 @@ def test_active_project_cannot_be_deleted(status):
 def test_csv_formulas_are_escaped(value):
     assert _csv_cell(value) == "'" + value
     assert _csv_cell("ordinary text") == "ordinary text"
+
+
+def test_excel_audit_report_generation():
+    import io
+    import openpyxl
+    from app.services.excel_export import generate_audit_report_excel
+    from app.models.requirement import Requirement
+    from app.models.finding import Finding
+
+    async def run():
+        engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+        sessions = async_sessionmaker(engine, expire_on_commit=False)
+        async with engine.begin() as conn:
+            await conn.run_sync(database.Base.metadata.create_all)
+        try:
+            async with sessions() as db:
+                db.add(Project(
+                    id="proj-xl-1",
+                    name="Battery Unit Test",
+                    product_name="BMS-X",
+                    audit_id="TA-2026-TEST",
+                    company="Acme Energy",
+                ))
+                db.add(Requirement(
+                    id="req-xl-1",
+                    project_id="proj-xl-1",
+                    req_code="REQ-001",
+                    title="Active Discharge",
+                    description="The battery system shall discharge active voltage within 5 seconds.",
+                    coverage_status="Supported",
+                    severity="Critical",
+                    confidence=0.98,
+                    review_state="Approved",
+                    ai_analysis="Full compliance verified via hardware telemetry log.",
+                    ai_recommendation="Maintain monitoring in continuous test.",
+                ))
+                db.add(Finding(
+                    id="find-xl-1",
+                    project_id="proj-xl-1",
+                    finding_code="FIND-001",
+                    finding_type="Missing evidence",
+                    severity="High",
+                    review_state="Open",
+                    description="Secondary temperature sensor trace not attached.",
+                ))
+                await db.commit()
+
+                excel_bytes = await generate_audit_report_excel(db, "proj-xl-1")
+                assert len(excel_bytes) > 0
+
+                wb = openpyxl.load_workbook(io.BytesIO(excel_bytes))
+                assert "Executive Summary" in wb.sheetnames
+                assert "Requirement Register" in wb.sheetnames
+                assert "Evidence Traceability" in wb.sheetnames
+                assert "Findings & Issues" in wb.sheetnames
+
+                ws_summary = wb["Executive Summary"]
+                assert ws_summary["B4"].value == "Battery Unit Test"
+                assert ws_summary["E4"].value == "TA-2026-TEST"
+
+                ws_reqs = wb["Requirement Register"]
+                assert ws_reqs.max_row >= 2
+                assert ws_reqs["A2"].value == "REQ-001"
+                assert ws_reqs["E2"].value == "Supported"
+                assert "discharge active voltage" in ws_reqs["K2"].value
+                assert "Full compliance verified" in ws_reqs["L2"].value
+
+                ws_finds = wb["Findings & Issues"]
+                assert ws_finds.max_row >= 2
+                assert ws_finds["A2"].value == "FIND-001"
+        finally:
+            await engine.dispose()
+
+    asyncio.run(run())

@@ -164,7 +164,11 @@ function ProjectPage() {
               </ul>
             </Panel>
 
-            <Panel title="All projects" className="lg:col-span-2" bodyClassName="p-0">
+            <Panel
+              title="All projects"
+              className="lg:col-span-2"
+              bodyClassName="overflow-x-auto p-0"
+            >
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted-foreground">
@@ -202,7 +206,7 @@ function ProjectPage() {
 
         {tab === "Requirements" && (
           <Panel
-            bodyClassName="p-0"
+            bodyClassName="overflow-x-auto p-0"
             actions={
               <Button variant="outline" size="sm" asChild>
                 <Link to="/requirements">Open workspace</Link>
@@ -236,7 +240,7 @@ function ProjectPage() {
         {tab === "Documents" && (
           <Panel
             title="Documents"
-            bodyClassName="p-0"
+            bodyClassName="overflow-x-auto p-0"
             actions={
               <Button variant="outline" size="sm" asChild>
                 <Link to="/documents">Manage documents</Link>
@@ -268,7 +272,7 @@ function ProjectPage() {
         {tab === "Findings" && (
           <Panel
             title="Findings"
-            bodyClassName="p-0"
+            bodyClassName="overflow-x-auto p-0"
             actions={
               <Button variant="outline" size="sm" asChild>
                 <Link to="/findings">Open findings</Link>

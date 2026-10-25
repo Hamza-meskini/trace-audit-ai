@@ -6,6 +6,8 @@ import {
   useRouter,
   HeadContent,
   Scripts,
+  ClientOnly,
+  useRouterState,
 } from "@tanstack/react-router";
 import { type ReactNode } from "react";
 
@@ -119,14 +121,30 @@ function RootShell({ children }: { children: ReactNode }) {
 
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
+  const pathname = useRouterState({ select: (state) => state.location.pathname });
 
   return (
     <QueryClientProvider client={queryClient}>
-      <AppShell>
-        {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
+      {pathname === "/" ? (
         <Outlet />
-      </AppShell>
-      <Toaster position="bottom-right" />
+      ) : (
+        <ClientOnly
+          fallback={
+            <div
+              role="status"
+              className="flex min-h-screen items-center justify-center bg-surface text-sm text-muted-foreground"
+            >
+              Loading TraceAudit…
+            </div>
+          }
+        >
+          <AppShell>
+            {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
+            <Outlet />
+          </AppShell>
+          <Toaster position="bottom-right" />
+        </ClientOnly>
+      )}
     </QueryClientProvider>
   );
 }
