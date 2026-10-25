@@ -57,8 +57,7 @@ class Settings(BaseSettings):
     # Application
     APP_NAME: str = "TraceAudit AI"
     APP_VERSION: str = "0.1.0"
-    DEBUG: bool = False
-    SEED_DEMO_DATA: bool = False
+    DEBUG: bool = True
 
     # Database
     DATABASE_BACKEND: str = "sqlite"  # "sqlite" for local dev, "databricks" for Databricks Apps production
@@ -103,8 +102,8 @@ class Settings(BaseSettings):
     GROQ_TEXT_MODEL: str = "qwen/qwen3.8-27b"
     HF_VISION_MODEL: str = "Qwen/Qwen2.5-VL-3B-Instruct"
 
-    LLM_PROVIDER: str = "databricks"  # "gemini", "groq", "databricks", or "openai"
-    LLM_MODEL: str = "system.ai.llama-4-maverick"  # Default: Databricks Llama 4 Maverick
+    LLM_PROVIDER: str = "gemini"  # "gemini", "groq", "databricks", or "openai"
+    LLM_MODEL: str = "gemini-3.7-flash"  # Default: gemini-3.7-flash, alternative: gemini-3.1-pro-preview
 
     # Requirement discovery can use the caller-selected model (Maverick in the
     # extraction benchmark), while semantic planning and atomic construction use
@@ -125,18 +124,14 @@ class Settings(BaseSettings):
     # audit from monopolising all model or reranker slots when several projects
     # run at the same time.
     LLM_GLOBAL_CONCURRENCY: int = 8
-    # End-to-end requirement workers. Each worker can hold a verdict slot and a
-    # citation slot, so four stays inside the global cap of eight.
-    AUDIT_REQUIREMENT_CONCURRENCY: int = 4
     AUDIT_RETRIEVAL_CONCURRENCY: int = 4
-    AUDIT_VISION_CONCURRENCY: int = 3
     AUDIT_VERIFICATION_BATCH_CONCURRENCY: int = 2
     AUDIT_CITATION_CONCURRENCY: int = 4
     AUDIT_RETRY_CONCURRENCY: int = 3
     AUDIT_RERANKER_CONCURRENCY: int = 4
     AUDIT_WORKER_CONCURRENCY: int = 2
     AUDIT_WORKER_POLL_SECONDS: float = 1.0
-    AUDIT_CACHE_VERSION: str = "audit-v2"
+    AUDIT_CACHE_VERSION: str = "audit-v1"
     AUDIT_CACHE_MAX_ENTRIES: int = 50_000
     
     # Gemini Thinking Configuration (https://ai.google.dev/gemini-api/docs/thinking)
@@ -383,33 +378,6 @@ class Settings(BaseSettings):
             return f"databricks://@{host}:443?http_path=/sql/1.0/warehouses/{warehouse_id}&catalog={catalog}&schema={schema}&client_id={client_id}&client_secret={client_secret}"
         return f"databricks://token:{token}@{host}:443?http_path=/sql/1.0/warehouses/{warehouse_id}&catalog={catalog}&schema={schema}"
 
-    @property
-    def effective_database_url(self) -> str:
-        """Always resolve local SQLite database paths relative to workspace root."""
-        from sqlalchemy.engine import make_url
-
-        url = make_url(self.DATABASE_URL)
-        if url.get_backend_name() != "sqlite":
-            return self.DATABASE_URL
-        path = url.database
-        # Memory databases and SQLite URI filenames are not filesystem paths.
-        if not path or path == ":memory:" or path.startswith("file:"):
-            return self.DATABASE_URL
-        if not os.path.isabs(path) and not (len(path) > 2 and path[1] == ":"):
-            workspace_root = Path(__file__).resolve().parents[2]
-            abs_path = (workspace_root / path).resolve().as_posix()
-            return url.set(database=abs_path).render_as_string(hide_password=False)
-        return self.DATABASE_URL
-
-    @property
-    def effective_upload_dir(self) -> str:
-        """Always resolve upload directory relative to workspace root."""
-        p = Path(self.UPLOAD_DIR)
-        if not p.is_absolute():
-            workspace_root = Path(__file__).resolve().parents[2]
-            return str((workspace_root / p).resolve())
-        return str(p.resolve())
-
 
 settings = Settings()
 
@@ -440,7 +408,7 @@ SUPPORTED_MODELS = [
         "thinking_supported": True,
         "default_thinking": "HIGH",
         "description": "Recommended. Ultra-fast, highly accurate extraction with High Thinking reasoning enabled.",
-        "is_default": False,
+        "is_default": True,
     },
     {
         "id": "z-ai/glm-5.3-flash",
@@ -464,7 +432,7 @@ SUPPORTED_MODELS = [
         "provider": "databricks",
         "thinking_supported": False,
         "description": "Primary model for the multimodal diagnostic benchmark; supports controlled comparison with the existing Databricks models.",
-        "is_default": True,
+        "is_default": False,
     },
     {
         "id": "system.ai.qwen35-122b-a10b",

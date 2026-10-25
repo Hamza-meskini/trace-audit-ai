@@ -262,80 +262,68 @@ function RequirementsPage() {
             <table className="w-full min-w-[980px] text-sm">
               <thead className="border-b border-border bg-card">
                 <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted-foreground">
-                  <th className="px-5 py-3 font-medium">ID</th>
-                  <th className="px-5 py-3 font-medium">Requirement</th>
-                  <th className="px-5 py-3 font-medium">Category</th>
-                  <th className="px-5 py-3 font-medium">Evidence</th>
-                  <th className="px-5 py-3 font-medium">Status</th>
-                  <th className="px-5 py-3 font-medium">Confidence</th>
-                  <th className="px-5 py-3 font-medium">Review</th>
+                  <th className="px-5 py-2.5 font-medium">ID</th>
+                  <th className="px-5 py-2.5 font-medium">Requirement</th>
+                  <th className="px-5 py-2.5 font-medium">Category</th>
+                  <th className="px-5 py-2.5 font-medium">Evidence</th>
+                  <th className="px-5 py-2.5 font-medium">Status</th>
+                  <th className="px-5 py-2.5 font-medium">Confidence</th>
+                  <th className="px-5 py-2.5 font-medium">Review</th>
                 </tr>
               </thead>
               <tbody>
-                {rows.map((r) => {
-                  const issueDetails = [
-                    r.validation_issue_count
-                      ? `${r.validation_issue_count} extraction issue(s)`
-                      : null,
-                    r.unresolved_condition_count
-                      ? `${r.unresolved_condition_count} evidence issue(s)`
-                      : null,
-                  ]
-                    .filter(Boolean)
-                    .join(" · ");
-
-                  return (
-                    <tr
-                      key={r.id}
-                      onClick={() =>
-                        navigate({
-                          to: "/requirements/$id",
-                          params: { id: r.id },
-                          search,
-                        })
-                      }
-                      className="cursor-pointer border-b border-border/70 transition-colors last:border-0 hover:bg-accent/50"
-                    >
-                      <td className="whitespace-nowrap px-5 py-3">
-                        <Mono className="text-foreground">{r.req_code}</Mono>
-                      </td>
-                      <td className="max-w-[420px] px-5 py-3 font-medium">{r.title}</td>
-                      <td className="whitespace-nowrap px-5 py-3 text-muted-foreground">
-                        {r.category}
-                      </td>
-                      <td className="whitespace-nowrap px-5 py-3 tabular text-muted-foreground">
-                        {r.sources_count} {r.sources_count === 1 ? "source" : "sources"}
-                      </td>
-                      <td className="whitespace-nowrap px-5 py-3">
-                        <div className="flex items-center gap-2">
-                          <CoverageBadge status={r.coverage_status} />
-                          {r.human_verdict && r.human_verdict !== r.coverage_status && (
-                            <span
-                              className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground"
-                              title={`Human verdict override: ${r.human_verdict}`}
-                            >
-                              Human: {r.human_verdict}
-                            </span>
-                          )}
-                          {r.source_sync_status === "removed_from_source" && (
-                            <span
-                              className="rounded bg-warning/15 px-1.5 py-0.5 text-[10px] font-medium text-warning"
-                              title="Removed from latest source specification"
-                            >
-                              Removed
-                            </span>
-                          )}
-                        </div>
-                      </td>
-                      <td className="whitespace-nowrap px-5 py-3 tabular">
-                        {Math.round(r.confidence)}%
-                      </td>
-                      <td className="whitespace-nowrap px-5 py-3">
-                        <ReviewBadge state={r.review_state} title={issueDetails || undefined} />
-                      </td>
-                    </tr>
-                  );
-                })}
+                {rows.map((r) => (
+                  <tr
+                    key={r.id}
+                    onClick={() =>
+                      navigate({
+                        to: "/requirements/$id",
+                        params: { id: r.id },
+                        search,
+                      })
+                    }
+                    className="cursor-pointer border-b border-border/70 transition-colors last:border-0 hover:bg-accent/50"
+                  >
+                    <td className="px-5 py-3">
+                      <Mono className="text-foreground">{r.req_code}</Mono>
+                    </td>
+                    <td className="max-w-[420px] px-5 py-3 font-medium">{r.title}</td>
+                    <td className="px-5 py-3 text-muted-foreground">{r.category}</td>
+                    <td className="px-5 py-3 tabular text-muted-foreground">
+                      {r.sources_count} sources
+                    </td>
+                    <td className="px-5 py-3">
+                      <div className="space-y-1">
+                        <CoverageBadge status={r.coverage_status} />
+                        {r.human_verdict && (
+                          <p className="text-[11px] text-muted-foreground">
+                            Human: {r.human_verdict}
+                          </p>
+                        )}
+                        {auditActive && (
+                          <p className="text-[11px] text-muted-foreground">
+                            {r.assessment_run_id === auditJob?.run_id
+                              ? "Updated in current run"
+                              : "Previous run result"}
+                          </p>
+                        )}
+                        {r.source_sync_status === "removed_from_source" && (
+                          <p className="text-[11px] text-warning">Removed from latest source</p>
+                        )}
+                        {r.validation_issue_count || r.unresolved_condition_count ? (
+                          <p className="text-[11px] text-warning">
+                            {r.validation_issue_count || 0} extraction ·{" "}
+                            {r.unresolved_condition_count || 0} evidence issue(s)
+                          </p>
+                        ) : null}
+                      </div>
+                    </td>
+                    <td className="px-5 py-3 tabular">{Math.round(r.confidence)}%</td>
+                    <td className="px-5 py-3">
+                      <ReviewBadge state={r.review_state} />
+                    </td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>

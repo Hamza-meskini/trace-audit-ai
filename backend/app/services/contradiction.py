@@ -144,12 +144,9 @@ def detect_contract_contradiction(
 def detect_cross_document_contradiction(
     evidence_items: list[dict],
     contract: Optional[RequirementContract] = None,
-    *,
-    claims: Optional[list[EvidenceClaim]] = None,
 ) -> Optional[ContradictionFinding]:
     """Compare evidence chunks and requirement contract to identify value or semantic contradictions."""
-    if claims is None:
-        claims = extract_all_evidence_claims(evidence_items, contract)
+    claims = extract_all_evidence_claims(evidence_items, contract)
 
     # 1. Check against requirement contract first
     if contract:

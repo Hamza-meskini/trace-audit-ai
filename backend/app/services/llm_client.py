@@ -8,7 +8,6 @@ Supports Thinking via thinkingConfig (https://ai.google.dev/gemini-api/docs/thin
 """
 
 import json
-import random
 import re
 import asyncio
 import base64
@@ -37,30 +36,7 @@ GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models"
 # Transient failures worth retrying: rate limit + gateway/capacity errors
 RETRYABLE_STATUS_CODES = {429, 502, 503, 504}
 MAX_ATTEMPTS = 3
-# The initial Databricks call plus one retry. A requirement that still fails
-# is saved as an operational failure instead of holding a model slot through
-# two more 90-second attempts.
-DATABRICKS_MAX_ATTEMPTS = 2
 DEFAULT_DATABRICKS_TEMPERATURE = 0.0
-
-
-def _databricks_retry_delay(response: Any, attempt: int) -> float:
-    """Honor Retry-After when the endpoint sends it, with a short jittered fallback."""
-    headers = getattr(response, "headers", None)
-    raw = None
-    if headers is not None:
-        try:
-            raw = headers.get("retry-after")
-        except Exception:
-            raw = None
-    if raw not in (None, ""):
-        try:
-            announced = float(raw)
-        except (TypeError, ValueError):
-            announced = None
-        else:
-            return min(30.0, max(0.0, announced)) + random.uniform(0.0, 0.25)
-    return float(attempt + 1) + random.uniform(0.0, 0.25)
 
 # Endpoint capability is stable for the life of a worker. Once a serving
 # endpoint rejects JSON Schema, subsequent calls use JSON Object mode directly
@@ -683,7 +659,7 @@ async def _call_databricks_chat_completions_untraced(
             "rate_limit_retries": 0,
         })
 
-    for attempt in range(DATABRICKS_MAX_ATTEMPTS):
+    for attempt in range(MAX_ATTEMPTS):
         try:
             if diagnostics is not None:
                 diagnostics["attempt_count"] = attempt + 1
@@ -698,13 +674,13 @@ async def _call_databricks_chat_completions_untraced(
                             diagnostics.get("rate_limit_retries", 0)
                         ) + 1
                         diagnostics["last_http_status"] = resp.status_code
-                    print(f"  [LLM Warning] Databricks rate/capacity [{resp.status_code}]. Retrying (attempt {attempt+1}/{DATABRICKS_MAX_ATTEMPTS})...", flush=True)
+                    print(f"  [LLM Warning] Databricks rate/capacity [{resp.status_code}]. Retrying (attempt {attempt+1}/{MAX_ATTEMPTS})...", flush=True)
                     logger.warning(
                         f"Databricks API rate/capacity [{resp.status_code}] for model {model}. "
-                        f"Retrying (attempt {attempt+1}/{DATABRICKS_MAX_ATTEMPTS})..."
+                        f"Retrying (attempt {attempt+1}/{MAX_ATTEMPTS})..."
                     )
-                    if attempt < DATABRICKS_MAX_ATTEMPTS - 1:
-                        await asyncio.sleep(_databricks_retry_delay(resp, attempt))
+                    if attempt < MAX_ATTEMPTS - 1:
+                        await asyncio.sleep(20.0)
                     continue
                 if resp.status_code != 200:
                     if diagnostics is not None:
@@ -732,8 +708,8 @@ async def _call_databricks_chat_completions_untraced(
                 choices = data.get("choices", [])
                 if not choices:
                     logger.warning(f"Databricks API returned no choices for model {model}.")
-                    if attempt < DATABRICKS_MAX_ATTEMPTS - 1:
-                        await asyncio.sleep(_databricks_retry_delay(resp, attempt))
+                    if attempt < MAX_ATTEMPTS - 1:
+                        await asyncio.sleep(20.0)
                     continue
                 content = choices[0].get("message", {}).get("content")
                 finish_reason = choices[0].get("finish_reason")
@@ -766,8 +742,8 @@ async def _call_databricks_chat_completions_untraced(
                     logger.warning("Databricks output truncated for %s (limit %s)", model, max_output_tokens)
                     return None
                 if not result_text or str(result_text).strip() == "null":
-                    if attempt < DATABRICKS_MAX_ATTEMPTS - 1:
-                        await asyncio.sleep(_databricks_retry_delay(resp, attempt))
+                    if attempt < MAX_ATTEMPTS - 1:
+                        await asyncio.sleep(20.0)
                     continue
                 if json_mode:
                     try:
@@ -777,21 +753,21 @@ async def _call_databricks_chat_completions_untraced(
                         if diagnostics is not None:
                             diagnostics["error"] = "Response was not valid JSON. Return one complete JSON object."
                             return None
-                        if attempt < DATABRICKS_MAX_ATTEMPTS - 1:
-                            await asyncio.sleep(_databricks_retry_delay(resp, attempt))
+                        if attempt < MAX_ATTEMPTS - 1:
+                            await asyncio.sleep(20.0)
                         continue
                 return result_text
         except Exception as ex:
-            if attempt == DATABRICKS_MAX_ATTEMPTS - 1:
+            if attempt == MAX_ATTEMPTS - 1:
                 print(f"  [LLM Error] Databricks call failed: {type(ex).__name__}: {ex!r}", flush=True)
                 logger.error(f"Exception calling Databricks Model Serving ({model}): {ex}")
                 return None
             print(
-                f"  [LLM Warning] Databricks {model} attempt {attempt + 1}/{DATABRICKS_MAX_ATTEMPTS} "
+                f"  [LLM Warning] Databricks {model} attempt {attempt + 1}/{MAX_ATTEMPTS} "
                 f"failed after {time.time() - t0:.2f}s: {type(ex).__name__}: {ex!r}. Retrying...",
                 flush=True,
             )
-            await asyncio.sleep(_databricks_retry_delay(None, attempt))
+            await asyncio.sleep(20.0)
     return None
 
 

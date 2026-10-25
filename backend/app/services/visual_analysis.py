@@ -18,45 +18,6 @@ from app.services.llm_client import call_vision_with_fallback
 
 logger = logging.getLogger("traceaudit.visual_analysis")
 PROMPT_VERSION = "figure-evidence-v2"
-_chunk_locks: dict[str, asyncio.Lock] = {}
-_chunk_lock_guard: asyncio.Lock | None = None
-
-
-def _lock_guard() -> asyncio.Lock:
-    global _chunk_lock_guard
-    if _chunk_lock_guard is None:
-        _chunk_lock_guard = asyncio.Lock()
-    return _chunk_lock_guard
-
-
-async def _chunk_lock(chunk_id: str) -> asyncio.Lock:
-    """Serialize description of one figure across requirement workers."""
-    async with _lock_guard():
-        lock = _chunk_locks.get(chunk_id)
-        if lock is None:
-            lock = asyncio.Lock()
-            _chunk_locks[chunk_id] = lock
-        return lock
-
-
-def _adopt_persisted_visual(
-    chunk_id: str,
-    views: list[dict[str, Any]],
-    chunk_models: dict[str, EvidenceChunk] | None,
-) -> None:
-    """Copy a description another worker already stored on the shared chunk."""
-    model_chunk = (chunk_models or {}).get(chunk_id)
-    if model_chunk is None or not views:
-        return
-    persisted = dict((model_chunk.metadata_json or {}).get("visual_analysis") or {})
-    if persisted.get("status") != "complete" or not persisted.get("description"):
-        return
-    metadata = dict(views[0].get("metadata") or {})
-    current = dict(metadata.get("visual_analysis") or {})
-    if current.get("status") == "complete" and current.get("description") == persisted.get("description"):
-        return
-    metadata["visual_analysis"] = persisted
-    views[0]["metadata"] = metadata
 
 
 def _render_figure_png(
@@ -93,7 +54,7 @@ async def describe_figure_candidates(
     *,
     model: str,
     chunk_models: dict[str, EvidenceChunk] | None = None,
-    max_concurrency: int = 3,
+    max_concurrency: int = 1,
 ) -> dict[str, Any]:
     """Describe retrieved figures for both production and offline evaluation."""
 
@@ -119,11 +80,6 @@ async def describe_figure_candidates(
     disabled_providers: set[str] = set()
 
     async def enrich(chunk_id: str, views: list[dict[str, Any]]) -> None:
-        async with await _chunk_lock(chunk_id):
-            await _enrich_figure(chunk_id, views)
-
-    async def _enrich_figure(chunk_id: str, views: list[dict[str, Any]]) -> None:
-        _adopt_persisted_visual(chunk_id, views, chunk_models)
         first = views[0]
         metadata = first.get("metadata") or {}
         visual = dict(metadata.get("visual_analysis") or {})
@@ -240,7 +196,7 @@ async def describe_retrieved_figures(
     chunk_models: dict[str, EvidenceChunk],
     *,
     model: str,
-    max_concurrency: int = 3,
+    max_concurrency: int = 1,
 ) -> dict[str, int]:
     """Production adapter that also persists cached visual descriptions."""
     return await describe_figure_candidates(

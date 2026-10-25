@@ -1636,7 +1636,6 @@ def generate_markdown_report(results: dict, failures: list[dict]):
         row_vals = [str(matrix[exp][act]) for act in BENCHMARK_CLASSES]
         total_exp = sum(matrix[exp][act] for act in BENCHMARK_CLASSES)
         cm_rows.append(f"| **{exp}** | " + " | ".join(row_vals) + f" | **{total_exp}** |")
-    cm_table = "\n".join(cm_rows)
 
     # Top Failure Modes Table
     fail_rows = []
@@ -1690,7 +1689,7 @@ Atomic ground-truth provenance: **{label_sources.get('explicit', 0)} explicit** 
 
 {cm_header}
 {cm_sep}
-{cm_table}
+{"\n".join(cm_rows)}
 
 ---
 

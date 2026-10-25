@@ -16,7 +16,6 @@ if str(BACKEND_DIR) not in sys.path:
 from app.services import databricks_ai_search
 from app.services.databricks_ai_search import _source_rows, retrieve_with_fallback
 from app.services.databricks_document_ai import _adapt_prep_search_result
-from app.services.retrieval import prepare_lexical_corpus
 
 
 @pytest.fixture(autouse=True)
@@ -146,42 +145,6 @@ def test_explicit_managed_benchmark_does_not_silently_fallback(monkeypatch) -> N
             backend="databricks",
             strict=True,
         ))
-
-
-def test_local_retrieval_keeps_neighbors_after_optional_reranking(monkeypatch) -> None:
-    from app.services import retrieval
-
-    monkeypatch.setattr(retrieval, "_has_embedding_key", lambda: False)
-    chunks = [
-        {
-            "id": chunk_id,
-            "document_id": "d1",
-            "document_name": "report.pdf",
-            "doc_type": "Test report",
-            "page_number": 1,
-            "content": content,
-            "metadata": {"block_type": block_type},
-        }
-        for chunk_id, content, block_type in (
-            ("header", "Acceptance results", "text"),
-            ("table", "Isolation resistance measured at 600 ohm/V", "table"),
-            ("footnote", "Instrument calibrated before test", "text"),
-        )
-    ]
-
-    values, diagnostics = asyncio.run(retrieve_with_fallback(
-        "isolation resistance 600 ohm/V",
-        chunks,
-        project_id="p1",
-        top_k=1,
-        backend="local",
-        prepared_corpus=prepare_lexical_corpus(chunks),
-    ))
-
-    assert values[0].chunk_id == "table"
-    assert {item.chunk_id for item in values} == {"table", "header", "footnote"}
-    assert all(item.metadata["context_only"] for item in values[1:])
-    assert diagnostics.backend_used == "local-hybrid"
 
 
 def test_workspace_reranker_policy_error_retries_managed_search_without_reranker(monkeypatch) -> None:

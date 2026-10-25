@@ -61,9 +61,8 @@ def test_pdf_ingestion_preserves_tables_figures_and_provenance(tmp_path: Path) -
     assert {chunk.page_number for chunk in parsed.chunks} == {1, 2}
 
     table = next(chunk for chunk in parsed.chunks if chunk.metadata["block_type"] == "table")
-    assert "Parameter" in table.content and "Result" in table.content and "Requirement" in table.content
-    normalized = table.content.replace(" ", "")
-    assert "1200Ohm/V" in normalized
+    assert "| Parameter | Result | Requirement |" in table.content
+    assert "1200 Ohm/V" in table.content
     assert table.metadata["table"]["headers"] == ["Parameter", "Result", "Requirement"]
     assert table.metadata["bounding_boxes"]
     assert table.metadata["source_sha256"] == parsed.source_sha256

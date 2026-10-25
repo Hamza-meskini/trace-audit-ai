@@ -21,11 +21,6 @@ from app.schemas.visitor import (
 router = APIRouter(prefix="/visitors", tags=["Visitors"])
 
 
-def _csv_cell(value: str) -> str:
-    """Keep untrusted spreadsheet cells from being interpreted as formulas."""
-    return "'" + value if value.lstrip().startswith(("=", "+", "-", "@")) or value.startswith(("\t", "\r", "\n")) else value
-
-
 def _extract_client_ip(request: Request) -> str | None:
     """Extract real client IP respecting Databricks and reverse proxy headers."""
     forwarded_for = request.headers.get("x-forwarded-for")
@@ -165,7 +160,7 @@ async def export_visitors_csv(
     ])
 
     for v in visitors:
-        writer.writerow([_csv_cell(value) for value in [
+        writer.writerow([
             v.id,
             v.email,
             v.full_name or "",
@@ -175,7 +170,7 @@ async def export_visitors_csv(
             v.created_at.strftime("%Y-%m-%d %H:%M:%S") if v.created_at else "",
             v.updated_at.strftime("%Y-%m-%d %H:%M:%S") if v.updated_at else "",
             v.notes or "",
-        ]])
+        ])
 
     csv_data = output.getvalue()
     return Response(

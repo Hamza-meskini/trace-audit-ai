@@ -72,17 +72,11 @@ class AsyncDatabricksSession:
         return self
 
     async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
-        try:
-            if exc_type is not None:
-                await self.rollback()
-            else:
-                try:
-                    await self.commit()
-                except BaseException:
-                    await self.rollback()
-                    raise
-        finally:
-            await self.close()
+        if exc_type is not None:
+            await self.rollback()
+        else:
+            await self.commit()
+        await self.close()
 
 
 # Initialize active engine based on configured database backend
@@ -97,24 +91,22 @@ if active_backend == "databricks":
     engine = None
     async_session = None
 else:
-    db_url = settings.effective_database_url
-    logger.info("Using local SQLite engine: %s", db_url)
-    engine = create_async_engine(db_url, echo=settings.DEBUG)
+    logger.info("Using local SQLite engine: %s", settings.DATABASE_URL)
+    engine = create_async_engine(settings.DATABASE_URL, echo=settings.DEBUG)
     async_session = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
     sync_engine = None
     databricks_session_factory = None
 
 
-@asynccontextmanager
-async def get_db_context() -> AsyncIterator[AsyncSession]:
-    """Own a complete transaction, including cancellation and cleanup."""
+async def get_db() -> AsyncIterator[AsyncSession]:
+    """FastAPI dependency that yields an async database session."""
     if settings.effective_database_backend == "databricks":
         sync_sess = databricks_session_factory()
         session = AsyncDatabricksSession(sync_sess)
         try:
             yield session  # type: ignore[misc]
             await session.commit()
-        except BaseException:
+        except Exception:
             await session.rollback()
             raise
         finally:
@@ -124,15 +116,17 @@ async def get_db_context() -> AsyncIterator[AsyncSession]:
             try:
                 yield session
                 await session.commit()
-            except BaseException:
+            except Exception:
                 await session.rollback()
                 raise
 
 
-async def get_db() -> AsyncIterator[AsyncSession]:
-    """FastAPI dependency using the same transaction lifecycle as workers."""
-    async with get_db_context() as session:
+@asynccontextmanager
+async def get_db_context() -> AsyncIterator[AsyncSession]:
+    """Async context manager yielding a database session for background or startup lifecycle tasks."""
+    async for session in get_db():
         yield session
+        break
 
 
 async def init_db() -> None:

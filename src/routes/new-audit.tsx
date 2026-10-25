@@ -134,7 +134,7 @@ function WizardPage() {
       toast.success("Audit started", {
         description: "Follow live progress from any page in this project.",
       });
-      setTimeout(() => navigate({ to: "/app" }), 800);
+      setTimeout(() => navigate({ to: "/" }), 800);
     } catch (err: unknown) {
       toast.error(`Audit pipeline notice: ${errorMessage(err)}`);
     } finally {
@@ -146,7 +146,7 @@ function WizardPage() {
     <div className="mx-auto max-w-3xl">
       <PageHeader title="New Audit" subtitle="Set up a technical documentation audit." />
 
-      <ol className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
+      <ol className="mb-4 flex gap-2">
         {steps.map((s, i) => (
           <li
             key={s}
@@ -178,14 +178,10 @@ function WizardPage() {
         {step === 0 && (
           <div className="space-y-4">
             <div>
-              <label
-                htmlFor="audit-project-name"
-                className="text-xs uppercase tracking-wide text-muted-foreground"
-              >
+              <label className="text-xs uppercase tracking-wide text-muted-foreground">
                 Project name
               </label>
               <Input
-                id="audit-project-name"
                 className="mt-1.5"
                 value={projectName}
                 onChange={(e) => setProjectName(e.target.value)}
@@ -193,14 +189,10 @@ function WizardPage() {
               />
             </div>
             <div>
-              <label
-                htmlFor="audit-company"
-                className="text-xs uppercase tracking-wide text-muted-foreground"
-              >
+              <label className="text-xs uppercase tracking-wide text-muted-foreground">
                 Company name
               </label>
               <Input
-                id="audit-company"
                 className="mt-1.5"
                 value={company}
                 onChange={(e) => setCompany(e.target.value)}
@@ -208,14 +200,10 @@ function WizardPage() {
               />
             </div>
             <div>
-              <label
-                htmlFor="audit-product-name"
-                className="text-xs uppercase tracking-wide text-muted-foreground"
-              >
+              <label className="text-xs uppercase tracking-wide text-muted-foreground">
                 Product name
               </label>
               <Input
-                id="audit-product-name"
                 className="mt-1.5"
                 value={productName}
                 onChange={(e) => setProductName(e.target.value)}
@@ -223,14 +211,11 @@ function WizardPage() {
               />
             </div>
             <div>
-              <label
-                htmlFor="audit-product-category"
-                className="text-xs uppercase tracking-wide text-muted-foreground"
-              >
+              <label className="text-xs uppercase tracking-wide text-muted-foreground">
                 Product category
               </label>
               <Select value={productCategory} onValueChange={setProductCategory}>
-                <SelectTrigger id="audit-product-category" className="mt-1.5">
+                <SelectTrigger className="mt-1.5">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>

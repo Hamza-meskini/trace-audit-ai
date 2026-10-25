@@ -99,15 +99,13 @@ async def upload_document(
     project_dir.mkdir(parents=True, exist_ok=True)
     file_path = project_dir / safe_filename
 
-    content = await file.read(MAX_UPLOAD_SIZE_BYTES + 1)
+    content = await file.read()
     if len(content) > MAX_UPLOAD_SIZE_BYTES:
         raise HTTPException(
             status_code=413,
             detail=f"File too large ({len(content) // (1024 * 1024)} MB). Maximum upload size is {MAX_UPLOAD_SIZE_BYTES // (1024 * 1024)} MB.",
         )
-    if not content:
-        raise HTTPException(status_code=400, detail="The uploaded file is empty")
-    await run_in_threadpool(file_path.write_bytes, content)
+    file_path.write_bytes(content)
 
     # Determine doc_type from filename and extension if not explicitly provided
     resolved_type = doc_type if doc_type else infer_doc_type(file.filename or "", ext)
@@ -124,13 +122,8 @@ async def upload_document(
         processing_status="Queued",
     )
     db.add(doc)
-    try:
-        await db.flush()
-        await db.refresh(doc)
-        await db.commit()
-    except BaseException:
-        await run_in_threadpool(file_path.unlink, missing_ok=True)
-        raise
+    await db.flush()
+    await db.refresh(doc)
 
     return DocumentUploadResponse(
         id=doc.id,

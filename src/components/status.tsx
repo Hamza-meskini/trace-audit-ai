@@ -64,23 +64,8 @@ const reviewStyles: Record<string, string> = {
   Rejected: "border-critical/25 bg-critical-soft text-critical",
 };
 
-export function ReviewBadge({
-  state,
-  className,
-  title,
-}: {
-  state: ReviewState | string;
-  className?: string;
-  title?: string | undefined;
-}) {
-  return (
-    <span
-      title={title}
-      className={cn(base, reviewStyles[state] ?? reviewStyles["Open"], className)}
-    >
-      {state}
-    </span>
-  );
+export function ReviewBadge({ state }: { state: ReviewState | string }) {
+  return <span className={cn(base, reviewStyles[state] ?? reviewStyles["Open"])}>{state}</span>;
 }
 
 export function Tag({ children, className }: { children: ReactNode; className?: string }) {

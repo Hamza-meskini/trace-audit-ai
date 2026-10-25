@@ -19,7 +19,6 @@ from typing import Any, Optional
 from app.config import settings
 from app.services.databricks_document_ai import _sql_config, _workspace_hostname
 from app.services.retrieval import (
-    PreparedLexicalCorpus,
     RetrievedChunk,
     _chunk_key,
     _condition_aware_rerank,
@@ -456,7 +455,6 @@ async def retrieve_with_fallback(
     backend: str = "auto",
     strict: bool = False,
     strict_reranker: bool = False,
-    prepared_corpus: Optional[PreparedLexicalCorpus] = None,
 ) -> tuple[list[RetrievedChunk], SearchRunDiagnostics]:
     """Use managed hybrid search when requested, then fall back atomically."""
     use_managed = backend == "databricks" or (
@@ -494,8 +492,6 @@ async def retrieve_with_fallback(
         min_score=min_score,
         exclude_doc_names=exclude_doc_names,
         condition_queries=condition_queries,
-        prepared_corpus=prepared_corpus,
-        expand_context=False,
     )
     values, custom_reranker = await rerank_candidates(
         requirement_text,

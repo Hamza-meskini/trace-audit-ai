@@ -18,10 +18,8 @@ def _dt(days_ago: int = 0) -> datetime:
     return datetime.now(timezone.utc) - timedelta(days=days_ago)
 
 
-async def seed_database(db: AsyncSession, force: bool = False) -> bool:
-    """Insert mock data if explicitly forced. Returns True if seeded."""
-    if not force:
-        return False
+async def seed_database(db: AsyncSession) -> bool:
+    """Insert mock data if the database is empty. Returns True if seeded."""
     from sqlalchemy import select, func
 
     count = await db.execute(select(func.count()).select_from(Project))

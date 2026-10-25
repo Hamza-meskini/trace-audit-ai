@@ -8,7 +8,7 @@ command:
     set -e
     
     # Install Bun if not present
-    if ! command -v bun > /dev/null 2>&1; then
+    if ! command -v bun &> /dev/null; then
       echo "📦 Installing Bun..."
       curl -fsSL https://bun.sh/install | bash
       export BUN_INSTALL="$HOME/.bun"
@@ -48,9 +48,7 @@ env:
   - name: "PYTHONUNBUFFERED"
     value: "1"
   - name: "DEBUG"
-    value: "false"
-  - name: "SEED_DEMO_DATA"
-    value: "false"
+    value: "true"
   
   # ========================================
   # Database & Storage
@@ -72,7 +70,7 @@ env:
   - name: "LLM_PROVIDER"
     value: "databricks"
   - name: "LLM_MODEL"
-    value: "system.ai.llama-4-maverick"
+    value: "system.ai.meta-llama-3-3-70b-instruct"
   - name: "GEMINI_THINKING_LEVEL"
     value: "HIGH"
   
