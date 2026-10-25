@@ -17,7 +17,7 @@ import { Progress } from "@/components/ui/progress";
 import { PageHeader, Panel } from "@/components/primitives";
 import { Mono, Tag } from "@/components/status";
 import { useActiveProject } from "@/hooks/use-active-project";
-import { useDocuments, useUploadDocument, useDeleteDocument } from "@/hooks/use-documents";
+import { useDocuments, useUploadDocuments, useDeleteDocument } from "@/hooks/use-documents";
 import { useProjectStats } from "@/hooks/use-projects";
 import { cn } from "@/lib/utils";
 import { DocumentInspector } from "@/components/document-inspector";
@@ -57,7 +57,7 @@ function DocumentsPage() {
   const { data: settings } = useAiSettings();
   const busy = job?.status === "running" || job?.status === "queued" || audit.isPending;
   const { data: stats } = useProjectStats(activeProjectId);
-  const uploadDocMutation = useUploadDocument(activeProjectId);
+  const uploadDocMutation = useUploadDocuments(activeProjectId);
   const deleteDocMutation = useDeleteDocument(activeProjectId);
 
   const handleFiles = async (files: FileList | null) => {
@@ -65,17 +65,20 @@ function DocumentsPage() {
       toast.info("Wait for the active audit to finish before changing documents.");
       return;
     }
-    if (!files || files.length === 0) return;
-    for (let i = 0; i < files.length; i++) {
-      const file = files[i];
-      if (!file) continue;
-      try {
-        toast.info(`Uploading ${file.name}...`);
-        await uploadDocMutation.mutateAsync({ file });
-        toast.success(`${file.name} uploaded successfully!`);
-      } catch (err: unknown) {
-        toast.error(`Upload failed: ${err instanceof Error ? err.message : String(err)}`);
-      }
+    const selected = Array.from(files || []);
+    if (selected.length === 0) return;
+    try {
+      toast.info(
+        selected.length === 1 ? `Uploading ${selected[0].name}...` : `Uploading ${selected.length} files...`,
+      );
+      await uploadDocMutation.mutateAsync({ files: selected });
+      toast.success(
+        selected.length === 1
+          ? `${selected[0].name} uploaded successfully!`
+          : `${selected.length} files uploaded`,
+      );
+    } catch (err: unknown) {
+      toast.error(`Upload failed: ${err instanceof Error ? err.message : String(err)}`);
     }
   };
 

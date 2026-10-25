@@ -22,6 +22,18 @@ export function useUploadDocument(projectId: string) {
   });
 }
 
+export function useUploadDocuments(projectId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ files, docType, version }: { files: File[]; docType?: string; version?: string }) =>
+      api.uploadDocuments(projectId, files, docType, version),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["documents", projectId] });
+      queryClient.invalidateQueries({ queryKey: ["projects", projectId, "stats"] });
+    },
+  });
+}
+
 export function useDeleteDocument(projectId: string) {
   const queryClient = useQueryClient();
   return useMutation({

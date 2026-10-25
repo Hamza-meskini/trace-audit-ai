@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/select";
 import { PageHeader, Panel } from "@/components/primitives";
 import { useCreateProject } from "@/hooks/use-projects";
-import { useUploadDocument, useDocuments } from "@/hooks/use-documents";
+import { useUploadDocuments, useDocuments } from "@/hooks/use-documents";
 import { useTriggerAudit } from "@/hooks/use-audit";
 import { useAiSettings } from "@/hooks/use-ai-settings";
 import { useActiveProject } from "@/hooks/use-active-project";
@@ -64,7 +64,7 @@ function WizardPage() {
 
   const { data: aiSettings } = useAiSettings();
   const createProjectMutation = useCreateProject();
-  const uploadDocMutation = useUploadDocument(createdProjectId);
+  const uploadDocMutation = useUploadDocuments(createdProjectId);
   const triggerAuditMutation = useTriggerAudit(createdProjectId);
   const { data: documentsList } = useDocuments(createdProjectId);
 
@@ -106,17 +106,16 @@ function WizardPage() {
   };
 
   const handleFileUpload = async (files: FileList | null, docType = "") => {
-    if (!files || files.length === 0) return;
-    for (let i = 0; i < files.length; i++) {
-      const file = files[i];
-      if (!file) continue;
-      try {
-        toast.info(`Uploading ${file.name}...`);
-        await uploadDocMutation.mutateAsync({ file, docType });
-        toast.success(`${file.name} uploaded!`);
-      } catch (err: unknown) {
-        toast.error(`Upload error: ${errorMessage(err)}`);
-      }
+    const selected = Array.from(files || []);
+    if (selected.length === 0) return;
+    try {
+      toast.info(
+        selected.length === 1 ? `Uploading ${selected[0].name}...` : `Uploading ${selected.length} files...`,
+      );
+      await uploadDocMutation.mutateAsync({ files: selected, docType });
+      toast.success(selected.length === 1 ? `${selected[0].name} uploaded!` : `${selected.length} files uploaded`);
+    } catch (err: unknown) {
+      toast.error(`Upload error: ${errorMessage(err)}`);
     }
   };
 

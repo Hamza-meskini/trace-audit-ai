@@ -68,22 +68,13 @@ async def list_documents(project_id: str, db: AsyncSession = Depends(get_db)):
     return result.scalars().all()
 
 
-@router.post("", response_model=DocumentUploadResponse, status_code=201)
-async def upload_document(
+async def _prepare_upload(
     project_id: str,
-    file: UploadFile = File(...),
-    doc_type: str = Form(default=""),
-    version: str = Form(default="v1.0"),
-    db: AsyncSession = Depends(get_db),
-):
-    # Verify project exists
-    result = await db.execute(select(Project).where(Project.id == project_id))
-    if not result.scalar_one_or_none():
-        raise HTTPException(status_code=404, detail="Project not found")
-
-    _require_idle(project_id)
-
-    # Validate file type
+    file: UploadFile,
+    doc_type: str,
+    version: str,
+) -> tuple[Document, Path]:
+    """Validate and store one file. The caller commits every prepared row together."""
     ext = Path(file.filename or "").suffix.lower()
     allowed = {".pdf", ".docx", ".xlsx", ".csv"}
     if ext not in allowed:
@@ -92,7 +83,6 @@ async def upload_document(
             detail=f"Unsupported file type '{ext}'. Allowed: {', '.join(allowed)}",
         )
 
-    # Save file to local storage
     file_id = str(uuid.uuid4())
     safe_filename = f"{file_id}{ext}"
     project_dir = Path(settings.UPLOAD_DIR) / project_id
@@ -109,10 +99,8 @@ async def upload_document(
         raise HTTPException(status_code=400, detail="The uploaded file is empty")
     await run_in_threadpool(file_path.write_bytes, content)
 
-    # Determine doc_type from filename and extension if not explicitly provided
     resolved_type = doc_type if doc_type else infer_doc_type(file.filename or "", ext)
-
-    doc = Document(
+    document = Document(
         id=file_id,
         project_id=project_id,
         filename=safe_filename,
@@ -123,22 +111,85 @@ async def upload_document(
         storage_path=str(file_path),
         processing_status="Queued",
     )
-    db.add(doc)
+    return document, file_path
+
+
+async def _discard_files(paths: list[Path]) -> None:
+    for path in paths:
+        await run_in_threadpool(path.unlink, missing_ok=True)
+
+
+async def _commit_uploads(
+    db: AsyncSession,
+    prepared: list[tuple[Document, Path]],
+) -> list[DocumentUploadResponse]:
+    """Insert every document in one transaction. One warehouse commit covers the set."""
+    for document, _path in prepared:
+        db.add(document)
     try:
         await db.flush()
-        await db.refresh(doc)
         await db.commit()
     except BaseException:
-        await run_in_threadpool(file_path.unlink, missing_ok=True)
+        await _discard_files([path for _document, path in prepared])
         raise
+    return [
+        DocumentUploadResponse(
+            id=document.id,
+            filename=document.filename,
+            original_filename=document.original_filename,
+            doc_type=document.doc_type,
+            processing_status=document.processing_status,
+        )
+        for document, _path in prepared
+    ]
 
-    return DocumentUploadResponse(
-        id=doc.id,
-        filename=doc.filename,
-        original_filename=doc.original_filename,
-        doc_type=doc.doc_type,
-        processing_status=doc.processing_status,
-    )
+
+async def _accept_uploads(
+    project_id: str,
+    files: list[UploadFile],
+    doc_type: str,
+    version: str,
+    db: AsyncSession,
+) -> list[DocumentUploadResponse]:
+    result = await db.execute(select(Project).where(Project.id == project_id))
+    if not result.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail="Project not found")
+    _require_idle(project_id)
+    if not files:
+        raise HTTPException(status_code=400, detail="Choose at least one file")
+
+    prepared: list[tuple[Document, Path]] = []
+    try:
+        for file in files:
+            prepared.append(await _prepare_upload(project_id, file, doc_type, version))
+    except BaseException:
+        await _discard_files([path for _document, path in prepared])
+        raise
+    return await _commit_uploads(db, prepared)
+
+
+@router.post("", response_model=DocumentUploadResponse, status_code=201)
+async def upload_document(
+    project_id: str,
+    file: UploadFile = File(...),
+    doc_type: str = Form(default=""),
+    version: str = Form(default="v1.0"),
+    db: AsyncSession = Depends(get_db),
+):
+    saved = await _accept_uploads(project_id, [file], doc_type, version, db)
+    return saved[0]
+
+
+@router.post("/batch", response_model=list[DocumentUploadResponse], status_code=201)
+async def upload_documents(
+    project_id: str,
+    files: list[UploadFile] = File(...),
+    doc_type: str = Form(default=""),
+    version: str = Form(default="v1.0"),
+    db: AsyncSession = Depends(get_db),
+):
+    """Store a whole selection and commit the document rows once."""
+    return await _accept_uploads(project_id, files, doc_type, version, db)
 
 
 @router.get("/{document_id}", response_model=DocumentResponse)

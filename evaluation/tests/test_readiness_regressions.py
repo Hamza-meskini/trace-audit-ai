@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
 
 from app import database
 from app.config import settings
-from app.api.documents import upload_document
+from app.api.documents import upload_document, upload_documents
 from app.api.projects import delete_project
 from app.api.visitors import _csv_cell
 from app.models.project import Project
@@ -96,6 +96,27 @@ def test_upload_boundaries_and_failed_persistence(tmp_path):
             with pytest.raises(RuntimeError):
                 await upload_document("p1", UploadFile(filename="sample.pdf", file=io.BytesIO(b"1234")), "", "v1", db)
             assert not list(tmp_path.rglob("*.pdf"))
+    asyncio.run(run())
+
+
+def test_batch_upload_uses_one_commit(tmp_path):
+    async def run():
+        db = AsyncMock()
+        db.add = MagicMock()
+        result = MagicMock()
+        result.scalar_one_or_none.return_value = object()
+        db.execute.return_value = result
+        files = [
+            UploadFile(filename="requirements.pdf", file=io.BytesIO(b"1234")),
+            UploadFile(filename="evidence.docx", file=io.BytesIO(b"abcd")),
+        ]
+        with patch.object(settings, "UPLOAD_DIR", str(tmp_path)):
+            saved = await upload_documents("p1", files, "", "v1", db)
+        assert [item.original_filename for item in saved] == ["requirements.pdf", "evidence.docx"]
+        assert db.commit.await_count == 1
+        assert db.refresh.await_count == 0
+        stored = list(tmp_path.rglob("*.pdf")) + list(tmp_path.rglob("*.docx"))
+        assert len(stored) == 2
     asyncio.run(run())
 
 
