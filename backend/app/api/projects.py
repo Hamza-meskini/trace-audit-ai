@@ -1,9 +1,10 @@
 """Projects API — CRUD + stats."""
 
 from datetime import datetime
+import re
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -12,6 +13,8 @@ from app.models.project import Project
 from app.models.document import Document, EvidenceChunk
 from app.models.requirement import Requirement
 from app.models.finding import Finding
+from app.services import audit_progress
+from app.services.excel_export import generate_audit_report_excel
 from app.schemas.project import (
     ProjectCreate,
     ProjectUpdate,
@@ -76,6 +79,9 @@ async def update_project(project_id: str, body: ProjectUpdate, db: AsyncSession 
 
 @router.delete("/{project_id}", status_code=204)
 async def delete_project(project_id: str, db: AsyncSession = Depends(get_db)):
+    job = audit_progress.latest(project_id)
+    if job and job["status"] in ("queued", "running", "cancelling"):
+        raise HTTPException(409, "A project cannot be deleted while its audit is active")
     result = await db.execute(select(Project).where(Project.id == project_id))
     project = result.scalar_one_or_none()
     if not project:
@@ -141,4 +147,32 @@ async def get_project_stats(project_id: str, db: AsyncSession = Depends(get_db))
         documents=doc_count,
         evidence_segments=chunk_count,
         findings=finding_count,
+    )
+
+
+@router.get("/{project_id}/export/xlsx")
+async def export_project_xlsx(project_id: str, db: AsyncSession = Depends(get_db)):
+    """Export executive-grade, color-coded Excel audit report."""
+    result = await db.execute(select(Project).where(Project.id == project_id))
+    project = result.scalar_one_or_none()
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    try:
+        xlsx_bytes = await generate_audit_report_excel(db, project_id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to generate Excel report: {e}")
+
+    safe_name = re.sub(r"[^\w\-.]", "_", project.name or "audit")
+    filename = f"{project.audit_id or 'TraceAudit'}_{safe_name}_Audit_Report.xlsx"
+
+    return Response(
+        content=xlsx_bytes,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Access-Control-Expose-Headers": "Content-Disposition",
+        },
     )

@@ -1,8 +1,10 @@
 """End-to-end audit pipeline service.
 
 Executes document parsing, requirement extraction, evidence retrieval,
-hybrid verification (deterministic validators + batched LLM reasoning
-with deterministic fallback), and findings generation for a project.
+hybrid verification, and findings generation for a project. After the
+shared document preparation, each requirement runs retrieve, figure
+description, verdict, and save. Model calls overlap. Saves are committed
+one requirement at a time on the audit session.
 """
 
 import os
@@ -11,6 +13,7 @@ import logging
 import time
 import asyncio
 from datetime import datetime, timezone
+from types import SimpleNamespace
 from typing import Optional
 from sqlalchemy import select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -30,14 +33,14 @@ from app.services.contract_transport import extraction_contract_payload
 from app.services.retrieval import (
     build_requirement_search_queries,
     precompute_chunk_embeddings,
-    retrieve_candidate_evidence_hybrid,
+    prepare_lexical_corpus,
 )
 from app.services.databricks_ai_search import retrieve_with_fallback, sync_project_chunks
-from app.services.databricks_custom_reranker import rerank_candidates
 from app.services.classification import (
     EvidenceLinkAssessment,
     RequirementAssessment,
-    batch_assess_requirements,
+    assess_requirement_coverage_async,
+    refine_deferred_assessment,
 )
 from app.schemas.verification_result import ConditionVerificationResult
 from app.services.pipeline_cache import stable_key
@@ -178,6 +181,143 @@ def _cache_matches_source(existing_chunks: list[EvidenceChunk], storage_path: st
     if requested_parser in {"pymupdf", "docling"}:
         return requested_parser in cached_backend
     return True
+
+
+class _BusySeconds:
+    """Wall-clock time during which at least one requirement is in a stage."""
+
+    def __init__(self) -> None:
+        self._lock = asyncio.Lock()
+        self._active = 0
+        self._started = 0.0
+        self.seconds = 0.0
+
+    async def __aenter__(self) -> "_BusySeconds":
+        async with self._lock:
+            if self._active == 0:
+                self._started = time.perf_counter()
+            self._active += 1
+        return self
+
+    async def __aexit__(self, *_exc: object) -> bool:
+        async with self._lock:
+            self._active -= 1
+            if self._active == 0:
+                self.seconds += time.perf_counter() - self._started
+        return False
+
+
+def _merge_count_dicts(parts: list[dict]) -> dict:
+    merged: dict = {}
+    for part in parts:
+        for key, value in (part or {}).items():
+            if isinstance(value, bool):
+                continue
+            if isinstance(value, dict):
+                bucket = merged.setdefault(key, {})
+                if not isinstance(bucket, dict):
+                    continue
+                for name, count in value.items():
+                    if isinstance(count, (int, float)) and not isinstance(count, bool):
+                        bucket[name] = int(bucket.get(name, 0)) + int(count)
+            elif isinstance(value, (int, float)):
+                merged[key] = merged.get(key, 0) + value
+    return merged
+
+
+async def _persist_cache_reuse(session, requirement_id: str, run_id: Optional[str]) -> None:
+    result = await session.execute(select(Requirement).where(Requirement.id == requirement_id))
+    req = result.scalar_one()
+    data = dict(req.extracted_parameters or {})
+    verification = dict(data.get("verification") or {})
+    diagnostics = dict(verification.get("diagnostics") or {})
+    diagnostics["verification_cache_hit"] = True
+    verification.update({
+        "audit_run_id": run_id,
+        "assessed_at": datetime.now(timezone.utc).isoformat(),
+        "diagnostics": diagnostics,
+    })
+    data["verification"] = verification
+    req.extracted_parameters = data
+
+
+async def _persist_requirement_assessment(
+    session,
+    *,
+    requirement_id: str,
+    project_id: str,
+    assessment: RequirementAssessment,
+    item: dict,
+    fingerprint: str,
+    ordinal: int,
+    run_id: Optional[str],
+    model: str,
+    thinking_level: str,
+) -> None:
+    result = await session.execute(select(Requirement).where(Requirement.id == requirement_id))
+    req = result.scalar_one()
+    await session.execute(
+        delete(RequirementEvidence).where(RequirementEvidence.requirement_id == req.id)
+    )
+    await session.execute(delete(Finding).where(Finding.requirement_id == req.id))
+
+    req.coverage_status = assessment.coverage_status
+    req.confidence = assessment.confidence
+    req.review_state = assessment.review_state
+    req.ai_analysis = assessment.ai_analysis
+    req.ai_recommendation = assessment.ai_recommendation
+    req.sources_count = len(assessment.evidence_links)
+    data = dict(req.extracted_parameters or {})
+    candidates = item.get("candidate_chunks", [])
+    diagnostics = dict(assessment.pipeline_diagnostics or {})
+    diagnostics["verification_cache_hit"] = False
+    assessment.pipeline_diagnostics = diagnostics
+    data["verification"] = {
+        "assessed_at": datetime.now(timezone.utc).isoformat(),
+        "audit_run_id": run_id,
+        "input_fingerprint": fingerprint,
+        "condition_results": [result_item.model_dump() for result_item in assessment.condition_results],
+        "diagnostics": diagnostics,
+        "model": model,
+        "thinking_level": thinking_level,
+        "targeted_extraction": item.get("targeted_extraction"),
+        "evidence_catalog": [
+            {
+                "evidence_id": f"E{index}",
+                "chunk_id": candidate["id"],
+                "document_id": candidate["document_id"],
+                "document_name": candidate["document_name"],
+                "page_number": candidate.get("page_number"),
+            }
+            for index, candidate in enumerate(candidates, 1)
+        ],
+        "result_cache": _assessment_cache_payload(assessment),
+    }
+    req.extracted_parameters = data
+
+    for ev_link in assessment.evidence_links:
+        session.add(RequirementEvidence(
+            id=str(uuid.uuid4()),
+            requirement_id=req.id,
+            evidence_chunk_id=ev_link.chunk_id,
+            status=ev_link.status,
+            label=ev_link.label,
+            highlight=ev_link.highlight,
+        ))
+
+    if assessment.coverage_status in ("Partial", "Missing", "Conflict", "Unknown"):
+        session.add(Finding(
+            id=str(uuid.uuid4()),
+            project_id=project_id,
+            requirement_id=req.id,
+            finding_code=f"F-{ordinal:03d}",
+            finding_type=finding_type_for(assessment.coverage_status),
+            severity=finding_severity_for(req.severity, assessment.coverage_status),
+            review_state=assessment.review_state,
+            category=req.category,
+            sources_count=len(assessment.evidence_links),
+            description=assessment.ai_analysis,
+        ))
 
 
 async def _run_audit_pipeline_impl(
@@ -501,144 +641,323 @@ async def _run_audit_pipeline_impl(
     except Exception as exc:
         logger.warning("Databricks AI Search sync failed; preparing local retrieval: %s", exc)
         search_sync = None
+    excluded_spec_names = {name.lower() for name in spec_doc_names}
+    evidence_corpus = [
+        chunk for chunk in all_chunks_for_retrieval
+        if chunk.get("document_name", "").lower() not in excluded_spec_names
+    ]
     chunk_embeddings = (
-        [None] * len(all_chunks_for_retrieval)
+        [None] * len(evidence_corpus)
         if managed_search_ready
-        else await precompute_chunk_embeddings(all_chunks_for_retrieval)
+        else await precompute_chunk_embeddings(evidence_corpus)
     )
+    lexical_corpus = prepare_lexical_corpus(evidence_corpus)
     logger.info(
         "Prepared %s retrieval for %d chunks",
         "Databricks AI Search" if managed_search_ready else "local hybrid",
-        len(all_chunks_for_retrieval),
+        len(evidence_corpus),
     )
 
-    # 4b. Retrieve candidate evidence per requirement (hybrid BM25 + semantic)
-    retrieval_started = time.perf_counter()
-    req_items: list[dict | None] = [None] * len(requirements)
-    per_requirement_search: dict[str, dict] = {}
-    retrieval_semaphore = asyncio.Semaphore(max(1, int(settings.AUDIT_RETRIEVAL_CONCURRENCY)))
+    # Each requirement retrieves, describes its figures, and is saved as soon
+    # as its own evidence is ready. Four workers match the eight-slot model cap,
+    # because a requirement in flight can hold a verdict call and a citation call.
+    # Database writes take the caller's session one requirement at a time so
+    # concurrent model calls never share that session.
+    from app.services.databricks_document_ai import enrich_targeted_evidence_items
 
-    async def retrieve_requirement(index: int, req: Requirement):
-        # Hybrid retrieval: BM25 + Gemini embedding cosine similarity.
-        # Spec docs are excluded from candidates (self-referential, they contain
-        # the requirement text itself and always outrank true evidence).
-        extraction_data = req.extracted_parameters or {}
-        structured_conditions = extraction_data.get("conditions", [])
-        search_queries = build_requirement_search_queries(
-            req.req_code,
-            req.title,
-            req.description or "",
-            structured_conditions,
-            extraction_data.get("semantic_clauses", []),
-        )
-        primary_query = search_queries[0] if search_queries else f"{req.req_code} {req.title} {req.description or ''}"
-        async with retrieval_semaphore:
-            if managed_search_ready:
-                retrieved, search_diagnostics = await retrieve_with_fallback(
-                    primary_query,
-                    all_chunks_for_retrieval,
-                    project_id=project_id,
-                    chunk_embeddings=chunk_embeddings,
-                    top_k=8,
-                    exclude_doc_names=spec_doc_names,
-                    condition_queries=search_queries[1:],
-                    backend="databricks",
-                )
-                diagnostics = search_diagnostics.as_dict()
-            else:
-                retrieval_top_k = (
-                    max(8, int(settings.DATABRICKS_CUSTOM_RERANKER_CANDIDATE_COUNT))
-                    if settings.DATABRICKS_CUSTOM_RERANKER_ENABLED
-                    else 8
-                )
-                retrieved = await retrieve_candidate_evidence_hybrid(
-                    primary_query,
-                    all_chunks_for_retrieval,
-                    chunk_embeddings=chunk_embeddings,
-                    top_k=retrieval_top_k,
-                    exclude_doc_names=spec_doc_names,
-                    condition_queries=search_queries[1:],
-                )
-                retrieved, custom_reranker = await rerank_candidates(
-                    primary_query,
-                    retrieved,
-                    condition_queries=search_queries[1:],
-                    top_k=8,
-                )
-                diagnostics = {
-                    "requested_backend": "local",
-                    "backend_used": "local-hybrid",
-                    "queries": len(search_queries),
-                    "candidates": len(retrieved),
-                    "custom_reranker": custom_reranker,
-                }
-
-        candidate_chunks = [
-            {
-                "id": r.chunk_id,
-                "document_id": r.document_id,
-                "document_name": r.document_name,
-                "doc_type": r.doc_type,
-                "page_number": r.page_number,
-                "content": r.content,
-                "document_profile": r.document_profile,
-                "metadata": r.metadata,
-            }
-            for r in retrieved
-        ]
-
-        item = {
+    snapshots = [
+        {
+            "id": req.id,
             "req_code": req.req_code,
             "title": req.title,
             "description": req.description,
             "category": req.category,
-            "conditions": structured_conditions,
-            "semantic_clauses": extraction_data.get("semantic_clauses", []),
-            "clause_coverage": extraction_data.get("clause_coverage", []),
-            "unmapped_obligations": extraction_data.get("unmapped_obligations", []),
-            # None means a legacy database record that pre-dates completeness
-            # reporting. It is not silently treated as an explicit failure.
-            "contract_complete": extraction_data.get("contract_complete"),
-            "logic": extraction_data.get("logic"),
-            "logic_tree": extraction_data.get("logic_tree"),
-            "decomposition_confidence": extraction_data.get("decomposition_confidence"),
-            "ambiguities": extraction_data.get("ambiguities", []),
-            "validation_issues": extraction_data.get("validation_issues", []),
-            "candidate_chunks": candidate_chunks,
-            "search_queries": search_queries,
-            "spec_doc_names": spec_doc_names,
+            "ordinal": ordinal,
+            "extracted_parameters": dict(req.extracted_parameters or {}),
         }
-        return index, req.req_code, item, diagnostics
-
-    retrieval_tasks = [
-        asyncio.create_task(retrieve_requirement(index, req))
-        for index, req in enumerate(requirements)
+        for ordinal, req in enumerate(requirements, 1)
     ]
+    await db.commit()
+
+    documents_by_id = {document.id: document for document in documents}
+    # Figure descriptions are cached on plain copies. The live ORM rows are
+    # updated once, after every worker has finished, so a commit cannot race
+    # a vision write on the same session.
+    visual_chunk_copies = {
+        chunk_id: SimpleNamespace(
+            metadata_json=dict(chunk.metadata_json or {}),
+            content=chunk.content,
+        )
+        for chunk_id, chunk in evidence_chunk_models.items()
+    }
+    corpus_fingerprint = stable_key({
+        "version": settings.AUDIT_CACHE_VERSION,
+        "chunks": [
+            {
+                "id": chunk.get("id"),
+                "document_id": chunk.get("document_id"),
+                "content": chunk.get("content"),
+                "metadata": chunk.get("metadata"),
+            }
+            for chunk in all_chunks_for_retrieval
+        ],
+    })
+    worker_slots = asyncio.Semaphore(max(1, int(settings.AUDIT_REQUIREMENT_CONCURRENCY)))
+    persist_lock = asyncio.Lock()
+    progress_lock = asyncio.Lock()
+    retrieval_busy = _BusySeconds()
+    targeted_busy = _BusySeconds()
+    vision_busy = _BusySeconds()
+    reasoning_busy = _BusySeconds()
     retrieved_count = 0
+    vision_count = 0
+    reasoned_count = 0
+    requirement_work_started = time.perf_counter()
+    report_progress("reasoning", 0, len(requirements), "Evaluating conditions, citations and review safety")
+
+    async def save_requirement(snapshot: dict, item: dict, assessment: RequirementAssessment, *, cache_hit: bool) -> None:
+        async with persist_lock:
+            if cache_hit:
+                await _persist_cache_reuse(db, snapshot["id"], run_id)
+            else:
+                await _persist_requirement_assessment(
+                    db,
+                    requirement_id=snapshot["id"],
+                    project_id=project_id,
+                    assessment=assessment,
+                    item=item,
+                    fingerprint=item["fingerprint"],
+                    ordinal=snapshot["ordinal"],
+                    run_id=run_id,
+                    model=active_model,
+                    thinking_level=active_thinking,
+                )
+            await db.commit()
+
+    async def run_requirement(snapshot: dict) -> dict:
+        nonlocal retrieved_count, vision_count, reasoned_count
+        code = snapshot["req_code"]
+        try:
+            async with worker_slots:
+                extraction_data = snapshot["extracted_parameters"]
+                structured_conditions = extraction_data.get("conditions", [])
+                search_queries = build_requirement_search_queries(
+                    code,
+                    snapshot["title"],
+                    snapshot["description"] or "",
+                    structured_conditions,
+                    extraction_data.get("semantic_clauses", []),
+                )
+                primary_query = (
+                    search_queries[0]
+                    if search_queries
+                    else f"{code} {snapshot['title']} {snapshot['description'] or ''}"
+                )
+                async with retrieval_busy:
+                    retrieved, search_diagnostics = await retrieve_with_fallback(
+                        primary_query,
+                        evidence_corpus,
+                        project_id=project_id,
+                        chunk_embeddings=chunk_embeddings,
+                        top_k=8,
+                        exclude_doc_names=spec_doc_names,
+                        condition_queries=search_queries[1:],
+                        backend="databricks" if managed_search_ready else "local",
+                        prepared_corpus=lexical_corpus,
+                    )
+                candidates_before_discovery = len(retrieved)
+                candidate_chunks = [
+                    {
+                        "id": match.chunk_id,
+                        "document_id": match.document_id,
+                        "document_name": match.document_name,
+                        "doc_type": match.doc_type,
+                        "page_number": match.page_number,
+                        "content": match.content,
+                        "document_profile": match.document_profile,
+                        "metadata": match.metadata,
+                    }
+                    for match in retrieved
+                ]
+                item = {
+                    "req_code": code,
+                    "title": snapshot["title"],
+                    "description": snapshot["description"],
+                    "category": snapshot["category"],
+                    "conditions": structured_conditions,
+                    "semantic_clauses": extraction_data.get("semantic_clauses", []),
+                    "clause_coverage": extraction_data.get("clause_coverage", []),
+                    "unmapped_obligations": extraction_data.get("unmapped_obligations", []),
+                    "contract_complete": extraction_data.get("contract_complete"),
+                    "logic": extraction_data.get("logic"),
+                    "logic_tree": extraction_data.get("logic_tree"),
+                    "decomposition_confidence": extraction_data.get("decomposition_confidence"),
+                    "ambiguities": extraction_data.get("ambiguities", []),
+                    "validation_issues": extraction_data.get("validation_issues", []),
+                    "candidate_chunks": candidate_chunks,
+                    "search_queries": search_queries,
+                    "spec_doc_names": spec_doc_names,
+                }
+                async with progress_lock:
+                    retrieved_count += 1
+                    report_progress(
+                        "retrieval",
+                        retrieved_count,
+                        len(requirements),
+                        f"Located evidence for {code}",
+                    )
+                async with targeted_busy:
+                    targeted = await enrich_targeted_evidence_items(
+                        [item],
+                        evidence_corpus=evidence_corpus,
+                    )
+                async with vision_busy:
+                    visual = await describe_retrieved_figures(
+                        [item],
+                        documents_by_id,
+                        visual_chunk_copies,
+                        model=active_model,
+                        max_concurrency=max(1, int(settings.AUDIT_VISION_CONCURRENCY)),
+                    )
+                async with progress_lock:
+                    vision_count += 1
+                    report_progress(
+                        "vision",
+                        vision_count,
+                        len(requirements),
+                        f"Interpreted figures for {code}",
+                    )
+                fingerprint = _verification_fingerprint(
+                    item,
+                    corpus_fingerprint=corpus_fingerprint,
+                    model=active_model,
+                    thinking_level=active_thinking,
+                )
+                item["fingerprint"] = fingerprint
+                cached = _cached_assessment(
+                    SimpleNamespace(extracted_parameters=snapshot["extracted_parameters"]),
+                    fingerprint,
+                )
+                async with reasoning_busy:
+                    if cached is None:
+                        assessment = await assess_requirement_coverage_async(
+                            req_code=code,
+                            title=snapshot["title"] or "",
+                            description=snapshot["description"],
+                            category=snapshot["category"] or "General",
+                            candidate_chunks=item.get("candidate_chunks") or [],
+                            model=active_model,
+                            thinking_level=active_thinking,
+                            spec_doc_names=spec_doc_names,
+                            conditions=item.get("conditions"),
+                            semantic_clauses=item.get("semantic_clauses"),
+                            clause_coverage=item.get("clause_coverage"),
+                            unmapped_obligations=item.get("unmapped_obligations"),
+                            contract_complete=item.get("contract_complete"),
+                            logic=item.get("logic"),
+                            logic_tree=item.get("logic_tree"),
+                            decomposition_confidence=item.get("decomposition_confidence"),
+                            ambiguities=item.get("ambiguities"),
+                            validation_issues=item.get("validation_issues"),
+                            targeted_extraction=item.get("targeted_extraction"),
+                            defer_partial=True,
+                            defer_secondary_adjudication=True,
+                        )
+                        cache_hit = False
+                    else:
+                        assessment = cached
+                        cache_hit = True
+                    await save_requirement(snapshot, item, assessment, cache_hit=cache_hit)
+                async with progress_lock:
+                    reasoned_count += 1
+                    report_progress(
+                        "reasoning",
+                        reasoned_count,
+                        len(requirements),
+                        f"{reasoned_count} of {len(requirements)} requirements evaluated",
+                    )
+            if (
+                not cache_hit
+                and assessment.review_state == "Needs review"
+                and (assessment.pipeline_diagnostics or {}).get("secondary_adjudication_deferred")
+            ):
+                async with reasoning_busy:
+                    refined = await refine_deferred_assessment(
+                        assessment,
+                        item.get("candidate_chunks") or [],
+                        model=active_model,
+                        spec_doc_names=spec_doc_names,
+                    )
+                if refined is not None:
+                    assessment = refined
+                    await save_requirement(snapshot, item, assessment, cache_hit=False)
+            return {
+                "code": code,
+                "item": item,
+                "search": search_diagnostics.as_dict(),
+                "assessment": assessment,
+                "cache_hit": cache_hit,
+                "visual": visual,
+                "targeted": targeted,
+                "candidates_before_discovery": candidates_before_discovery,
+            }
+        except Exception:
+            logger.exception("Requirement %s failed during assessment", code)
+            return {
+                "code": code,
+                "item": None,
+                "search": {},
+                "assessment": None,
+                "cache_hit": False,
+                "visual": {},
+                "targeted": {},
+                "candidates_before_discovery": 0,
+            }
+
+    worker_tasks = [asyncio.create_task(run_requirement(snapshot)) for snapshot in snapshots]
     try:
-        for task in asyncio.as_completed(retrieval_tasks):
-            index, req_code, item, diagnostics = await task
-            req_items[index] = item
-            per_requirement_search[req_code] = diagnostics
-            retrieved_count += 1
-            report_progress(
-                "retrieval", retrieved_count, len(requirements), f"Located evidence for {req_code}"
-            )
-    finally:
-        unfinished = [task for task in retrieval_tasks if not task.done()]
-        for task in unfinished:
+        worker_rows = await asyncio.gather(*worker_tasks)
+    except BaseException:
+        for task in worker_tasks:
             task.cancel()
-        if unfinished:
-            await asyncio.gather(*unfinished, return_exceptions=True)
+        await asyncio.gather(*worker_tasks, return_exceptions=True)
+        raise
 
-    req_items = [item for item in req_items if item is not None]
+    for chunk_id, copy in visual_chunk_copies.items():
+        model_chunk = evidence_chunk_models.get(chunk_id)
+        if model_chunk is None:
+            continue
+        model_chunk.metadata_json = copy.metadata_json
+        model_chunk.content = copy.content
 
-    stage_timings["retrieval_seconds"] = round(time.perf_counter() - retrieval_started, 3)
+    req_items = [row["item"] for row in worker_rows if row.get("item")]
+    assessments = {
+        row["code"]: row["assessment"]
+        for row in worker_rows
+        if row.get("assessment") is not None
+    }
+    cached_count = sum(1 for row in worker_rows if row.get("cache_hit"))
+    stage_timings["retrieval_seconds"] = round(retrieval_busy.seconds, 3)
+    stage_timings["targeted_extraction_seconds"] = round(targeted_busy.seconds, 3)
+    stage_timings["visual_analysis_seconds"] = round(vision_busy.seconds, 3)
+    stage_timings["reasoning_seconds"] = round(reasoning_busy.seconds, 3)
+    stage_timings["requirement_pipeline_seconds"] = round(
+        time.perf_counter() - requirement_work_started, 3
+    )
+    per_requirement_search = {
+        row["code"]: row["search"] for row in worker_rows if row.get("search")
+    }
+    targeted_stats = _merge_count_dicts([row["targeted"] for row in worker_rows])
+    visual_diagnostics = _merge_count_dicts([row["visual"] for row in worker_rows])
+    pre_discovery_candidate_total = sum(
+        int(row.get("candidates_before_discovery") or 0) for row in worker_rows
+    )
     retrieval_diagnostics = {
         "requirements": len(req_items),
         "requirements_without_candidates": sum(
             not item.get("candidate_chunks") for item in req_items
         ),
+        "candidate_chunks_before_discovery": pre_discovery_candidate_total,
         "candidate_chunks_total": sum(
             len(item.get("candidate_chunks", [])) for item in req_items
         ),
@@ -657,231 +976,20 @@ async def _run_audit_pipeline_impl(
             "fallback_reason": "Databricks AI Search sync was unavailable",
         },
         "per_requirement": per_requirement_search,
+        "targeted_extraction": targeted_stats,
+        "ai_extract_discovered_chunks": sum(
+            len(((item.get("targeted_extraction") or {}).get("metadata") or {}).get("cited_source_chunk_ids", []))
+            for item in req_items
+        ),
+        "requirement_workers": max(1, int(settings.AUDIT_REQUIREMENT_CONCURRENCY)),
     }
-
-    # Use ai_extract as a citation-backed discovery stage over the complete
-    # independent-evidence corpus. This can recover pages that similarity
-    # top-k missed. The helper prepends cited raw chunks, preserves the normal
-    # retrieval results, and performs one focused retry for uncovered atoms.
-    targeted_started = time.perf_counter()
-    from app.services.databricks_document_ai import enrich_targeted_evidence_items
-
-    excluded_spec_names = {name.lower() for name in spec_doc_names}
-    evidence_corpus = [
-        chunk for chunk in all_chunks_for_retrieval
-        if chunk.get("document_name", "").lower() not in excluded_spec_names
-    ]
-    pre_discovery_candidate_total = retrieval_diagnostics["candidate_chunks_total"]
-    targeted_stats = await enrich_targeted_evidence_items(
-        req_items,
-        evidence_corpus=evidence_corpus,
-    )
-    stage_timings["targeted_extraction_seconds"] = round(
-        time.perf_counter() - targeted_started, 3
-    )
-    retrieval_diagnostics["targeted_extraction"] = targeted_stats
-    retrieval_diagnostics["candidate_chunks_before_discovery"] = pre_discovery_candidate_total
-    retrieval_diagnostics["candidate_chunks_total"] = sum(
-        len(item.get("candidate_chunks", [])) for item in req_items
-    )
-    retrieval_diagnostics["requirements_without_candidates"] = sum(
-        not item.get("candidate_chunks") for item in req_items
-    )
-    retrieval_diagnostics["ai_extract_discovered_chunks"] = sum(
-        len(((item.get("targeted_extraction") or {}).get("metadata") or {}).get("cited_source_chunk_ids", []))
-        for item in req_items
-    )
-    retrieval_diagnostics["structured_table_candidates"] = sum(
-        (candidate.get("metadata") or {}).get("block_type") == "table"
-        for item in req_items for candidate in item.get("candidate_chunks", [])
-    )
-    retrieval_diagnostics["figure_candidates"] = sum(
-        (candidate.get("metadata") or {}).get("block_type") == "figure"
-        for item in req_items for candidate in item.get("candidate_chunks", [])
-    )
-
-    # Render and describe only figures selected by retrieval. Descriptions are
-    # persisted on the chunk and reused across requirements and later runs.
-    # Citation discovery runs first so figures found outside the original top-k
-    # are also eligible for visual interpretation.
-    vision_started = time.perf_counter()
-    report_progress("vision", 0, 0, "Interpreting retrieved figures; provider calls may take several minutes")
-    visual_diagnostics = await describe_retrieved_figures(
-        req_items,
-        {document.id: document for document in documents},
-        evidence_chunk_models,
-        model=active_model,
-    )
-    stage_timings["visual_analysis_seconds"] = round(
-        time.perf_counter() - vision_started, 3
-    )
-
-    # 4b. Batched hybrid verification: deterministic validators first,
-    # LLM multi-condition reasoning (with Databricks cascade fallback) for
-    # inconclusive requirements — same engine used by offline evaluation.
-    reasoning_started = time.perf_counter()
-    report_progress("reasoning", 0, len(requirements), "Evaluating conditions, citations and review safety")
-    corpus_fingerprint = stable_key({
-        "version": settings.AUDIT_CACHE_VERSION,
-        "chunks": [
-            {
-                "id": chunk.get("id"),
-                "document_id": chunk.get("document_id"),
-                "content": chunk.get("content"),
-                "metadata": chunk.get("metadata"),
-            }
-            for chunk in all_chunks_for_retrieval
-        ],
-    })
-    req_by_code = {req.req_code: req for req in requirements}
-    item_by_code = {item["req_code"]: item for item in req_items}
-    fingerprints: dict[str, str] = {}
-    assessments: dict[str, RequirementAssessment] = {}
-    pending_items: list[dict] = []
-    for item in req_items:
-        code = item["req_code"]
-        fingerprint = _verification_fingerprint(
-            item,
-            corpus_fingerprint=corpus_fingerprint,
-            model=active_model,
-            thinking_level=active_thinking,
-        )
-        fingerprints[code] = fingerprint
-        cached = _cached_assessment(req_by_code[code], fingerprint)
-        if cached is None:
-            pending_items.append(item)
-        else:
-            assessments[code] = cached
-
-    cached_count = len(assessments)
-    if cached_count:
-        reused_at = datetime.now(timezone.utc).isoformat()
-        for code in assessments:
-            req = req_by_code[code]
-            data = dict(req.extracted_parameters or {})
-            verification = dict(data.get("verification") or {})
-            diagnostics = dict(verification.get("diagnostics") or {})
-            diagnostics["verification_cache_hit"] = True
-            verification.update({
-                "audit_run_id": run_id,
-                "assessed_at": reused_at,
-                "diagnostics": diagnostics,
-            })
-            data["verification"] = verification
-            req.extracted_parameters = data
-        await db.commit()
-        report_progress(
-            "reasoning",
-            cached_count,
-            len(requirements),
-            f"Reused {cached_count} unchanged requirement results",
-        )
-
-    persisted_codes: set[str] = set()
-
-    async def persist_completed(completed: dict[str, RequirementAssessment]):
-        for code, assessment in completed.items():
-            req = req_by_code[code]
-            item = item_by_code[code]
-            await db.execute(
-                delete(RequirementEvidence).where(RequirementEvidence.requirement_id == req.id)
-            )
-            await db.execute(delete(Finding).where(Finding.requirement_id == req.id))
-
-            req.coverage_status = assessment.coverage_status
-            req.confidence = assessment.confidence
-            req.review_state = assessment.review_state
-            req.ai_analysis = assessment.ai_analysis
-            req.ai_recommendation = assessment.ai_recommendation
-            req.sources_count = len(assessment.evidence_links)
-            data = dict(req.extracted_parameters or {})
-            candidates = item.get("candidate_chunks", [])
-            diagnostics = dict(assessment.pipeline_diagnostics or {})
-            diagnostics["verification_cache_hit"] = False
-            assessment.pipeline_diagnostics = diagnostics
-            data["verification"] = {
-                "assessed_at": datetime.now(timezone.utc).isoformat(),
-                "audit_run_id": run_id,
-                "input_fingerprint": fingerprints[code],
-                "condition_results": [result.model_dump() for result in assessment.condition_results],
-                "diagnostics": diagnostics,
-                "model": active_model,
-                "thinking_level": active_thinking,
-                "targeted_extraction": item.get("targeted_extraction"),
-                "evidence_catalog": [
-                    {
-                        "evidence_id": f"E{index}",
-                        "chunk_id": candidate["id"],
-                        "document_id": candidate["document_id"],
-                        "document_name": candidate["document_name"],
-                        "page_number": candidate.get("page_number"),
-                    }
-                    for index, candidate in enumerate(candidates, 1)
-                ],
-                "result_cache": _assessment_cache_payload(assessment),
-            }
-            req.extracted_parameters = data
-
-            for ev_link in assessment.evidence_links:
-                db.add(RequirementEvidence(
-                    id=str(uuid.uuid4()),
-                    requirement_id=req.id,
-                    evidence_chunk_id=ev_link.chunk_id,
-                    status=ev_link.status,
-                    label=ev_link.label,
-                    highlight=ev_link.highlight,
-                ))
-
-            if assessment.coverage_status in ("Partial", "Missing", "Conflict", "Unknown"):
-                ordinal = next(
-                    index for index, candidate in enumerate(requirements, 1)
-                    if candidate.req_code == code
-                )
-                finding_sev = finding_severity_for(req.severity, assessment.coverage_status)
-                db.add(Finding(
-                    id=str(uuid.uuid4()),
-                    project_id=project_id,
-                    requirement_id=req.id,
-                    finding_code=f"F-{ordinal:03d}",
-                    finding_type=finding_type_for(assessment.coverage_status),
-                    severity=finding_sev,
-                    review_state=assessment.review_state,
-                    category=req.category,
-                    sources_count=len(assessment.evidence_links),
-                    description=assessment.ai_analysis,
-                ))
-        # Each completed batch is a restart-safe checkpoint and becomes visible
-        # to reviewers immediately.
-        await db.commit()
-        persisted_codes.update(completed)
-
-    if pending_items:
-        fresh_assessments = await batch_assess_requirements(
-            req_items=pending_items,
-            model=active_model,
-            thinking_level=active_thinking,
-            spec_doc_names=spec_doc_names,
-            progress=lambda done, total: report_progress(
-                "reasoning",
-                cached_count + done,
-                len(requirements),
-                f"{cached_count + done} of {len(requirements)} requirements evaluated",
-            ),
-            on_results=persist_completed,
-        )
-        assessments.update(fresh_assessments)
-        unpersisted = {
-            code: assessment for code, assessment in fresh_assessments.items()
-            if code not in persisted_codes
-        }
-        if unpersisted:
-            await persist_completed(unpersisted)
-    stage_timings["reasoning_seconds"] = round(time.perf_counter() - reasoning_started, 3)
     reasoning_diagnostics = {
         "assessments_produced": len(assessments),
         "assessments_missing": max(0, len(requirements) - len(assessments)),
         "verification_cache_hits": cached_count,
-        "verification_cache_misses": len(pending_items),
+        "verification_cache_misses": sum(
+            row.get("item") is not None and not row.get("cache_hit") for row in worker_rows
+        ),
         "coverage_statuses": {
             status: sum(
                 assessment.coverage_status == status for assessment in assessments.values()
@@ -893,6 +1001,7 @@ async def _run_audit_pipeline_impl(
             for assessment in assessments.values()
         ),
     }
+
 
     # 5. Update document linked counts
     report_progress("saving", len(assessments), len(requirements), "Finalizing document links")

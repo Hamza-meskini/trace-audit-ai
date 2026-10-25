@@ -1,11 +1,14 @@
+import { useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { Download, FileText, Loader2, Table2 } from "lucide-react";
+import { Download, FileSpreadsheet, FileText, Loader2, Table2 } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { PageHeader, Panel, EmptyState } from "@/components/primitives";
 import { Mono } from "@/components/status";
 import { useActiveProject } from "@/hooks/use-active-project";
 import { useProjectStats } from "@/hooks/use-projects";
 import { useRequirements } from "@/hooks/use-requirements";
+import { api } from "@/lib/api-client";
 
 export const Route = createFileRoute("/reports")({
   head: () => ({ meta: [{ title: "Audit Reports — TraceAudit" }] }),
@@ -23,7 +26,7 @@ const colors: Record<string, string> = {
 
 function csvCell(value: unknown) {
   const raw = String(value ?? "");
-  const safe = /^[=+\-@\t\r]/.test(raw) ? `'${raw}` : raw;
+  const safe = /^\s*[=+\-@]|^[\t\r\n]/.test(raw) ? `'${raw}` : raw;
   return `"${safe.replaceAll('"', '""')}"`;
 }
 
@@ -32,6 +35,22 @@ function ReportsPage() {
   const stats = useProjectStats(activeProjectId);
   const requirements = useRequirements(activeProjectId);
   const rows = requirements.data || [];
+  const [isExportingXlsx, setIsExportingXlsx] = useState(false);
+
+  const downloadXlsx = async () => {
+    if (!activeProjectId) return;
+    setIsExportingXlsx(true);
+    try {
+      const defaultFilename = `${activeProject?.audit_id || "TraceAudit"}_${(activeProject?.name || "Audit").replace(/\s+/g, "_")}_Audit_Report.xlsx`;
+      await api.downloadProjectExportXlsx(activeProjectId, defaultFilename);
+      toast.success("Audit report exported as Excel (.xlsx) successfully");
+    } catch (err) {
+      console.error("XLSX export failed:", err);
+      toast.error(err instanceof Error ? err.message : "Failed to export Excel report");
+    } finally {
+      setIsExportingXlsx(false);
+    }
+  };
 
   const downloadCsv = () => {
     const columns = [
@@ -126,17 +145,39 @@ function ReportsPage() {
           <div>
             <h2 className="font-semibold">Requirement audit register</h2>
             <p className="mt-1 text-sm text-muted-foreground">
-              Current AI assessments, human decisions, evidence counts, and review blockers.
+              Executive audit scorecard, color-coded requirement register, evidence traceability
+              matrix, and findings.
             </p>
           </div>
-          <div className="flex gap-2">
-            <Button variant="outline" size="sm" disabled title="PDF export is not implemented yet">
-              <Download className="size-4" />
-              PDF unavailable
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={downloadCsv}
+              className="text-xs text-muted-foreground gap-1.5"
+              title="Export raw tabular CSV"
+            >
+              <Table2 className="size-3.5" />
+              Export CSV
             </Button>
-            <Button size="sm" onClick={downloadCsv}>
-              <Table2 className="size-4" />
-              Export live CSV
+            <Button
+              size="sm"
+              onClick={downloadXlsx}
+              disabled={isExportingXlsx}
+              className="gap-2 bg-emerald-700 hover:bg-emerald-800 text-white dark:bg-emerald-600 dark:hover:bg-emerald-700 font-medium shadow-sm transition-all"
+              title="Export complete executive-grade Excel workbook (.xlsx) with styled sheets and full evidence"
+            >
+              {isExportingXlsx ? (
+                <>
+                  <Loader2 className="size-4 animate-spin" />
+                  Generating Excel…
+                </>
+              ) : (
+                <>
+                  <FileSpreadsheet className="size-4" />
+                  Export Audit Report (.xlsx)
+                </>
+              )}
             </Button>
           </div>
         </div>

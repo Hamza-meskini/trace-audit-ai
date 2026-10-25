@@ -8,9 +8,9 @@ export function useActiveProject() {
   const { data: projects, isLoading } = useProjects();
   const [selectedId, setSelectedId] = useState<string>(() => {
     if (typeof window !== "undefined") {
-      return localStorage.getItem(ACTIVE_PROJECT_KEY) || "proj-001";
+      return localStorage.getItem(ACTIVE_PROJECT_KEY) || "";
     }
-    return "proj-001";
+    return "";
   });
 
   const selectProject = (id: string) => {
@@ -23,8 +23,8 @@ export function useActiveProject() {
 
   useEffect(() => {
     const handleStorage = () => {
-      const stored = localStorage.getItem(ACTIVE_PROJECT_KEY);
-      if (stored && stored !== selectedId) {
+      const stored = localStorage.getItem(ACTIVE_PROJECT_KEY) || "";
+      if (stored !== selectedId) {
         setSelectedId(stored);
       }
     };
@@ -39,7 +39,7 @@ export function useActiveProject() {
   // Find active project from list or default to clean placeholder
   const activeProject: ApiProject = projects?.find((p) => p.id === selectedId) ||
     projects?.[0] || {
-      id: selectedId || "",
+      id: "",
       name: isLoading ? "Loading project…" : "No active project",
       audit_id: "—",
       product_name: "",

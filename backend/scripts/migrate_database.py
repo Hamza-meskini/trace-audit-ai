@@ -181,7 +181,8 @@ def run_databricks_migration(check_only: bool = False, force_seed: bool = False)
 
         missing = [t for t in EXPECTED_TABLES if t not in found_tables]
         if missing:
-            logger.warning("⚠️ Some expected tables were not reported by SHOW TABLES: %s", missing)
+            logger.error("Required Delta Lake tables are missing: %s", missing)
+            return False
         else:
             logger.info("✅ All %d required Delta Lake tables verified!", len(EXPECTED_TABLES))
 
@@ -190,7 +191,7 @@ def run_databricks_migration(check_only: bool = False, force_seed: bool = False)
         count = res.scalar() or 0
         logger.info("Current project count in `%s`.`%s`.projects: %d", catalog, schema, count)
 
-    if count == 0 or force_seed:
+    if force_seed or (settings.SEED_DEMO_DATA and count == 0):
         logger.info("Seeding initial benchmark audit data into Databricks Delta Lake...")
         try:
             async def _seed():
@@ -229,7 +230,7 @@ def run_sqlite_migration(check_only: bool = False, force_seed: bool = False) -> 
             count_res = await db.execute(select(func.count()).select_from(Project))
             count = count_res.scalar() or 0
             logger.info("Current project count in SQLite: %d", count)
-            if count == 0 or force_seed:
+            if force_seed or (settings.SEED_DEMO_DATA and count == 0):
                 logger.info("Seeding initial benchmark audit data into SQLite...")
                 await seed_database(db)
                 logger.info("✅ SQLite seeded with initial benchmark projects.")

@@ -276,8 +276,14 @@ npm run dev
 
 ### 4. Running Automated Tests & Benchmark Suite
 ```bash
-# Run all backend unit tests (19 tests)
-.\backend\venv\Scripts\python.exe -m unittest discover -s evaluation/tests -p "test_*.py"
+# Run the complete backend regression suite
+.\backend\venv\Scripts\python.exe -m pip install pytest
+.\backend\venv\Scripts\python.exe -m pytest -q
+
+# Frontend quality gates
+npm run lint
+npm run typecheck
+npm run build
 
 # Run full end-to-end audit benchmark pipeline
 .\backend\venv\Scripts\python.exe evaluation/run_evaluation.py
@@ -289,6 +295,32 @@ npm run dev
 ---
 
 ## 🔒 Important Product Positioning
+
+### Deployment scope and unfinished production work
+
+The current application is a shared workspace. Databricks SSO identifies users at
+the proxy, but the application does not implement organization isolation, roles,
+or authenticated human sign-off. All users granted access must therefore be
+trusted with all projects, AI settings, and visitor leads. This is not yet a
+finished multi-customer SaaS.
+
+Original uploads and the audit job registry currently live under `UPLOAD_DIR` on
+the app instance. The Delta database does not make those local files durable.
+Persistent object storage and a durable job queue, migration of existing
+originals, backup/restore validation, and restart testing are release requirements
+before relying on customer-data retention or scaling across app instances. See
+[Databricks app scaling guidance](https://docs.databricks.com/aws/en/dev-tools/databricks-apps/horizontal-scaling).
+
+PDF reporting remains unimplemented; CSV export is available. Subscription
+billing and customer onboarding require product scope and implementation if this
+is to be sold as a self-service SaaS. Verify a real upload → audit → review →
+export workflow and access permissions on the deployed app before release.
+
+Demo data is now opt-in with `SEED_DEMO_DATA=true`; production defaults to an
+empty workspace and `DEBUG=false`. Existing data is retained. CI runs lint,
+TypeScript, production build, Bun vulnerability checks, and backend regressions.
+Keep both frontend lockfiles under version control; Databricks builds using
+`bun.lock`. Dependency changes must pass these gates before deployment.
 
 > [!IMPORTANT]
 > TraceAudit AI is an **engineering decision-support tool**, not a legal certification authority. It provides automated technical documentation analysis, evidence traceability, and inconsistency detection. Final conformity assessment and safety sign-off remain the responsibility of qualified human engineers and compliance officers.

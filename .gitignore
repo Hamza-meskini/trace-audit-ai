@@ -10,9 +10,7 @@ lerna-debug.log*
 # ── Dependencies ─────────────────────────────────────────────
 node_modules/
 
-# ── Lock files (regenerated on install) ──────────────────────
-package-lock.json
-bun.lock
+# Keep dependency lockfiles in version control for reproducible deployments.
 
 # ── Build output ─────────────────────────────────────────────
 # Build artifacts (built in workspace via notebook, not committed)
@@ -92,6 +90,8 @@ backend/.cache/
 tmp/
 **/tmp/
 .review-tmp/
+.readiness-tests/
+.readiness-*.json
 **/.review-tmp/
 sample_documents/
 .pytest-tmp-*/

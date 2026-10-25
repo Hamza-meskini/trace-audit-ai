@@ -5,7 +5,7 @@ import sys
 import unittest
 import asyncio
 from pathlib import Path
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, PropertyMock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "backend"))
 
@@ -13,6 +13,7 @@ from app.schemas.claim import classify_source_authority, extract_all_evidence_cl
 from app.schemas.contract import AtomicConditionContract, RequirementContract, parse_requirement_contract
 from app.schemas.evidence_qualification import extract_parameters_from_text
 from app.schemas.verification_result import ConditionVerificationResult, VerificationAnalysisResult
+from app.config import settings
 from app.services.classification import (
     _deterministic_prechecks,
     assess_requirement_coverage,
@@ -955,7 +956,9 @@ class TestObservedComplexBenchmarkFailures(unittest.TestCase):
         )
 
         async def run_scenario():
-            with patch(
+            with patch.object(
+                type(settings), "effective_databricks_token", new_callable=PropertyMock, return_value="test",
+            ), patch(
                 "app.services.verification_reasoner.generate_structured",
                 new=AsyncMock(return_value=None),
             ), patch(

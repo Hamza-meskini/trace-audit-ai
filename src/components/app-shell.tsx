@@ -7,6 +7,7 @@ import {
   FileText,
   GitBranch,
   LayoutDashboard,
+  Menu,
   ListChecks,
   PanelLeftClose,
   PanelLeft,
@@ -17,6 +18,14 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetDescription,
+  SheetTrigger,
+} from "@/components/ui/sheet";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -34,7 +43,7 @@ import {
 } from "@/components/ui/command";
 
 const nav = [
-  { to: "/", label: "Dashboard", icon: LayoutDashboard },
+  { to: "/app", label: "Dashboard", icon: LayoutDashboard },
   { to: "/projects", label: "Projects", icon: Boxes },
   { to: "/documents", label: "Documents", icon: FileStack },
   { to: "/requirements", label: "Requirements", icon: ListChecks },
@@ -46,6 +55,7 @@ const nav = [
 
 const labels: Record<string, string> = {
   "": "Dashboard",
+  app: "Dashboard",
   projects: "Projects",
   documents: "Documents",
   requirements: "Requirements",
@@ -63,13 +73,11 @@ import { useRequirements } from "@/hooks/use-requirements";
 import { useDocuments } from "@/hooks/use-documents";
 import { useFindings } from "@/hooks/use-findings";
 import { useCurrentUser } from "@/hooks/use-current-user";
-import { VisitorCaptureModal, useAutoVisitorPrompt } from "@/components/visitor-capture-modal";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const [collapsed, setCollapsed] = useState(false);
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [openSearch, setOpenSearch] = useState(false);
-  const [manualVisitorOpen, setManualVisitorOpen] = useState(false);
-  const { isOpen: autoVisitorOpen, setIsOpen: setAutoVisitorOpen } = useAutoVisitorPrompt();
   const currentUser = useCurrentUser();
   const {
     activeProject,
@@ -101,7 +109,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     <div className="flex min-h-screen bg-surface">
       <aside
         className={cn(
-          "sticky top-0 hidden h-screen shrink-0 flex-col border-r border-sidebar-border bg-sidebar transition-[width] duration-200 md:flex",
+          "sticky top-0 hidden h-screen shrink-0 flex-col border-r border-sidebar-border bg-sidebar transition-[width] duration-200 lg:flex",
           collapsed ? "w-[68px]" : "w-60",
         )}
       >
@@ -121,7 +129,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
         <nav className="flex-1 space-y-0.5 overflow-y-auto p-2.5">
           {nav.map((item) => {
-            const active = item.to === "/" ? pathname === "/" : pathname.startsWith(item.to);
+            const active = pathname === item.to || pathname.startsWith(`${item.to}/`);
             return (
               <Link
                 key={item.to}
@@ -176,10 +184,66 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="sticky top-0 z-30 flex h-14 items-center gap-3 border-b border-border bg-background/85 px-4 backdrop-blur md:px-6">
+          <Sheet open={mobileNavOpen} onOpenChange={setMobileNavOpen}>
+            <SheetTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="shrink-0 lg:hidden"
+                aria-label="Open navigation"
+              >
+                <Menu className="size-5" />
+              </Button>
+            </SheetTrigger>
+            <SheetContent side="left" className="w-[min(320px,90vw)] overflow-y-auto">
+              <SheetHeader>
+                <SheetTitle>TraceAudit</SheetTitle>
+                <SheetDescription>Technical audit workspace</SheetDescription>
+              </SheetHeader>
+              <nav aria-label="Mobile navigation" className="mt-6 space-y-1">
+                {nav.map((item) => (
+                  <Link
+                    key={item.to}
+                    to={item.to}
+                    onClick={() => setMobileNavOpen(false)}
+                    className={cn(
+                      "flex items-center gap-3 rounded-md px-3 py-3 text-sm",
+                      (pathname === item.to || pathname.startsWith(`${item.to}/`)) &&
+                        "bg-accent font-medium text-primary",
+                    )}
+                  >
+                    <item.icon className="size-4" />
+                    {item.label}
+                  </Link>
+                ))}
+              </nav>
+              <div className="mt-6 border-t pt-4">
+                <p className="mb-2 text-xs font-medium text-muted-foreground">Switch project</p>
+                {apiProjects.map((project) => (
+                  <button
+                    key={project.id}
+                    onClick={() => {
+                      selectProject(project.id);
+                      setMobileNavOpen(false);
+                    }}
+                    className={cn(
+                      "block w-full rounded-md p-3 text-left text-sm break-words",
+                      project.id === activeProjectId && "bg-accent font-medium text-primary",
+                    )}
+                  >
+                    {project.name}
+                  </button>
+                ))}
+                {!apiProjects.length && (
+                  <p className="text-sm text-muted-foreground">No projects yet</p>
+                )}
+              </div>
+            </SheetContent>
+          </Sheet>
           <Button
             variant="ghost"
             size="icon"
-            className="hidden md:inline-flex"
+            className="hidden lg:inline-flex"
             onClick={() => setCollapsed((v) => !v)}
             aria-label="Toggle sidebar"
           >
@@ -187,8 +251,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </Button>
 
           <div className="flex min-w-0 items-center gap-1.5 text-sm">
-            <span className="text-muted-foreground">TraceAudit</span>
-            <span className="text-border">/</span>
+            <span className="hidden text-muted-foreground xl:inline">TraceAudit</span>
+            <span className="hidden text-border xl:inline">/</span>
             <span className="truncate font-medium">{crumbRoot}</span>
             {segments[1] && (
               <>
@@ -198,7 +262,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             )}
           </div>
 
-          <div className="ml-auto flex items-center gap-1.5">
+          <div className="ml-auto flex shrink-0 items-center gap-1.5">
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="outline" size="sm" className="hidden gap-2 sm:inline-flex">
@@ -238,22 +302,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               size="sm"
               className="gap-2 text-muted-foreground"
               onClick={() => setOpenSearch(true)}
+              aria-label="Search workspace"
             >
               <Search className="size-4" />
-              <span className="hidden lg:inline">Search</span>
-              <kbd className="hidden rounded border border-border bg-muted px-1 py-0.5 font-mono text-[10px] lg:inline">
+              <span className="hidden xl:inline">Search</span>
+              <kbd className="hidden rounded border border-border bg-muted px-1 py-0.5 font-mono text-[10px] xl:inline">
                 ⌘K
               </kbd>
-            </Button>
-
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setManualVisitorOpen(true)}
-              className="hidden md:inline-flex gap-1.5 border-primary/30 bg-primary/5 hover:bg-primary/10 text-primary text-xs font-medium"
-            >
-              <Sparkles className="size-3.5 text-primary" />
-              <span>Request Access</span>
             </Button>
 
             <div className="ml-1 grid size-7 place-items-center rounded-full bg-accent text-[11px] font-semibold">
@@ -337,15 +392,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </CommandGroup>
         </CommandList>
       </CommandDialog>
-
-      <VisitorCaptureModal
-        open={manualVisitorOpen || autoVisitorOpen}
-        onOpenChange={(next) => {
-          setManualVisitorOpen(next);
-          setAutoVisitorOpen(next);
-        }}
-        source={manualVisitorOpen ? "header_request_button" : "auto_visitor_prompt"}
-      />
     </div>
   );
 }

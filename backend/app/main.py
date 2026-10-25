@@ -1,9 +1,12 @@
 """TraceAudit AI — FastAPI application entry point."""
 
 import logging
+import json
+from html import escape
 from contextlib import asynccontextmanager
 
 from pathlib import Path
+from urllib.parse import unquote
 from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -11,7 +14,6 @@ from fastapi.responses import FileResponse, HTMLResponse
 
 from app.config import settings
 from app.database import init_db, get_db_context
-from app.seed import seed_database
 from app.api.settings import load_persisted_settings
 
 from app.api.projects import router as projects_router
@@ -35,13 +37,7 @@ async def lifespan(app: FastAPI):
     from app.services import audit_worker
     recover_interrupted(requeue=True)
 
-    # Seed mock data for development / initial deployment
     async with get_db_context() as db:
-        seeded = await seed_database(db)
-        if seeded:
-            logger.info("Database seeded with mock data.")
-        else:
-            logger.info("Database already contains data, skipping seed.")
         await load_persisted_settings(db)
 
     audit_worker.start()
@@ -63,7 +59,7 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.CORS_ORIGINS or ["http://localhost:5173", "http://localhost:8080", "http://localhost:3000"],
-    allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$",
+    allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$" if settings.DEBUG else None,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -94,8 +90,10 @@ async def current_user(request: Request):
     )
     if user:
         email = request.headers.get("X-Forwarded-Email", user)
-        return {"username": user, "email": email, "authenticated": True}
-    return {"username": "Local reviewer", "email": None, "authenticated": False}
+        return {"user": user, "username": user, "email": email, "authenticated": True,
+                "provider": "databricks_sso"}
+    return {"user": "Local reviewer", "username": "Local reviewer", "email": None,
+            "authenticated": False, "provider": "local"}
 
 
 def _resolve_frontend_dir() -> Path | None:
@@ -131,15 +129,19 @@ if frontend_dir and (frontend_dir / "index.html").is_file():
 
     def _render_index(index_path: Path, request: Request) -> Response:
         effective_root = (request.scope.get("root_path") or settings.ROOT_PATH or "").rstrip("/")
+        html = index_path.read_text(encoding="utf-8")
+        safe_root = escape(effective_root, quote=True)
+        # Relative CSS URLs must resolve from the app root on deep-link reloads.
+        html = html.replace("<head>", f'<head><base href="{safe_root}/">', 1)
         if effective_root:
-            html = index_path.read_text(encoding="utf-8")
-            script = f'<script>window.__DATABRICKS_ROOT_PATH__ = "{effective_root}";</script>'
+            root_json = json.dumps(effective_root).replace("<", "\\u003c")
+            script = f'<script>window.__DATABRICKS_ROOT_PATH__ = {root_json};</script>'
             if "</head>" in html:
                 html = html.replace("</head>", f"{script}</head>", 1)
-            html = html.replace('href="/assets/', f'href="{effective_root}/assets/')
-            html = html.replace('src="/assets/', f'src="{effective_root}/assets/')
-            return HTMLResponse(html)
-        return FileResponse(index_path)
+            # Include preload URLs and TanStack's serialized script manifest.
+            for prefix in ('"/assets/', '"/./assets/'):
+                html = html.replace(prefix, f'"{safe_root}/assets/')
+        return HTMLResponse(html, headers={"Cache-Control": "no-cache"})
 
     @app.get("/{full_path:path}", include_in_schema=False)
     async def serve_frontend(full_path: str, request: Request):
@@ -147,8 +149,15 @@ if frontend_dir and (frontend_dir / "index.html").is_file():
         if full_path.startswith("api/") or full_path == "api" or full_path in ("docs", "redoc", "openapi.json"):
             raise HTTPException(status_code=404, detail="Endpoint not found")
 
+        # Reject encoded and plain parent-directory segments before the SPA fallback.
+        decoded = unquote(full_path).replace("\\", "/")
+        if ".." in [part for part in decoded.split("/") if part not in ("", ".")]:
+            raise HTTPException(status_code=404, detail="File not found")
+
         # 1. Exact static file match (favicon.ico, robots.txt, subpage index.html, etc.)
-        target_file = frontend_dir / full_path
+        target_file = (frontend_dir / full_path).resolve()
+        if not target_file.is_relative_to(frontend_dir):
+            raise HTTPException(status_code=404, detail="File not found")
         if target_file.is_file():
             if target_file.name == "index.html":
                 return _render_index(target_file, request)
@@ -156,8 +165,8 @@ if frontend_dir and (frontend_dir / "index.html").is_file():
 
         # 2. Sub-directory with index.html (e.g. /requirements/ -> requirements/index.html)
         if target_file.is_dir():
-            sub_index = target_file / "index.html"
-            if sub_index.is_file():
+            sub_index = (target_file / "index.html").resolve()
+            if sub_index.is_relative_to(frontend_dir) and sub_index.is_file():
                 return _render_index(sub_index, request)
 
         # 3. Fallback to main index.html for client-side routing

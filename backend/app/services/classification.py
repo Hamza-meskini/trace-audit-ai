@@ -20,12 +20,7 @@ from dataclasses import dataclass, field
 from app.schemas.contract import RequirementContract, parse_requirement_contract
 from app.schemas.claim import extract_all_evidence_claims
 from app.services.contradiction import detect_cross_document_contradiction, ContradictionFinding
-from app.services.validators.numeric_range import validate_numeric_range
-from app.services.validators.threshold import validate_threshold
-from app.services.validators.duration import validate_duration
-from app.services.validators.boolean_flag import validate_boolean_flag
 from app.services.validators.test_verdict import validate_test_verdict
-from app.services.validators.semantic import validate_semantic
 from app.services.validators import ValidationOutcome
 from app.services.verification_reasoner import SPEC_DOC_KEYWORDS
 from app.services.taxonomy import display_status, review_state_for
@@ -508,40 +503,6 @@ def _verdict_assessment(
     )
 
 
-def _run_deterministic_validators(contract: RequirementContract, claims: list) -> Optional[ValidationOutcome]:
-    """Run type-specific deterministic validators, falling back to semantic validation."""
-    has_empirical = any(
-        getattr(c, "source_authority", None) in ("EMPIRICAL_TEST", "QUALIFICATION_TEST", "VALIDATION_REPORT")
-        for c in claims
-    )
-    is_physical = contract.verification_method != "simulation" and contract.verification_method != "calculation"
-
-    outcome: Optional[ValidationOutcome] = None
-
-    if contract.requirement_type == "numeric_range":
-        outcome = validate_numeric_range(contract, claims)
-    elif contract.requirement_type == "duration":
-        outcome = validate_duration(contract, claims)
-    elif contract.requirement_type == "threshold":
-        outcome = validate_threshold(contract, claims)
-    elif contract.requirement_type in ("boolean", "enumeration"):
-        outcome = validate_boolean_flag(contract, claims)
-
-    if outcome is None and has_empirical:
-        outcome = validate_semantic(contract, claims)
-
-    # If an outcome is SUPPORTED but physical testing is required without empirical evidence -> UNKNOWN
-    if outcome and outcome.status == "SUPPORTED" and is_physical and not has_empirical:
-        return ValidationOutcome(
-            status="UNKNOWN",
-            confidence=85.0,
-            reason="Evidence consists only of theoretical simulations, calculations, or architecture specifications without empirical test data.",
-        )
-
-    return outcome
-
-
-
 def _deterministic_prechecks(
     contract: RequirementContract,
     candidate_chunks: list[dict],
@@ -566,6 +527,11 @@ def _deterministic_prechecks(
     if not non_spec_items:
         return None, _missing_assessment(contract)
 
+    # The batch reasoner owns these decisions. Avoid parsing the same claims
+    # merely to discard the deterministic verdicts before the LLM runs.
+    if defer_missing and defer_partial and defer_conflict:
+        return (evidence_items, non_spec_items, []), None
+
     claims = extract_all_evidence_claims(evidence_items, contract)
 
     # Formal compliance matrix test verdicts (e.g. NOT STARTED, IN PROGRESS, PASS, FAIL)
@@ -578,8 +544,11 @@ def _deterministic_prechecks(
         return None, _verdict_assessment(contract, verdict_outcome, claims=claims)
 
     # Cross-document / contract contradictions -> CONFLICT
-    contradiction: Optional[ContradictionFinding] = detect_cross_document_contradiction(evidence_items, contract)
-    if contradiction and contradiction.has_conflict and not defer_conflict:
+    contradiction: Optional[ContradictionFinding] = (
+        detect_cross_document_contradiction(evidence_items, contract, claims=claims)
+        if not defer_conflict else None
+    )
+    if contradiction and contradiction.has_conflict:
         return None, _conflict_assessment(contract, evidence_items, contradiction)
 
     return (evidence_items, non_spec_items, claims), None
@@ -754,6 +723,9 @@ async def assess_requirement_coverage_async(
     decomposition_confidence: Optional[float] = None,
     ambiguities: Optional[list[str]] = None,
     validation_issues: Optional[list[str]] = None,
+    targeted_extraction: Optional[dict[str, Any]] = None,
+    defer_partial: bool = False,
+    defer_secondary_adjudication: bool = False,
 ) -> RequirementAssessment:
     """Async assessment that escalates inconclusive cases to the LLM verification reasoner."""
     contract = parse_requirement_contract(
@@ -778,6 +750,7 @@ async def assess_requirement_coverage_async(
         candidate_chunks,
         spec_doc_names=spec_doc_names,
         defer_missing=True,
+        defer_partial=defer_partial,
         defer_conflict=True,
     )
     if decided:
@@ -795,6 +768,8 @@ async def assess_requirement_coverage_async(
         model=model,
         thinking_level=thinking_level,
         spec_doc_names=spec_doc_names,
+        targeted_extraction=targeted_extraction,
+        defer_secondary_adjudication=defer_secondary_adjudication,
     )
     validation_outcome = ValidationOutcome(
         status=reasoner_result.status,
@@ -809,6 +784,63 @@ async def assess_requirement_coverage_async(
         non_spec_items,
         validation_outcome,
         pipeline_diagnostics=dict(getattr(reasoner_result, "_diagnostics", {})),
+    )
+
+
+async def refine_deferred_assessment(
+    assessment: RequirementAssessment,
+    candidate_chunks: list[dict],
+    *,
+    model: Optional[str] = None,
+    spec_doc_names: Optional[set[str]] = None,
+) -> Optional[RequirementAssessment]:
+    """Run the secondary adjudicator after a needs-review row is already saved."""
+    if assessment.review_state != "Needs review" or assessment.contract is None:
+        return None
+    if not (assessment.pipeline_diagnostics or {}).get("secondary_adjudication_deferred"):
+        return None
+    from app.schemas.verification_result import VerificationAnalysisResult
+    from app.services.verification_reasoner import refine_deferred_verification
+
+    provisional = VerificationAnalysisResult(
+        status="UNKNOWN",
+        confidence=int(round(assessment.confidence)),
+        reason=assessment.ai_analysis or "Needs review.",
+        condition_results=list(assessment.condition_results),
+    )
+    provisional._diagnostics = dict(assessment.pipeline_diagnostics or {})
+    refined = await refine_deferred_verification(
+        assessment.contract,
+        candidate_chunks,
+        provisional,
+        model=model,
+        spec_doc_names=spec_doc_names,
+    )
+    if refined is None:
+        return None
+    context, decided = _deterministic_prechecks(
+        assessment.contract,
+        candidate_chunks,
+        spec_doc_names=spec_doc_names,
+        defer_missing=True,
+        defer_partial=True,
+        defer_conflict=True,
+    )
+    if decided or context is None:
+        return None
+    _evidence_items, non_spec_items, _claims = context
+    outcome = ValidationOutcome(
+        status=refined.status,
+        confidence=float(refined.confidence),
+        reason=refined.reason,
+        highlight=refined.highlight,
+        condition_results=refined.condition_results,
+    )
+    return _finalize_assessment(
+        assessment.contract,
+        non_spec_items,
+        outcome,
+        pipeline_diagnostics=dict(getattr(refined, "_diagnostics", {})),
     )
 
 

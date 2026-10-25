@@ -14,16 +14,15 @@ import { cn } from "@/lib/utils";
 export const Route = createFileRoute("/projects")({
   head: () => ({
     meta: [
-      { title: "Industrial Controller X200 — TraceAudit" },
+      { title: "Projects — TraceAudit" },
       {
         name: "description",
-        content:
-          "Project workspace for the X200 technical documentation audit: coverage, documents, findings and traceability.",
+        content: "Technical audit projects, coverage, documents, findings and traceability.",
       },
-      { property: "og:title", content: "Industrial Controller X200 — TraceAudit" },
+      { property: "og:title", content: "Projects — TraceAudit" },
       {
         property: "og:description",
-        content: "Audit progress, evidence links and human review status for the X200 program.",
+        content: "Audit progress, evidence links and human review status across your projects.",
       },
     ],
   }),
@@ -50,6 +49,7 @@ function ProjectPage() {
     activeProjectId,
     projects: projectsList,
     selectProject,
+    isLoading,
   } = useActiveProject();
 
   const { data: stats } = useProjectStats(activeProjectId);
@@ -70,6 +70,26 @@ function ProjectPage() {
     evidence_segments: 0,
     findings: 0,
   };
+
+  if (isLoading)
+    return (
+      <div role="status" className="p-8 text-sm">
+        Loading projects…
+      </div>
+    );
+  if (!activeProjectId) {
+    return (
+      <div className="rounded-xl border bg-card p-8">
+        <h1 className="text-xl font-semibold">Create your first audit project</h1>
+        <p className="mt-2 text-sm text-muted-foreground">
+          Add a project and upload its requirements and evidence to begin.
+        </p>
+        <Button className="mt-4" asChild>
+          <Link to="/new-audit">New Audit</Link>
+        </Button>
+      </div>
+    );
+  }
 
   return (
     <div className="mx-auto max-w-[1400px]">
@@ -144,7 +164,11 @@ function ProjectPage() {
               </ul>
             </Panel>
 
-            <Panel title="All projects" className="lg:col-span-2" bodyClassName="p-0">
+            <Panel
+              title="All projects"
+              className="lg:col-span-2"
+              bodyClassName="overflow-x-auto p-0"
+            >
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted-foreground">
@@ -182,7 +206,7 @@ function ProjectPage() {
 
         {tab === "Requirements" && (
           <Panel
-            bodyClassName="p-0"
+            bodyClassName="overflow-x-auto p-0"
             actions={
               <Button variant="outline" size="sm" asChild>
                 <Link to="/requirements">Open workspace</Link>
@@ -216,7 +240,7 @@ function ProjectPage() {
         {tab === "Documents" && (
           <Panel
             title="Documents"
-            bodyClassName="p-0"
+            bodyClassName="overflow-x-auto p-0"
             actions={
               <Button variant="outline" size="sm" asChild>
                 <Link to="/documents">Manage documents</Link>
@@ -248,7 +272,7 @@ function ProjectPage() {
         {tab === "Findings" && (
           <Panel
             title="Findings"
-            bodyClassName="p-0"
+            bodyClassName="overflow-x-auto p-0"
             actions={
               <Button variant="outline" size="sm" asChild>
                 <Link to="/findings">Open findings</Link>
