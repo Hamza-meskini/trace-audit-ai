@@ -65,6 +65,12 @@ class Settings(BaseSettings):
     DATABASE_URL: str = "sqlite+aiosqlite:///./traceaudit.db"
     DATABRICKS_CATALOG: str = "workspace"
     DATABRICKS_SCHEMA: str = "traceaudit"
+    # Batch ORM inserts into multi-row VALUES statements on the SQL warehouse.
+    # Set to false to fall back to the connector's one-request-per-row path.
+    DATABRICKS_BATCH_INSERTS: bool = True
+    DATABRICKS_INSERT_MAX_PARAMETERS: int = 250
+    # How long a SQLite writer waits for the lock before "database is locked".
+    SQLITE_BUSY_TIMEOUT_MS: int = 30_000
 
     # File storage (local filesystem for MVP)
     UPLOAD_DIR: str = "./uploads"

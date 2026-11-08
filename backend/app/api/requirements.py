@@ -90,7 +90,7 @@ async def list_requirements(
     status: str | None = Query(None),
     severity: str | None = Query(None),
     review: str | None = Query(None),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db, scope="function"),
 ):
     query = (
         select(Requirement)
@@ -144,7 +144,7 @@ async def list_requirements(
 
 
 @router.get("/{requirement_id}", response_model=RequirementResponse)
-async def get_requirement(project_id: str, requirement_id: str, db: AsyncSession = Depends(get_db)):
+async def get_requirement(project_id: str, requirement_id: str, db: AsyncSession = Depends(get_db, scope="function")):
     result = await db.execute(
         select(Requirement)
         .where(Requirement.id == requirement_id, Requirement.project_id == project_id)
@@ -212,15 +212,24 @@ async def get_requirement(project_id: str, requirement_id: str, db: AsyncSession
     return response
 
 
+def review_target_query(project_id: str, requirement_id: str):
+    """Select the requirement a review is saved against.
+
+    No ``FOR UPDATE``: Databricks SQL has no row locks and rejects the clause,
+    and SQLite ignores it. Running audits are excluded by the 409 guard.
+    """
+    return select(Requirement).where(
+        Requirement.id == requirement_id, Requirement.project_id == project_id,
+    )
+
+
 @router.post("/{requirement_id}/reviews")
 async def save_review(project_id: str, requirement_id: str, body: RequirementReviewRequest,
-                      request: Request, db: AsyncSession = Depends(get_db)):
+                      request: Request, db: AsyncSession = Depends(get_db, scope="function")):
     job = audit_progress.latest(project_id)
     if job and job["status"] in ("queued", "running", "cancelling"):
         raise HTTPException(409, "Wait for the active audit to finish before saving a review")
-    req = (await db.execute(select(Requirement).where(
-        Requirement.id == requirement_id, Requirement.project_id == project_id,
-    ).with_for_update())).scalar_one_or_none()
+    req = (await db.execute(review_target_query(project_id, requirement_id))).scalar_one_or_none()
     if req is None:
         raise HTTPException(404, "Requirement not found")
 
@@ -262,7 +271,7 @@ async def save_review(project_id: str, requirement_id: str, body: RequirementRev
 async def create_requirement(
     project_id: str,
     body: RequirementCreate,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db, scope="function"),
 ):
     req = Requirement(
         project_id=project_id,

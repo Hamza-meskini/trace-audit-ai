@@ -31,17 +31,31 @@ def _generate_audit_id() -> str:
     return f"TA-{year}-{seq}"
 
 
+async def _unused_audit_id(db: AsyncSession) -> str:
+    """Pick an audit ID that no project uses yet.
+
+    The suffix has only 16 bits per year, SQLite turns a clash into a 500 and
+    Delta Lake cannot enforce the unique constraint at all, so check first.
+    """
+    for _ in range(8):
+        candidate = _generate_audit_id()
+        taken = (await db.execute(select(Project.id).where(Project.audit_id == candidate))).first()
+        if taken is None:
+            return candidate
+    raise HTTPException(status_code=503, detail="Could not allocate a unique audit ID; please retry")
+
+
 @router.get("", response_model=list[ProjectResponse])
-async def list_projects(db: AsyncSession = Depends(get_db)):
+async def list_projects(db: AsyncSession = Depends(get_db, scope="function")):
     result = await db.execute(select(Project).order_by(Project.created_at.desc()))
     return result.scalars().all()
 
 
 @router.post("", response_model=ProjectResponse, status_code=201)
-async def create_project(body: ProjectCreate, db: AsyncSession = Depends(get_db)):
+async def create_project(body: ProjectCreate, db: AsyncSession = Depends(get_db, scope="function")):
     project = Project(
         name=body.name,
-        audit_id=_generate_audit_id(),
+        audit_id=await _unused_audit_id(db),
         product_name=body.product_name,
         product_category=body.product_category,
         company=body.company,
@@ -54,7 +68,7 @@ async def create_project(body: ProjectCreate, db: AsyncSession = Depends(get_db)
 
 
 @router.get("/{project_id}", response_model=ProjectResponse)
-async def get_project(project_id: str, db: AsyncSession = Depends(get_db)):
+async def get_project(project_id: str, db: AsyncSession = Depends(get_db, scope="function")):
     result = await db.execute(select(Project).where(Project.id == project_id))
     project = result.scalar_one_or_none()
     if not project:
@@ -63,7 +77,7 @@ async def get_project(project_id: str, db: AsyncSession = Depends(get_db)):
 
 
 @router.patch("/{project_id}", response_model=ProjectResponse)
-async def update_project(project_id: str, body: ProjectUpdate, db: AsyncSession = Depends(get_db)):
+async def update_project(project_id: str, body: ProjectUpdate, db: AsyncSession = Depends(get_db, scope="function")):
     result = await db.execute(select(Project).where(Project.id == project_id))
     project = result.scalar_one_or_none()
     if not project:
@@ -78,7 +92,7 @@ async def update_project(project_id: str, body: ProjectUpdate, db: AsyncSession 
 
 
 @router.delete("/{project_id}", status_code=204)
-async def delete_project(project_id: str, db: AsyncSession = Depends(get_db)):
+async def delete_project(project_id: str, db: AsyncSession = Depends(get_db, scope="function")):
     job = audit_progress.latest(project_id)
     if job and job["status"] in ("queued", "running", "cancelling"):
         raise HTTPException(409, "A project cannot be deleted while its audit is active")
@@ -90,7 +104,7 @@ async def delete_project(project_id: str, db: AsyncSession = Depends(get_db)):
 
 
 @router.get("/{project_id}/stats", response_model=ProjectStatsResponse)
-async def get_project_stats(project_id: str, db: AsyncSession = Depends(get_db)):
+async def get_project_stats(project_id: str, db: AsyncSession = Depends(get_db, scope="function")):
     """Compute live aggregated statistics for a project."""
     # Verify project exists
     result = await db.execute(select(Project).where(Project.id == project_id))
@@ -151,7 +165,7 @@ async def get_project_stats(project_id: str, db: AsyncSession = Depends(get_db))
 
 
 @router.get("/{project_id}/export/xlsx")
-async def export_project_xlsx(project_id: str, db: AsyncSession = Depends(get_db)):
+async def export_project_xlsx(project_id: str, db: AsyncSession = Depends(get_db, scope="function")):
     """Export executive-grade, color-coded Excel audit report."""
     result = await db.execute(select(Project).where(Project.id == project_id))
     project = result.scalar_one_or_none()

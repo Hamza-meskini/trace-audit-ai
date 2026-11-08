@@ -77,7 +77,7 @@ async def get_ai_settings():
 
 
 @router.post("/ai", response_model=AiSettingsResponse)
-async def update_ai_settings(body: UpdateAiSettingsRequest, db=Depends(get_db)):
+async def update_ai_settings(body: UpdateAiSettingsRequest, db=Depends(get_db, scope="function")):
     """Update and persist the active LLM model and/or thinking level."""
     model = settings.LLM_MODEL
     thinking_level = settings.GEMINI_THINKING_LEVEL

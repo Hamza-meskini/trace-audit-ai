@@ -9,7 +9,7 @@ import asyncio
 import logging
 from contextlib import asynccontextmanager
 from typing import Any, AsyncIterator
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
@@ -89,10 +89,55 @@ class AsyncDatabricksSession:
 active_backend = settings.effective_database_backend
 logger.info("Initializing database subsystem with backend: %s", active_backend)
 
+# Foreign-key lookups every API route and the pipeline filter on. Delta Lake
+# has no secondary indexes, so these are created for SQLite only.
+SQLITE_INDEXES = (
+    ("ix_documents_project_id", "documents", "project_id"),
+    ("ix_evidence_chunks_document_id", "evidence_chunks", "document_id"),
+    ("ix_requirements_project_id", "requirements", "project_id"),
+    ("ix_findings_project_id", "findings", "project_id"),
+    ("ix_findings_requirement_id", "findings", "requirement_id"),
+    ("ix_requirement_evidence_requirement_id", "requirement_evidence", "requirement_id"),
+    ("ix_requirement_evidence_chunk_id", "requirement_evidence", "evidence_chunk_id"),
+)
+
+
+def configure_databricks_batch_inserts(target_engine: Any) -> None:
+    """Send ORM inserts as multi-row VALUES statements.
+
+    The connector's ``executemany`` issues one sequential warehouse request
+    per row, so flushing N evidence chunks costs N round trips. The dialect
+    supports multi-row VALUES; capping parameters per statement keeps each
+    request well inside the warehouse's native-parameter limits.
+    """
+    target_engine.dialect.use_insertmanyvalues = True
+    target_engine.dialect.use_insertmanyvalues_wo_returning = True
+    target_engine.dialect.insertmanyvalues_max_parameters = max(
+        16, int(settings.DATABRICKS_INSERT_MAX_PARAMETERS)
+    )
+
+
+def _configure_sqlite_connection(dbapi_connection: Any, _record: Any) -> None:
+    """Let API requests and the audit worker share one SQLite file.
+
+    WAL lets readers proceed while a writer holds the lock, and the busy
+    timeout makes a second writer wait instead of failing immediately with
+    ``database is locked``.
+    """
+    cursor = dbapi_connection.cursor()
+    try:
+        cursor.execute(f"PRAGMA busy_timeout={int(settings.SQLITE_BUSY_TIMEOUT_MS)}")
+        cursor.execute("PRAGMA journal_mode=WAL")
+    finally:
+        cursor.close()
+
+
 if active_backend == "databricks":
     url = settings.databricks_sqlalchemy_url
     logger.info("Using Databricks SQL Warehouse engine (%s.%s)", settings.effective_databricks_catalog, settings.effective_databricks_schema)
     sync_engine = create_engine(url, echo=settings.DEBUG, pool_pre_ping=True)
+    if settings.DATABRICKS_BATCH_INSERTS:
+        configure_databricks_batch_inserts(sync_engine)
     databricks_session_factory = sessionmaker(bind=sync_engine, expire_on_commit=False)
     engine = None
     async_session = None
@@ -100,6 +145,7 @@ else:
     db_url = settings.effective_database_url
     logger.info("Using local SQLite engine: %s", db_url)
     engine = create_async_engine(db_url, echo=settings.DEBUG)
+    event.listen(engine.sync_engine, "connect", _configure_sqlite_connection)
     async_session = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
     sync_engine = None
     databricks_session_factory = None
@@ -201,4 +247,10 @@ async def init_db() -> None:
         logger.info("Initializing local SQLite database tables...")
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
+            # create_all skips indexes on tables that already exist, so add
+            # them explicitly for databases created before they were declared.
+            for index_name, table_name, column_name in SQLITE_INDEXES:
+                await conn.exec_driver_sql(
+                    f"CREATE INDEX IF NOT EXISTS {index_name} ON {table_name} ({column_name})"
+                )
         logger.info("Local SQLite database tables initialized successfully.")

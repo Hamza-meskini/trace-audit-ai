@@ -45,7 +45,7 @@ def _extract_client_ip(request: Request) -> str | None:
 async def register_visitor(
     payload: VisitorCreate,
     request: Request,
-    db: Annotated[AsyncSession, Depends(get_db)],
+    db: Annotated[AsyncSession, Depends(get_db, scope="function")],
 ):
     """Store or update a visitor email from the website."""
     normalized_email = payload.email.strip().lower()
@@ -108,7 +108,7 @@ async def register_visitor(
     summary="List captured website visitors",
 )
 async def list_visitors(
-    db: Annotated[AsyncSession, Depends(get_db)],
+    db: Annotated[AsyncSession, Depends(get_db, scope="function")],
     search: str | None = Query(default=None, description="Search by email, name, or company"),
     limit: int = Query(default=50, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
@@ -143,7 +143,7 @@ async def list_visitors(
     summary="Export captured visitors as CSV",
 )
 async def export_visitors_csv(
-    db: Annotated[AsyncSession, Depends(get_db)],
+    db: Annotated[AsyncSession, Depends(get_db, scope="function")],
 ):
     """Generate and download a CSV file of all captured visitor leads."""
     stmt = select(Visitor).order_by(Visitor.created_at.desc())
@@ -194,7 +194,7 @@ async def export_visitors_csv(
 )
 async def delete_visitor(
     visitor_id: str,
-    db: Annotated[AsyncSession, Depends(get_db)],
+    db: Annotated[AsyncSession, Depends(get_db, scope="function")],
 ):
     """Delete a visitor lead record."""
     stmt = select(Visitor).where(Visitor.id == visitor_id)

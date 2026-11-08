@@ -24,7 +24,7 @@ class AuditRunRequest(BaseModel):
 
 
 @router.get("")
-async def audit_status(project_id: str, db: AsyncSession = Depends(get_db)):
+async def audit_status(project_id: str, db: AsyncSession = Depends(get_db, scope="function")):
     if not await db.get(Project, project_id):
         raise HTTPException(404, "Project not found")
     return audit_progress.latest(project_id)
@@ -34,7 +34,7 @@ async def audit_status(project_id: str, db: AsyncSession = Depends(get_db)):
 async def trigger_audit(
     project_id: str,
     body: Optional[AuditRunRequest] = None,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db, scope="function"),
 ):
     """Queue a local job and return immediately; GET exposes durable progress."""
     if not await db.get(Project, project_id):
@@ -56,7 +56,7 @@ async def trigger_audit(
 
 
 @router.post("/cancel")
-async def cancel_audit(project_id: str, db: AsyncSession = Depends(get_db)):
+async def cancel_audit(project_id: str, db: AsyncSession = Depends(get_db, scope="function")):
     if not await db.get(Project, project_id):
         raise HTTPException(404, "Project not found")
     job = audit_progress.request_cancel(project_id)

@@ -7,13 +7,14 @@ from pathlib import Path
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Query
 from fastapi.responses import FileResponse, Response
 from starlette.concurrency import run_in_threadpool
-from sqlalchemy import select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.database import get_db
 from app.models.project import Project
 from app.models.document import Document, EvidenceChunk
+from app.models.requirement import Requirement, RequirementEvidence
 from app.api.requirements import block_response, public_metadata, chunk_pages
 from app.schemas.document import DocumentResponse, DocumentUploadResponse
 from app.services import audit_progress
@@ -59,7 +60,7 @@ def infer_doc_type(filename: str, ext: str) -> str:
 
 
 @router.get("", response_model=list[DocumentResponse])
-async def list_documents(project_id: str, db: AsyncSession = Depends(get_db)):
+async def list_documents(project_id: str, db: AsyncSession = Depends(get_db, scope="function")):
     result = await db.execute(
         select(Document)
         .where(Document.project_id == project_id)
@@ -174,7 +175,7 @@ async def upload_document(
     file: UploadFile = File(...),
     doc_type: str = Form(default=""),
     version: str = Form(default="v1.0"),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db, scope="function"),
 ):
     saved = await _accept_uploads(project_id, [file], doc_type, version, db)
     return saved[0]
@@ -186,14 +187,14 @@ async def upload_documents(
     files: list[UploadFile] = File(...),
     doc_type: str = Form(default=""),
     version: str = Form(default="v1.0"),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db, scope="function"),
 ):
     """Store a whole selection and commit the document rows once."""
     return await _accept_uploads(project_id, files, doc_type, version, db)
 
 
 @router.get("/{document_id}", response_model=DocumentResponse)
-async def get_document(project_id: str, document_id: str, db: AsyncSession = Depends(get_db)):
+async def get_document(project_id: str, document_id: str, db: AsyncSession = Depends(get_db, scope="function")):
     result = await db.execute(
         select(Document).where(Document.id == document_id, Document.project_id == project_id)
     )
@@ -204,7 +205,7 @@ async def get_document(project_id: str, document_id: str, db: AsyncSession = Dep
 
 
 @router.delete("/{document_id}", status_code=204)
-async def delete_document(project_id: str, document_id: str, db: AsyncSession = Depends(get_db)):
+async def delete_document(project_id: str, document_id: str, db: AsyncSession = Depends(get_db, scope="function")):
     _require_idle(project_id)
     result = await db.execute(
         select(Document).where(Document.id == document_id, Document.project_id == project_id)
@@ -213,13 +214,48 @@ async def delete_document(project_id: str, document_id: str, db: AsyncSession = 
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
 
-    # Remove file from disk
+    # Requirement evidence links point at this document's chunks. The ORM
+    # cascade removes the chunks but not the links, and neither SQLite (foreign
+    # keys off) nor Delta enforces the reference, so the links would dangle.
+    # Remove them, and send every requirement that cited this document back to
+    # review: its stored verdict now rests on evidence that no longer exists.
+    document_chunks = select(EvidenceChunk.id).where(EvidenceChunk.document_id == doc.id)
+    affected = (await db.execute(select(Requirement).where(Requirement.id.in_(
+        select(RequirementEvidence.requirement_id)
+        .where(RequirementEvidence.evidence_chunk_id.in_(document_chunks))
+    )))).scalars().all()
+    # Neither row type is loaded in this session, so skip session sync (which
+    # would cost an extra SELECT round trip per statement on the warehouse).
+    await db.execute(
+        delete(RequirementEvidence)
+        .where(RequirementEvidence.evidence_chunk_id.in_(document_chunks))
+        .execution_options(synchronize_session=False)
+    )
+    await db.execute(
+        delete(EvidenceChunk)
+        .where(EvidenceChunk.document_id == doc.id)
+        .execution_options(synchronize_session=False)
+    )
+    if affected:
+        remaining = dict((await db.execute(
+            select(RequirementEvidence.requirement_id, func.count(RequirementEvidence.id))
+            .join(Requirement, Requirement.id == RequirementEvidence.requirement_id)
+            .where(Requirement.project_id == project_id)
+            .group_by(RequirementEvidence.requirement_id)
+        )).all())
+        for requirement in affected:
+            requirement.sources_count = int(remaining.get(requirement.id, 0))
+            requirement.review_state = "Needs review"
+
+    storage_path = doc.storage_path
+    await db.delete(doc)
+    await db.commit()
+    # Delete the original only after the rows are gone, so a failed commit
+    # never leaves a document row whose file has already been removed.
     try:
-        os.remove(doc.storage_path)
+        await run_in_threadpool(os.remove, storage_path)
     except OSError:
         pass
-
-    await db.delete(doc)
 
 
 async def _scoped_document(db, project_id, document_id):
@@ -240,7 +276,7 @@ def _source_path(doc):
 
 
 @router.get("/{document_id}/file")
-async def download_source(project_id: str, document_id: str, db: AsyncSession = Depends(get_db)):
+async def download_source(project_id: str, document_id: str, db: AsyncSession = Depends(get_db, scope="function")):
     doc = await _scoped_document(db, project_id, document_id)
     path = _source_path(doc)
     return FileResponse(path, filename=doc.original_filename,
@@ -265,7 +301,7 @@ def _pdf_page_count(path):
 
 @router.get("/{document_id}/pages/{page_number}.png")
 async def original_page(project_id: str, document_id: str, page_number: int,
-                        db: AsyncSession = Depends(get_db)):
+                        db: AsyncSession = Depends(get_db, scope="function")):
     doc = await _scoped_document(db, project_id, document_id)
     path = _source_path(doc)
     if path.suffix.lower() != ".pdf":
@@ -276,7 +312,7 @@ async def original_page(project_id: str, document_id: str, page_number: int,
 
 @router.get("/{document_id}/inspection")
 async def inspect_document(project_id: str, document_id: str, page: int = Query(1, ge=1),
-                           db: AsyncSession = Depends(get_db)):
+                           db: AsyncSession = Depends(get_db, scope="function")):
     doc = await _scoped_document(db, project_id, document_id)
     chunks = (await db.execute(select(EvidenceChunk).where(
         EvidenceChunk.document_id == doc.id,

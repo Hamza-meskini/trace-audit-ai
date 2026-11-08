@@ -8,7 +8,9 @@ import uuid
 
 from app.config import settings
 from app.database import get_db_context
+from app.models.project import Project
 from app.services import audit_progress
+from app.services.audit_progress import AuditCancelled
 from app.services.pipeline import run_audit_pipeline
 
 
@@ -16,14 +18,34 @@ logger = logging.getLogger("traceaudit.audit_worker")
 _worker_tasks: list[asyncio.Task] = []
 _wake_event: asyncio.Event | None = None
 
-
-class AuditCancelled(Exception):
-    pass
+__all__ = ["AuditCancelled", "start", "stop", "wake"]
 
 
 def wake() -> None:
     if _wake_event is not None:
         _wake_event.set()
+
+
+async def _set_project_status(project_id: str, status: str) -> None:
+    """Replace the in-progress project status after a run stops early."""
+    try:
+        async with get_db_context() as db:
+            project = await db.get(Project, project_id)
+            if project is not None:
+                project.status = status
+    except Exception:
+        logger.exception("Could not record status %r for project %s", status, project_id)
+
+
+def _completion_message(result: dict) -> str:
+    failed = result.get("failed_requirements") or []
+    if not failed:
+        return "Audit results saved"
+    return (
+        f"Audit finished, but {len(failed)} requirement(s) could not be assessed and kept "
+        f"their previous results: {', '.join(failed[:10])}{' …' if len(failed) > 10 else ''}. "
+        "Retry the audit to assess them."
+    )
 
 
 async def _execute(job: dict) -> None:
@@ -48,11 +70,12 @@ async def _execute(job: dict) -> None:
         audit_progress.update(
             project_id,
             "complete",
-            message="Audit results saved",
+            message=_completion_message(result),
             status="complete",
             result=result,
         )
     except AuditCancelled:
+        await _set_project_status(project_id, "Analysis cancelled")
         audit_progress.update(
             project_id,
             "cancelled",
@@ -64,6 +87,7 @@ async def _execute(job: dict) -> None:
         raise
     except Exception:
         logger.exception("Background audit failed for %s", project_id)
+        await _set_project_status(project_id, "Analysis failed")
         audit_progress.update(
             project_id,
             "failed",

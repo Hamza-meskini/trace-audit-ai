@@ -15,9 +15,8 @@ import asyncio
 from datetime import datetime, timezone
 from types import SimpleNamespace
 from typing import Optional
-from sqlalchemy import select, delete
+from sqlalchemy import select, delete, func
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
 from app.models.project import Project
 from app.models.document import Document, EvidenceChunk
@@ -43,6 +42,7 @@ from app.services.classification import (
     refine_deferred_assessment,
 )
 from app.schemas.verification_result import ConditionVerificationResult
+from app.services.audit_progress import AuditCancelled
 from app.services.pipeline_cache import stable_key
 from app.services.taxonomy import finding_type_for, normalize_severity, finding_severity_for
 from app.config import settings
@@ -342,7 +342,9 @@ async def _run_audit_pipeline_impl(
         raise ValueError(f"Project '{project_id}' not found")
 
     project.status = "Analyzing evidence"
-    await db.flush()
+    # Commit between stages: on SQLite an open write transaction blocks every
+    # other writer (API requests included) for the whole parse/LLM stage.
+    await db.commit()
 
     # 2. Ingest unparsed documents
     doc_result = await db.execute(
@@ -421,9 +423,11 @@ async def _run_audit_pipeline_impl(
             })
             doc.processing_status = "Indexed"
 
+        # One transaction per document keeps its stale-row replacement atomic
+        # without holding the write lock while the next document is parsed.
+        await db.commit()
         report_progress("ingestion", doc_index + 1, len(documents), f"Processed {doc.original_filename}: {doc.processing_status}")
 
-    await db.flush()
     stage_timings["ingestion_seconds"] = round(time.perf_counter() - ingestion_started, 3)
 
     # Profile every document once from content and structure. The profile is
@@ -454,7 +458,7 @@ async def _run_audit_pipeline_impl(
                 metadata["document_profile"] = profile_data
                 model_chunk.metadata_json = metadata
 
-    await db.flush()
+    await db.commit()
     stage_timings["document_profiling_seconds"] = round(
         time.perf_counter() - profiling_started, 3
     )
@@ -617,7 +621,8 @@ async def _run_audit_pipeline_impl(
             time.perf_counter() - extraction_started, 3
         )
 
-        await db.flush()
+        # Release the lock before search sync and embedding calls below.
+        await db.commit()
         req_result = await db.execute(
             select(Requirement).where(Requirement.project_id == project_id)
         )
@@ -734,11 +739,30 @@ async def _run_audit_pipeline_impl(
                 )
             await db.commit()
 
+    # Set by the first progress callback that reports a cancellation. Work that
+    # is already saving finishes; queued requirements stop before any model call.
+    cancel_requested = asyncio.Event()
+
+    def unassessed_row(code: str, *, cancelled: bool = False) -> dict:
+        return {
+            "code": code,
+            "item": None,
+            "search": {},
+            "assessment": None,
+            "cache_hit": False,
+            "visual": {},
+            "targeted": {},
+            "candidates_before_discovery": 0,
+            "cancelled": cancelled,
+        }
+
     async def run_requirement(snapshot: dict) -> dict:
         nonlocal retrieved_count, vision_count, reasoned_count
         code = snapshot["req_code"]
         try:
             async with worker_slots:
+                if cancel_requested.is_set():
+                    return unassessed_row(code, cancelled=True)
                 extraction_data = snapshot["extracted_parameters"]
                 structured_conditions = extraction_data.get("conditions", [])
                 search_queries = build_requirement_search_queries(
@@ -878,6 +902,7 @@ async def _run_audit_pipeline_impl(
                     )
             if (
                 not cache_hit
+                and not cancel_requested.is_set()
                 and assessment.review_state == "Needs review"
                 and (assessment.pipeline_diagnostics or {}).get("secondary_adjudication_deferred")
             ):
@@ -901,18 +926,14 @@ async def _run_audit_pipeline_impl(
                 "targeted": targeted,
                 "candidates_before_discovery": candidates_before_discovery,
             }
+        except AuditCancelled:
+            # A cancellation is not a requirement failure; record it and let
+            # the remaining workers drain without starting new model calls.
+            cancel_requested.set()
+            return unassessed_row(code, cancelled=True)
         except Exception:
             logger.exception("Requirement %s failed during assessment", code)
-            return {
-                "code": code,
-                "item": None,
-                "search": {},
-                "assessment": None,
-                "cache_hit": False,
-                "visual": {},
-                "targeted": {},
-                "candidates_before_discovery": 0,
-            }
+            return unassessed_row(code)
 
     worker_tasks = [asyncio.create_task(run_requirement(snapshot)) for snapshot in snapshots]
     try:
@@ -922,6 +943,12 @@ async def _run_audit_pipeline_impl(
             task.cancel()
         await asyncio.gather(*worker_tasks, return_exceptions=True)
         raise
+    if cancel_requested.is_set():
+        raise AuditCancelled()
+    failed_requirement_codes = [
+        row["code"] for row in worker_rows
+        if row.get("assessment") is None and not row.get("cancelled")
+    ]
 
     for chunk_id, copy in visual_chunk_copies.items():
         model_chunk = evidence_chunk_models.get(chunk_id)
@@ -1005,16 +1032,21 @@ async def _run_audit_pipeline_impl(
 
     # 5. Update document linked counts
     report_progress("saving", len(assessments), len(requirements), "Finalizing document links")
+    # One grouped count instead of loading every link row once per document.
+    linked_counts = dict((await db.execute(
+        select(EvidenceChunk.document_id, func.count(RequirementEvidence.id))
+        .select_from(RequirementEvidence)
+        .join(EvidenceChunk, RequirementEvidence.evidence_chunk_id == EvidenceChunk.id)
+        .join(Document, EvidenceChunk.document_id == Document.id)
+        .where(Document.project_id == project_id)
+        .group_by(EvidenceChunk.document_id)
+    )).all())
     for doc in documents:
-        # Count how many requirement evidence links point to this doc's chunks
-        count_res = await db.execute(
-            select(RequirementEvidence)
-            .join(EvidenceChunk, RequirementEvidence.evidence_chunk_id == EvidenceChunk.id)
-            .where(EvidenceChunk.document_id == doc.id)
-        )
-        doc.requirements_linked = len(count_res.scalars().all())
+        doc.requirements_linked = int(linked_counts.get(doc.id, 0))
 
-    project.status = "Analysis complete"
+    project.status = (
+        "Analysis complete" if not failed_requirement_codes else "Analysis incomplete"
+    )
     await db.commit()
 
     stage_timings["total_seconds"] = round(time.perf_counter() - pipeline_started, 3)
@@ -1026,7 +1058,10 @@ async def _run_audit_pipeline_impl(
     )
 
     return {
-        "status": "success",
+        # "partial" when any requirement raised during assessment and kept its
+        # previous stored result; the codes are listed so the UI can say which.
+        "status": "partial" if failed_requirement_codes else "success",
+        "failed_requirements": failed_requirement_codes,
         "project_id": project_id,
         "model_used": active_model,
         "thinking_level": active_thinking,

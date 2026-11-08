@@ -14,6 +14,14 @@ from pathlib import Path
 from app.config import settings
 
 
+class AuditCancelled(Exception):
+    """Raised by progress callbacks once a user has cancelled the active run.
+
+    Defined here, not in the worker, so the pipeline can tell a cancellation
+    apart from a per-requirement failure without importing the worker.
+    """
+
+
 @contextmanager
 def _connect():
     root = Path(settings.UPLOAD_DIR)

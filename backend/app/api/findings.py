@@ -20,7 +20,7 @@ async def list_findings(
     finding_type: str | None = Query(None),
     review_state: str | None = Query(None),
     category: str | None = Query(None),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db, scope="function"),
 ):
     query = (
         select(Finding)
@@ -67,7 +67,7 @@ async def update_finding(
     project_id: str,
     finding_id: str,
     body: FindingUpdate,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db, scope="function"),
 ):
     result = await db.execute(
         select(Finding)
