@@ -105,7 +105,7 @@ function WizardPage() {
     }
   };
 
-  const handleFileUpload = async (files: FileList | null, docType = "") => {
+  const handleFileUpload = async (files: FileList | File[] | null, docType = "") => {
     const selected = Array.from(files || []);
     const [first] = selected;
     if (!first) return;
@@ -172,7 +172,12 @@ function WizardPage() {
         multiple
         accept=".pdf,.docx,.xlsx,.csv"
         className="hidden"
-        onChange={(e) => handleFileUpload(e.target.files)}
+        onChange={(e) => {
+          // Copy, then reset, so choosing the same file again fires onChange.
+          const files = Array.from(e.target.files || []);
+          e.target.value = "";
+          void handleFileUpload(files);
+        }}
       />
 
       <Panel title={`Step ${step + 1} — ${steps[step]}`}>

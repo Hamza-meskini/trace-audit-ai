@@ -22,7 +22,7 @@ import { useProjectStats } from "@/hooks/use-projects";
 import { cn } from "@/lib/utils";
 import { DocumentInspector } from "@/components/document-inspector";
 import { Sheet, SheetContent, SheetTitle, SheetDescription } from "@/components/ui/sheet";
-import { useTriggerAudit, useAuditProgress } from "@/hooks/use-audit";
+import { isAuditActive, useTriggerAudit, useAuditProgress } from "@/hooks/use-audit";
 import { useAiSettings } from "@/hooks/use-ai-settings";
 
 export const Route = createFileRoute("/documents")({
@@ -55,16 +55,19 @@ function DocumentsPage() {
   const audit = useTriggerAudit(activeProjectId);
   const { data: job } = useAuditProgress(activeProjectId);
   const { data: settings } = useAiSettings();
-  const busy = job?.status === "running" || job?.status === "queued" || audit.isPending;
+  // "cancelling" counts as busy: the API rejects document changes and new
+  // runs with a 409 until the run has fully stopped.
+  const busy = isAuditActive(job) || audit.isPending;
   const { data: stats } = useProjectStats(activeProjectId);
   const uploadDocMutation = useUploadDocuments(activeProjectId);
   const deleteDocMutation = useDeleteDocument(activeProjectId);
 
-  const handleFiles = async (files: FileList | null) => {
+  const handleFiles = async (files: FileList | File[] | null) => {
     if (busy) {
       toast.info("Wait for the active audit to finish before changing documents.");
       return;
     }
+    if (uploadDocMutation.isPending) return;
     const selected = Array.from(files || []);
     const [first] = selected;
     if (!first) return;
@@ -120,7 +123,10 @@ function DocumentsPage() {
               <Play className="size-4" />
               {busy ? "Audit running" : "Run audit"}
             </Button>
-            <Button disabled={busy} onClick={() => fileInputRef.current?.click()}>
+            <Button
+              disabled={busy || uploadDocMutation.isPending}
+              onClick={() => fileInputRef.current?.click()}
+            >
               <UploadCloud className="size-4" />
               Upload documents
             </Button>
@@ -135,7 +141,13 @@ function DocumentsPage() {
         multiple
         accept=".pdf,.docx,.xlsx,.csv"
         className="hidden"
-        onChange={(e) => handleFiles(e.target.files)}
+        onChange={(e) => {
+          // Copy, then reset, so choosing the same file again (after a failed
+          // upload or a delete) fires onChange instead of doing nothing.
+          const files = Array.from(e.target.files || []);
+          e.target.value = "";
+          void handleFiles(files);
+        }}
       />
 
       {isError && (
