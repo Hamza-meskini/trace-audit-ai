@@ -32,11 +32,11 @@ FIXTURES = (
     "saved Nova runs are not present (evaluation/results is git-ignored)",
 )
 class ReplayFidelityTests(unittest.TestCase):
-    def test_current_code_reproduces_every_saved_verdict_offline(self):
+    def _replay(self, *args: str) -> dict:
         with tempfile.TemporaryDirectory() as tmp:
             out = Path(tmp) / "replay.json"
             completed = subprocess.run(
-                [sys.executable, "-B", str(SCRIPT), "--quiet", "--label", "fidelity", "--out", str(out)],
+                [sys.executable, "-B", str(SCRIPT), "--quiet", "--label", "fidelity", "--out", str(out), *args],
                 cwd=tmp,
                 capture_output=True,
                 text=True,
@@ -45,8 +45,19 @@ class ReplayFidelityTests(unittest.TestCase):
                 timeout=600,
             )
             self.assertEqual(completed.returncode, 0, completed.stdout[-4000:] + completed.stderr[-4000:])
-            report = json.loads(out.read_text(encoding="utf-8"))
+            return json.loads(out.read_text(encoding="utf-8"))
 
+    def test_derived_status_simulation_stays_offline_and_is_labelled(self):
+        report = self._replay("--simulate", "derived-status")
+        self.assertTrue(report["integrity_ok"], report["integrity"])
+        self.assertEqual(report["integrity"]["network_attempts"], 0)
+        self.assertEqual(report["simulate"], "derived-status")
+        self.assertGreater(report["simulated_label_changes"], 0)
+
+    def test_current_code_reproduces_every_saved_verdict_offline(self):
+        report = self._replay()
+        self.assertIsNone(report["simulate"])
+        self.assertEqual(report["simulated_label_changes"], 0)
         self.assertTrue(report["integrity_ok"], report["integrity"])
         self.assertEqual(report["integrity"]["network_attempts"], 0)
         self.assertEqual(report["integrity"]["unexpected_calls"], 0)

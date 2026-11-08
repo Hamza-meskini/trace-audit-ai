@@ -76,6 +76,11 @@ def _parse_args(argv=None):
     parser.add_argument("--out", help="write per-instance rows and summary to this JSON file")
     parser.add_argument("--compare", help="earlier replay JSON to diff against (default: the saved predictions)")
     parser.add_argument("--quiet", action="store_true", help="print the summary only")
+    parser.add_argument("--simulate", choices=["derived-status"], default=None,
+                        help="approximate a prompt candidate instead of replaying verbatim. 'derived-status' "
+                             "answers every call with the mechanical aggregate of the model's own condition "
+                             "results as its requirement status (an upper bound for a derive-the-status prompt: "
+                             "it assumes the condition results themselves do not change)")
     return parser.parse_args(argv)
 
 
@@ -330,6 +335,40 @@ class ReplayLLM:
         return None
 
 
+def _derived_statuses(req_items: list[dict], recordings: dict[str, Recording]) -> dict[str, str]:
+    """--simulate derived-status: the requirement status a model would report if it
+    derived the status from its own condition results with the production precedence."""
+    from app.schemas.contract import parse_requirement_contract
+    from app.schemas.verification_result import ConditionVerificationResult
+    from app.services.verdict_aggregator import aggregate_condition_statuses
+
+    derived = {}
+    for item in req_items:
+        rec = recordings.get(item["req_code"])
+        if rec is None:
+            continue
+        # Same arguments as classification.batch_assess_requirements.
+        contract = parse_requirement_contract(
+            req_code=item["req_code"],
+            title=item.get("title", ""),
+            description=item.get("description", ""),
+            category=item.get("category", "General"),
+            structured_conditions=item.get("conditions"),
+            semantic_clauses=item.get("semantic_clauses"),
+            clause_coverage=item.get("clause_coverage"),
+            unmapped_obligations=item.get("unmapped_obligations"),
+            contract_complete=item.get("contract_complete"),
+            logic=item.get("logic"),
+            logic_tree=item.get("logic_tree"),
+            decomposition_confidence=item.get("decomposition_confidence"),
+            ambiguities=item.get("ambiguities"),
+            validation_issues=item.get("validation_issues"),
+        )
+        results = [ConditionVerificationResult.model_validate(condition) for condition in rec.conditions]
+        derived[item["req_code"]] = aggregate_condition_statuses(contract, results)[0]
+    return derived
+
+
 async def replay_run(run_id: str) -> dict:
     saved = json.loads((RUNS_DIR / run_id / "results.json").read_text(encoding="utf-8"))
     if not saved.get("verification_inputs"):
@@ -341,6 +380,11 @@ async def replay_run(run_id: str) -> dict:
     NETWORK_LOG.clear()
     LOG_HANDLER.records.clear()
     req_items = copy.deepcopy(saved["verification_inputs"])
+    simulated = 0
+    if ARGS is not None and ARGS.simulate == "derived-status":
+        for code, status in _derived_statuses(req_items, recordings).items():
+            simulated += status != recordings[code].status
+            recordings[code].status = status
     assessments = await batch_assess_requirements(
         req_items=req_items,
         model=saved.get("verification_model") or "system.ai.llama-4-maverick",
@@ -387,6 +431,7 @@ async def replay_run(run_id: str) -> dict:
         "approximate": mock.approximate,
         "network_attempts": list(NETWORK_LOG),
         "errors": errors,
+        "simulated_label_changes": simulated,
     }
 
 
@@ -463,6 +508,8 @@ def main(args) -> int:
     report = {
         "label": args.label,
         "backend": str(BACKEND),
+        "simulate": args.simulate,
+        "simulated_label_changes": sum(r["simulated_label_changes"] for r in results),
         "runs": args.runs,
         "summary": summary,
         "per_run": {r["run_id"]: summarize(r["instances"]) for r in results},
@@ -473,6 +520,9 @@ def main(args) -> int:
         "instances": instances,
     }
     print(f"[{args.label}] backend={BACKEND}")
+    if args.simulate:
+        print(f"  SIMULATION {args.simulate}: {report['simulated_label_changes']} recorded labels replaced "
+              f"(an approximation, not a replay of recorded outputs)")
     print(f"  accuracy {summary['correct']}/{summary['instances']} = {summary['accuracy']}%  macro-F1 {summary['macro_f1']}  "
           f"recall {summary['recall']}")
     print(f"  auto-closed {summary['auto_closed']} (correct {summary['auto_closed_correct']}), unsafe SUPPORTED "
