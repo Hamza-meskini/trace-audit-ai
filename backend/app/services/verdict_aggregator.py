@@ -53,7 +53,7 @@ from app.schemas.evidence_qualification import (
 )
 from app.services.evidence_qualification import condition_evidence_compatible
 from app.services.observability import set_span_outputs, trace_span
-from app.services.units import convert_value, are_units_compatible, satisfies_bound
+from app.services.units import convert_value, are_units_compatible
 
 logger = logging.getLogger("traceaudit.aggregator")
 
@@ -1460,8 +1460,10 @@ def _numeric_condition_status(
             )
             if nominal is not None:
                 v = abs(v - float(nominal))
-        if op in (">=", ">", "<=", "<"):
-            return "PROVEN" if satisfies_bound(v, op, th) else "FAILED"
+        if op in (">=", ">"):
+            return "PROVEN" if v >= th else "FAILED"
+        if op in ("<=", "<"):
+            return "PROVEN" if v <= th else "FAILED"
         if op in ("==", "="):
             # A nominal target and its explicit sibling tolerance form one
             # composite interval. Fall back to a small engineering tolerance

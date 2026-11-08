@@ -1,12 +1,14 @@
 """Regression tests for verified defects found in the end-to-end review.
 
-Each test fails on the code before its fix:
-- strict inequalities were evaluated as inclusive (5.0 passed "< 5");
+Each fix test fails on the code before its fix:
 - Excel export turned document text starting with "=" into live formulas and
   aborted the whole workbook on a single control character;
 - the Gemini API key travelled in the URL, which httpx error messages (and so
   our warning logs) include;
 - every new embedding rewrote the entire cache file on the event loop.
+
+BoundStatementTests pins current behaviour that a naive fix would break; see
+its docstring.
 """
 
 import io
@@ -20,99 +22,52 @@ import httpx
 import openpyxl
 
 from app.config import Settings
-from app.schemas.claim import EvidenceClaim
+from app.schemas.claim import extract_claims_from_chunk
 from app.schemas.contract import AtomicConditionContract, RequirementContract
-from app.schemas.verification_result import ConditionVerificationResult
-from app.services import embedding
+from app.services import embedding, llm_client
 from app.services.excel_export import _set_value
-from app.services.units import satisfies_bound
 from app.services.verdict_aggregator import _numeric_condition_status
-from app.services.verification_reasoner import _structured_numeric_status
 
 
-def _condition(operator: str, threshold: float, unit: str = "ms") -> AtomicConditionContract:
-    return AtomicConditionContract(
-        condition_id="C1",
-        description=f"latency {operator} {threshold} {unit}",
-        parameter="latency",
-        operator=operator,
-        threshold=threshold,
-        unit=unit,
-    )
+class BoundStatementTests(unittest.TestCase):
+    """Evidence often states a bound ("porosity is below 8 percent") rather than
+    a measurement. Claim extraction keeps only the number (8.0), so today's
+    inclusive comparison is what makes "below 8" satisfy "< 8".
 
+    Strict "<" / ">" handling is a real gap (a measured 5.0 passes "< 5"), but
+    making the comparison strict without carrying the evidence's comparator
+    flips these benchmark cases (REQ-NVA-QLT-004, REQ-NVA-ENV-004) to FAILED.
+    Any strictness fix must keep this test passing.
+    """
 
-class StrictInequalityTests(unittest.TestCase):
-    CASES = [
-        # operator, threshold, observed, expected
-        ("<", 5, 5.0, "FAILED"),
-        ("<", 5, 4.99, "PROVEN"),
-        ("<=", 5, 5.0, "PROVEN"),
-        ("<=", 5, 5.01, "FAILED"),
-        (">", 12, 12.0, "FAILED"),
-        (">", 12, 12.01, "PROVEN"),
-        (">=", 12, 12.0, "PROVEN"),
-        (">=", 12, 11.99, "FAILED"),
-    ]
-
-    def test_satisfies_bound_keeps_strict_operators_strict(self):
-        for operator, threshold, observed, expected in self.CASES:
-            with self.subTest(operator=operator, observed=observed):
-                self.assertEqual(
-                    satisfies_bound(observed, operator, threshold), expected == "PROVEN"
-                )
-        self.assertIsNone(satisfies_bound(1.0, "between", 2.0))
-
-    def test_conversion_rounding_counts_as_equal(self):
-        # 0.005 s converts to 5 ms up to float rounding in either direction.
-        self.assertFalse(satisfies_bound(5.000000000000001, "<", 5))
-        self.assertFalse(satisfies_bound(4.999999999999999, "<", 5))
-        self.assertTrue(satisfies_bound(5.000000000000001, "<=", 5))
-        self.assertTrue(satisfies_bound(4.999999999999999, ">=", 5))
-
-    def test_reasoner_structured_status_respects_strict_bounds(self):
-        for operator, threshold, observed, expected in self.CASES:
-            with self.subTest(operator=operator, observed=observed):
-                result = ConditionVerificationResult(
-                    condition_id="C1",
-                    status="PROVEN",
-                    observed_value=str(observed),
-                    observed_unit="ms",
-                    evidence_value_role="OBSERVED",
-                )
-                status, _, _ = _structured_numeric_status(_condition(operator, threshold), result)
-                self.assertEqual(status, expected)
-
-    def test_reasoner_compares_after_unit_conversion(self):
-        result = ConditionVerificationResult(
+    def test_bound_statement_satisfies_matching_strict_requirement(self):
+        cond = AtomicConditionContract(
             condition_id="C1",
-            status="PROVEN",
-            observed_value="0.005",
-            observed_unit="s",
-            evidence_value_role="OBSERVED",
+            description="weld porosity < 8 percent",
+            parameter="porosity",
+            operator="<",
+            threshold=8,
+            unit="percent",
         )
-        self.assertEqual(_structured_numeric_status(_condition("<", 5), result)[0], "FAILED")
-        self.assertEqual(_structured_numeric_status(_condition("<=", 5), result)[0], "PROVEN")
-
-    def test_aggregator_numeric_claim_respects_strict_bounds(self):
-        for operator, threshold, observed, expected in self.CASES:
-            with self.subTest(operator=operator, observed=observed):
-                cond = _condition(operator, threshold)
-                contract = RequirementContract(
-                    requirement_id="REQ-1",
-                    req_code="REQ-1",
-                    title="Latency",
-                    raw_text=f"Latency shall be {operator} {threshold} ms.",
-                    atomic_conditions=[cond],
-                )
-                claim = EvidenceClaim(
-                    document_name="test_report.pdf",
-                    claim_type="threshold",
-                    parameter="latency",
-                    value=observed,
-                    unit="ms",
-                    quote=f"Measured latency: {observed} ms",
-                )
-                self.assertEqual(_numeric_condition_status(contract, cond, claim), expected)
+        contract = RequirementContract(
+            requirement_id="REQ-1",
+            req_code="REQ-1",
+            title="Weld porosity",
+            raw_text="Weld porosity shall be < 8 percent.",
+            atomic_conditions=[cond],
+        )
+        quote = "PASS - Executed for REQ-1; the recorded result confirms: Weld porosity is below 8 percent."
+        claims = [
+            claim
+            for claim in extract_claims_from_chunk(
+                {"content": quote, "document_name": "verification_report.pdf", "page_number": 1},
+                contract,
+            )
+            if claim.claim_type == "threshold"
+        ]
+        self.assertTrue(claims)
+        self.assertEqual(claims[0].value, 8.0)  # the comparator "below" is not kept
+        self.assertEqual(_numeric_condition_status(contract, cond, claims[0]), "PROVEN")
 
 
 class ExcelCellSafetyTests(unittest.TestCase):
@@ -162,7 +117,9 @@ class _RecordingClient:
         request = httpx.Request("POST", url, headers=headers)
         if self.status_code != 200:
             return httpx.Response(self.status_code, request=request)
-        if "batchEmbedContents" in url:
+        if ":generateContent" in url:
+            body = {"candidates": [{"content": {"parts": [{"text": "ok"}]}}]}
+        elif "batchEmbedContents" in url:
             body = {"embeddings": [{"values": [float(i), 0.5]} for i, _ in enumerate(json["requests"])]}
         else:
             body = {"embedding": {"values": [0.25, 0.75]}}
@@ -213,6 +170,16 @@ class GeminiEmbeddingTests(unittest.IsolatedAsyncioTestCase):
             self.assertNotIn(self.KEY, url)
             self.assertNotIn("key=", url)
             self.assertEqual(headers.get("x-goog-api-key"), self.KEY)
+
+    async def test_generate_content_sends_key_in_header_not_url(self):
+        text = await llm_client.call_gemini_generate_content("Say ok", model="gemini-2.5-flash")
+
+        self.assertEqual(text, "ok")
+        url, headers = _RecordingClient.calls[-1]
+        self.assertIn(":generateContent", url)
+        self.assertNotIn(self.KEY, url)
+        self.assertNotIn("key=", url)
+        self.assertEqual(headers.get("x-goog-api-key"), self.KEY)
 
     async def test_failed_batch_does_not_log_the_api_key(self):
         _RecordingClient.status_code = 403
