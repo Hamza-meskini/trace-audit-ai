@@ -1,0 +1,21 @@
+# Store and check out binary assets byte for byte.
+# Without this, core.autocrlf=true rewrites ASCII85-encoded PDFs with CRLF line
+# endings on Windows checkouts. That changes each file's sha256 (so the document
+# parse cache misses and a benchmark run silently re-parses with different OCR)
+# and leaves PyMuPDF to repair the damaged files.
+*.pdf binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.webp binary
+*.docx binary
+*.xlsx binary
+*.pptx binary
+*.zip binary
+*.sqlite3 binary
+*.ttf binary
+*.otf binary
+*.woff binary
+*.woff2 binary
