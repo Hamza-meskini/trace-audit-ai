@@ -69,6 +69,55 @@ DEFAULT_MODEL = "system.ai.llama-4-maverick"
 RUNNER_VERSION = "3.0-production-contracts"
 
 
+def _git(*args: str) -> str | None:
+    import subprocess
+
+    try:
+        completed = subprocess.run(
+            ["git", *args], cwd=REPO, capture_output=True, text=True, timeout=30, check=True
+        )
+    except Exception:
+        return None
+    return completed.stdout.strip()
+
+
+def _run_environment(dataset: dict[str, Any]) -> dict[str, Any]:
+    """Settings that change results but were never recorded before.
+
+    Without these, runs made with a different parser, reranker or code state
+    cannot be told apart afterwards. Only flags and names are recorded, never
+    secrets.
+    """
+    documents: dict[str, str | None] = {}
+    for spec in all_documents(dataset):
+        path = DOCS / spec["filename"]
+        documents[spec["filename"]] = hashlib.sha256(path.read_bytes()).hexdigest() if path.exists() else None
+    runner_bytes = Path(__file__).read_bytes()
+    status = _git("status", "--porcelain", "--untracked-files=no")
+    return {
+        "document_parser": settings.TRACEAUDIT_DOCUMENT_PARSER,
+        "custom_reranker_enabled": settings.DATABRICKS_CUSTOM_RERANKER_ENABLED,
+        "targeted_extraction_enabled": settings.DATABRICKS_TARGETED_EXTRACTION_ENABLED,
+        "ai_search_enabled": settings.DATABRICKS_AI_SEARCH_ENABLED,
+        "secondary_adjudicator_enabled": settings.SECONDARY_ADJUDICATOR_ENABLED,
+        "secondary_adjudicator_model": settings.SECONDARY_ADJUDICATOR_MODEL,
+        "citation_grounding_enabled": settings.CITATION_GROUNDING_ENABLED,
+        "citation_grounding_model": settings.CITATION_GROUNDING_MODEL,
+        "fallback_models": list(settings.DATABRICKS_FALLBACK_MODELS or []),
+        "vision_model": settings.DATABRICKS_VISION_MODEL,
+        "gemini_thinking_level": settings.GEMINI_THINKING_LEVEL,
+        "atomic_thinking_level_default": settings.ATOMIC_DECOMPOSITION_THINKING_LEVEL,
+        "llm_global_concurrency": settings.LLM_GLOBAL_CONCURRENCY,
+        "embeddings_configured": bool(settings.effective_gemini_api_key),
+        "mlflow_tracing_enabled": settings.DATABRICKS_MLFLOW_TRACING_ENABLED,
+        "git_commit": _git("rev-parse", "HEAD"),
+        "git_branch": _git("rev-parse", "--abbrev-ref", "HEAD"),
+        "git_dirty": bool(status) if status is not None else None,
+        "runner_sha256_lf": hashlib.sha256(runner_bytes.replace(b"\r\n", b"\n")).hexdigest(),
+        "document_sha256": documents,
+    }
+
+
 def load_dataset() -> dict[str, Any]:
     return json.loads((BENCHMARK / "ground_truth.json").read_text(encoding="utf-8"))
 
@@ -228,8 +277,10 @@ def document_profile_metrics(dataset: dict[str, Any], profiles: dict[str, Any]) 
 
 def markdown_report(result: dict[str, Any]) -> str:
     metrics = result["metrics"]
+    benchmark_id = str(result.get("benchmark_id") or "")
+    title = "Nova" if not benchmark_id or benchmark_id.startswith("traceaudit-nova") else benchmark_id
     lines = [
-        "# TraceAudit Nova End-to-End Benchmark",
+        f"# TraceAudit {title} End-to-End Benchmark",
         "",
         f"- Mode: `{result['mode']}`",
         f"- Runner: `{metrics.get('integrity', {}).get('runner_version', 'legacy')}`",
@@ -299,6 +350,7 @@ async def _run_impl(
         raise ValueError("Invalid benchmark: " + "; ".join(validation["errors"]))
     use_oracle_contracts, use_oracle_evidence = MODES[mode]
     dataset = load_dataset()
+    environment = _run_environment(dataset)
     truth = dataset["requirements"]
     truth_by_id = {item["requirement_id"]: item for item in truth}
     started = time.time()
@@ -528,7 +580,9 @@ async def _run_impl(
             "gold_evidence_selection": use_oracle_evidence,
             "atomic_alignment": "status_blind_structured_contracts",
             "atomic_metric_limitation": POLICY["limitations"],
-            "evaluation_scope": "Synthetic development corpus, not an independent held-out evaluation",
+            "evaluation_scope": dataset.get(
+                "evaluation_scope", "Synthetic development corpus, not an independent held-out evaluation"
+            ),
             "unexpected_extracted_ids": sorted({item["req_code"] for item in contracts} - set(truth_by_id)),
             "missing_extracted_ids": sorted(set(truth_by_id) - {item["req_code"] for item in contracts}),
         },
@@ -566,6 +620,7 @@ async def _run_impl(
             "batch_size": batch_size,
             "retrieval_backend": retrieval_backend,
             "resume": resume,
+            "environment": environment,
         },
         "runtime_seconds": round(time.time() - started, 2),
         "validation": validation,
@@ -640,7 +695,7 @@ async def run(
     with observation_context(
         audit_run_id=correlation_id,
         benchmark_run_id=benchmark_run_id,
-        benchmark_id="nova-48",
+        benchmark_id=load_dataset().get("benchmark_id", "nova-48"),
         stage="benchmark",
     ):
         with trace_span(
