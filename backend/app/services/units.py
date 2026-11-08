@@ -9,6 +9,7 @@ It deliberately has no project- or benchmark-specific alias table.
 from __future__ import annotations
 
 from enum import Enum
+import math
 import re
 from functools import lru_cache
 from typing import Optional, Any
@@ -124,6 +125,25 @@ def unit_compatibility(
 def are_units_compatible(unit_a: Optional[str], unit_b: Optional[str]) -> bool:
     """Backward-compatible boolean API for deterministic numeric validators."""
     return unit_compatibility(unit_a, unit_b) == UnitCompatibility.COMPATIBLE
+
+
+def satisfies_bound(value: float, operator: str, bound: float) -> Optional[bool]:
+    """Compare a value with a one-sided bound, keeping strict operators strict.
+
+    5.0 does not satisfy "< 5" and 12 does not satisfy "> 12". Values that
+    differ only by unit-conversion rounding count as equal, so 5000 mV meets
+    "<= 5 V" and does not meet "< 5 V". Returns None for any other operator.
+    """
+    equal = math.isclose(value, bound, rel_tol=1e-9, abs_tol=1e-12)
+    if operator == "<=":
+        return value < bound or equal
+    if operator == "<":
+        return value < bound and not equal
+    if operator == ">=":
+        return value > bound or equal
+    if operator == ">":
+        return value > bound and not equal
+    return None
 
 
 def convert_value(

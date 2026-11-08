@@ -25,6 +25,7 @@ from app.services.observability import observation_context
 from app.services.units import (
     UnitCompatibility,
     convert_value,
+    satisfies_bound,
     unit_compatibility,
 )
 from app.services.evidence_qualification import (
@@ -828,10 +829,9 @@ def _structured_numeric_status(
             ), "UNRESOLVED"
 
     if numeric_threshold is not None and observed_value is not None:
-        if op in ("<=", "<"):
-            return ("PROVEN" if observed_value <= numeric_threshold else "FAILED"), None, None
-        if op in (">=", ">"):
-            return ("PROVEN" if observed_value >= numeric_threshold else "FAILED"), None, None
+        if op in ("<=", "<", ">=", ">"):
+            satisfied = satisfies_bound(observed_value, op, numeric_threshold)
+            return ("PROVEN" if satisfied else "FAILED"), None, None
         if op in ("==", "="):
             tolerance = max(abs(numeric_threshold) * 0.025, 1e-9)
             return ("PROVEN" if abs(observed_value - numeric_threshold) <= tolerance else "FAILED"), None, None

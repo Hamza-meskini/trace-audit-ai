@@ -12,6 +12,7 @@ import math
 import logging
 import hashlib
 import asyncio
+import threading
 from typing import Optional
 
 import httpx
@@ -58,9 +59,15 @@ GEMINI_EMBEDDING_MODEL = "gemini-embedding-001"
 GEMINI_EMBED_API_URL = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_EMBEDDING_MODEL}:embedContent"
 GEMINI_BATCH_EMBED_API_URL = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_EMBEDDING_MODEL}:batchEmbedContents"
 
-# Persistent disk cache location to avoid re-computing embeddings on every run
+# Persistent disk cache location to avoid re-computing embeddings on every run.
+# embeddings.json is the legacy full snapshot and is now only read. New vectors
+# are appended to embeddings.jsonl, one entry per line, so persisting a vector
+# costs O(that vector) instead of rewriting the whole cache (1,689 vectors took
+# 6.9 s per rewrite, on the event loop, once per requirement).
 _CACHE_DIR = Path(__file__).resolve().parent.parent.parent / ".cache"
 _CACHE_FILE = _CACHE_DIR / "embeddings.json"
+_JOURNAL_FILE = _CACHE_DIR / "embeddings.jsonl"
+_journal_lock = threading.Lock()
 
 _embedding_cache: dict[str, list[float]] = {}
 _cache_loaded: bool = False
@@ -74,17 +81,39 @@ def _ensure_cache_loaded():
             try:
                 with open(_CACHE_FILE, "r", encoding="utf-8") as f:
                     _embedding_cache.update(json.load(f))
-                logger.info(f"Loaded {len(_embedding_cache)} cached embeddings from disk.")
             except Exception as ex:
                 logger.warning(f"Failed loading embedding cache from disk: {ex}")
+        if _JOURNAL_FILE.exists():
+            skipped = 0
+            try:
+                with open(_JOURNAL_FILE, "r", encoding="utf-8") as f:
+                    for line in f:
+                        if not line.strip():
+                            continue
+                        try:
+                            entry = json.loads(line)
+                            _embedding_cache[entry["k"]] = entry["v"]
+                        except (ValueError, KeyError, TypeError):
+                            skipped += 1  # torn line from a crash mid-append
+            except OSError as ex:
+                logger.warning(f"Failed loading embedding journal from disk: {ex}")
+            if skipped:
+                logger.warning(f"Skipped {skipped} unreadable embedding journal lines.")
+        logger.info(f"Loaded {len(_embedding_cache)} cached embeddings from disk.")
 
 
-def _save_cache_to_disk():
+def _append_cache_entries(entries: dict[str, list[float]]) -> None:
+    """Persist only new vectors. Each entry starts on a fresh line, so a line
+    torn by a crash can never swallow the entry written after it."""
+    if not entries:
+        return
+    payload = "".join("\n" + json.dumps({"k": key, "v": values}) for key, values in entries.items())
     try:
-        _CACHE_DIR.mkdir(parents=True, exist_ok=True)
-        with open(_CACHE_FILE, "w", encoding="utf-8") as f:
-            json.dump(_embedding_cache, f)
-    except Exception as ex:
+        with _journal_lock:
+            _CACHE_DIR.mkdir(parents=True, exist_ok=True)
+            with open(_JOURNAL_FILE, "a", encoding="utf-8") as f:
+                f.write(payload)
+    except OSError as ex:
         logger.warning(f"Failed saving embedding cache to disk: {ex}")
 
 
@@ -124,7 +153,8 @@ async def embed_single(text: str, task_type: str = "RETRIEVAL_DOCUMENT") -> Opti
         return _embedding_cache[cache_key]
 
     api_key = settings.effective_gemini_api_key
-    url = f"{GEMINI_EMBED_API_URL}?key={api_key}"
+    url = GEMINI_EMBED_API_URL
+    headers = {"x-goog-api-key": api_key}  # never in the URL: errors log it
 
     payload = {
         "model": f"models/{GEMINI_EMBEDDING_MODEL}",
@@ -134,13 +164,13 @@ async def embed_single(text: str, task_type: str = "RETRIEVAL_DOCUMENT") -> Opti
 
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
-            resp = await client.post(url, json=payload)
+            resp = await client.post(url, json=payload, headers=headers)
             if resp.status_code == 200:
                 data = resp.json()
                 values = data.get("embedding", {}).get("values", [])
                 if values:
                     _embedding_cache[cache_key] = values
-                    _save_cache_to_disk()
+                    _append_cache_entries({cache_key: values})
                     return values
     except Exception as ex:
         logger.debug(f"Gemini single embedding call failed: {ex}")
@@ -176,7 +206,8 @@ async def embed_batch(texts: list[str], task_type: str = "RETRIEVAL_DOCUMENT") -
         return results
 
     api_key = settings.effective_gemini_api_key
-    url = f"{GEMINI_BATCH_EMBED_API_URL}?key={api_key}"
+    url = GEMINI_BATCH_EMBED_API_URL
+    headers = {"x-goog-api-key": api_key}  # never in the URL: errors log it
 
     # Process in sub-batches of BATCH_SIZE
     for batch_start in range(0, len(uncached_texts), BATCH_SIZE):
@@ -198,7 +229,7 @@ async def embed_batch(texts: list[str], task_type: str = "RETRIEVAL_DOCUMENT") -
         for attempt in range(1, 4):
             try:
                 async with httpx.AsyncClient(timeout=15.0) as client:
-                    resp = await client.post(url, json=payload)
+                    resp = await client.post(url, json=payload, headers=headers)
                     if resp.status_code == 429:
                         _consecutive_rate_limits += 1
                         if _consecutive_rate_limits >= _MAX_CONSECUTIVE_RATE_LIMITS:
@@ -214,14 +245,16 @@ async def embed_batch(texts: list[str], task_type: str = "RETRIEVAL_DOCUMENT") -
                     embeddings = data.get("embeddings", [])
 
 
+                    new_entries: dict[str, list[float]] = {}
                     for j, emb_data in enumerate(embeddings):
                         values = emb_data.get("values", [])
                         if values and j < len(batch_indices):
                             idx = batch_indices[j]
                             results[idx] = values
-                            _embedding_cache[_content_hash(texts[idx], task_type)] = values
+                            new_entries[_content_hash(texts[idx], task_type)] = values
 
-                    _save_cache_to_disk()
+                    _embedding_cache.update(new_entries)
+                    _append_cache_entries(new_entries)
                     _consecutive_rate_limits = 0
                     logger.info(f"Embedded batch of {len(batch_texts)} texts via Gemini {GEMINI_EMBEDDING_MODEL}")
                     break

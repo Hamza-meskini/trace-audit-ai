@@ -185,7 +185,10 @@ async def call_gemini_generate_content(
         return None
 
     clean_model = model.replace("models/", "")
-    url = f"{GEMINI_API_URL}/{clean_model}:generateContent?key={api_key}"
+    # Key in a header, never the URL: httpx error messages include the URL and
+    # are logged, which would write the secret to the logs.
+    url = f"{GEMINI_API_URL}/{clean_model}:generateContent"
+    headers = {"x-goog-api-key": api_key}
 
     active_thinking_level = (thinking_level or settings.GEMINI_THINKING_LEVEL).strip()
 
@@ -246,7 +249,7 @@ async def call_gemini_generate_content(
     for attempt in range(MAX_ATTEMPTS):
         try:
             async with httpx.AsyncClient(timeout=timeout) as client:
-                resp = await client.post(url, json=payload)
+                resp = await client.post(url, json=payload, headers=headers)
                 if resp.status_code in RETRYABLE_STATUS_CODES:
                     logger.warning(f"Gemini API rate/capacity [{resp.status_code}]. Retrying (attempt {attempt+1}/{MAX_ATTEMPTS})...")
                     await asyncio.sleep(1.5 * (attempt + 1))

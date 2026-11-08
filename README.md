@@ -47,7 +47,16 @@ The run used Llama 4 Maverick for discovery, atomic decomposition, and verificat
 The final-verdict score does not mean the contracts are complete: only 57 of 147 reference
 atoms aligned under strict structured matching. This run also recorded no targeted ai_extract
 enrichments and no retrieved figures analyzed, so it does not measure those optional stages.
-See the immutable [Nova run report](<evaluation/results/runs/20260915T140120.543292Z/report.md>).
+See the immutable [Nova run report](<evaluation/results/runs/20260915T140120.543292Z/report.md>)
+(a local artifact: `evaluation/results/` is not committed).
+
+**Run-to-run variation.** The table shows the best of five saved runs with this same
+three-model configuration (15–22 September 2026). Their final-verdict accuracy was 91.67%,
+85.42%, 87.50%, 87.50% and 89.58%: mean **88.33%**, range 85.42–91.67%, standard deviation
+about 2.4 points. One requirement is 2.08 points, so a difference of under ~4 points between
+two single runs is not evidence of a change. The misses are stable: requirements whose
+expected verdict is CONFLICT are 3–4 of the 4–7 misses in every run, and THM-002, FSA-004 and
+QLT-006 are downgraded to PARTIAL or MISSING in all five.
 
 ### FMVSS 305 public-document benchmark — scoped run
 
@@ -68,6 +77,8 @@ retrieval; it is not a legal compliance determination.
 
 The aligned-atom accuracy covers only 10% of the labelled atomic set; the atomic end-to-end
 score is 10.00%. See [the FMVSS 305 benchmark guide](<evaluation/fmvss305_benchmark/README.md>).
+Three saved Llama 3.3 70B runs on 14 September 2026 scored 63.64%, 81.82% and 90.91%; the
+table shows the best. With 11 clauses, each clause moves the score by 9.1 points.
 
 ## Historical Benchmark Suites
 

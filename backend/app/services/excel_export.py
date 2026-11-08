@@ -12,6 +12,7 @@ from datetime import datetime
 from typing import Any
 
 import openpyxl
+from openpyxl.cell.cell import ILLEGAL_CHARACTERS_RE
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 from sqlalchemy import select
@@ -78,6 +79,23 @@ def _double_bottom_border() -> Border:
     thin = Side(style="thin", color=BORDER_COLOR)
     double = Side(style="double", color=NAVY_HEADER)
     return Border(left=thin, right=thin, top=thin, bottom=double)
+
+
+def _set_value(cell: Any, val: Any) -> Any:
+    """Write untrusted text (document content, titles, names) into a cell safely.
+
+    openpyxl turns any string starting with "=" into a live formula, so an
+    uploaded PDF or a project name could plant formulas such as HYPERLINK in
+    the auditor's workbook; such text is kept, but stored as plain text. It
+    also raises IllegalCharacterError on control characters, which PDFs with
+    CID fonts often contain, and that aborted the whole export.
+    """
+    if isinstance(val, str):
+        val = ILLEGAL_CHARACTERS_RE.sub("", val)
+    cell.value = val
+    if isinstance(val, str) and cell.data_type == "f":
+        cell.data_type = "s"
+    return cell
 
 
 def _clean_str(val: Any) -> str:
@@ -252,7 +270,7 @@ async def generate_audit_report_excel(db: AsyncSession, project_id: str) -> byte
         c_a.alignment = Alignment(horizontal="left", vertical="center")
 
         c_b = ws_summary[f"B{idx}"]
-        c_b.value = val1
+        _set_value(c_b, val1)
         c_b.font = Font(name="Calibri", size=11, bold=True, color="0F172A")
         c_b.alignment = Alignment(horizontal="left", vertical="center")
 
@@ -263,7 +281,7 @@ async def generate_audit_report_excel(db: AsyncSession, project_id: str) -> byte
         c_d.alignment = Alignment(horizontal="left", vertical="center")
 
         c_e = ws_summary[f"E{idx}"]
-        c_e.value = val2
+        _set_value(c_e, val2)
         c_e.font = Font(name="Calibri", size=11, bold=True, color="0F172A")
         c_e.alignment = Alignment(horizontal="left", vertical="center")
 
@@ -421,7 +439,7 @@ async def generate_audit_report_excel(db: AsyncSession, project_id: str) -> byte
         row_bg = ROW_ALT_BG if is_even else "FFFFFF"
 
         for col_idx, val in enumerate(row_vals, start=1):
-            cell = ws_summary.cell(row=doc_row, column=col_idx, value=val)
+            cell = _set_value(ws_summary.cell(row=doc_row, column=col_idx), val)
             cell.font = Font(name="Calibri", size=9)
             cell.fill = PatternFill(start_color=row_bg, end_color=row_bg, fill_type="solid")
             cell.alignment = Alignment(horizontal="center" if col_idx in (3, 4, 5, 6, 7) else "left", vertical="center")
@@ -507,7 +525,7 @@ async def generate_audit_report_excel(db: AsyncSession, project_id: str) -> byte
         ]
 
         for col_idx, val in enumerate(row_data, start=1):
-            cell = ws_reqs.cell(row=req_data_row, column=col_idx, value=val)
+            cell = _set_value(ws_reqs.cell(row=req_data_row, column=col_idx), val)
             cell.font = Font(name="Calibri", size=9)
             cell.border = _thin_border()
 
@@ -635,7 +653,7 @@ async def generate_audit_report_excel(db: AsyncSession, project_id: str) -> byte
             ]
 
             for col_idx, val in enumerate(row_vals, start=1):
-                cell = ws_evidence.cell(row=ev_row, column=col_idx, value=val)
+                cell = _set_value(ws_evidence.cell(row=ev_row, column=col_idx), val)
                 cell.font = Font(name="Calibri", size=9)
                 cell.border = _thin_border()
                 cell.fill = PatternFill(start_color=row_bg, end_color=row_bg, fill_type="solid")
@@ -731,7 +749,7 @@ async def generate_audit_report_excel(db: AsyncSession, project_id: str) -> byte
         ]
 
         for col_idx, val in enumerate(row_vals, start=1):
-            cell = ws_findings.cell(row=find_row, column=col_idx, value=val)
+            cell = _set_value(ws_findings.cell(row=find_row, column=col_idx), val)
             cell.font = Font(name="Calibri", size=9)
             cell.border = _thin_border()
             cell.fill = PatternFill(start_color=row_bg, end_color=row_bg, fill_type="solid")
