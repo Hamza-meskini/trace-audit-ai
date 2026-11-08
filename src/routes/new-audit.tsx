@@ -107,13 +107,15 @@ function WizardPage() {
 
   const handleFileUpload = async (files: FileList | null, docType = "") => {
     const selected = Array.from(files || []);
-    if (selected.length === 0) return;
+    const [first] = selected;
+    if (!first) return;
+    const singleName = selected.length === 1 ? first.name : null;
     try {
       toast.info(
-        selected.length === 1 ? `Uploading ${selected[0].name}...` : `Uploading ${selected.length} files...`,
+        singleName ? `Uploading ${singleName}...` : `Uploading ${selected.length} files...`,
       );
       await uploadDocMutation.mutateAsync({ files: selected, docType });
-      toast.success(selected.length === 1 ? `${selected[0].name} uploaded!` : `${selected.length} files uploaded`);
+      toast.success(singleName ? `${singleName} uploaded!` : `${selected.length} files uploaded`);
     } catch (err: unknown) {
       toast.error(`Upload error: ${errorMessage(err)}`);
     }
