@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { api, type ApiProject } from "@/lib/api-client";
+import { api, type ApiProject, type AuditProgress } from "@/lib/api-client";
+import { isAuditActive } from "@/hooks/use-audit";
 
 export function useProjects() {
   return useQuery({
@@ -17,11 +18,17 @@ export function useProject(id: string) {
 }
 
 export function useProjectStats(id: string) {
+  const queryClient = useQueryClient();
   return useQuery({
     queryKey: ["projects", id, "stats"],
     queryFn: () => api.getProjectStats(id),
     enabled: !!id,
-    refetchInterval: 5000,
+    // Stats cost several warehouse queries; they only move during an audit
+    // (mutations and audit completion invalidate them explicitly).
+    refetchInterval: () =>
+      isAuditActive(queryClient.getQueryData<AuditProgress | null>(["audit-progress", id]))
+        ? 5000
+        : false,
   });
 }
 

@@ -85,9 +85,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     projects: apiProjects,
     selectProject,
   } = useActiveProject();
-  const requirements = useRequirements(activeProjectId);
-  const documents = useDocuments(activeProjectId);
-  const findings = useFindings(activeProjectId);
+  // These only feed the Cmd+K palette: load them when it opens instead of
+  // fetching the evidence-heavy lists on every page of the app.
+  const requirements = useRequirements(activeProjectId, undefined, { enabled: openSearch });
+  const documents = useDocuments(activeProjectId, { enabled: openSearch });
+  const findings = useFindings(activeProjectId, undefined, { enabled: openSearch });
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const navigate = useNavigate();
 

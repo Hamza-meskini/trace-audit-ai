@@ -18,7 +18,7 @@ import { CoverageBadge, ReviewBadge } from "@/components/status";
 import { DocumentInspector, ExtractedBlock, StructuredText } from "@/components/document-inspector";
 import { useActiveProject } from "@/hooks/use-active-project";
 import { useRequirement, useRequirements, useSaveReview } from "@/hooks/use-requirements";
-import { useAuditProgress } from "@/hooks/use-audit";
+import { isAuditActive, useAuditProgress } from "@/hooks/use-audit";
 import type {
   AtomicCondition,
   CoverageStatus,
@@ -102,10 +102,7 @@ function ReviewWorkspace({
   const queueQuery = useRequirements(projectId);
   const saveReview = useSaveReview(projectId, id);
   const { data: auditJob } = useAuditProgress(projectId);
-  const auditActive =
-    auditJob?.status === "queued" ||
-    auditJob?.status === "running" ||
-    auditJob?.status === "cancelling";
+  const auditActive = isAuditActive(auditJob);
   const [tab, setTab] = useState<"conditions" | "source" | "review">("conditions");
   const [selection, setSelection] = useState<{
     documentId: string;
@@ -218,7 +215,13 @@ function ReviewWorkspace({
         resolution_type: resolutionType,
         human_verdict: humanVerdict || null,
       });
+      // Reset the whole form, not just the comment: the draft effect re-persists
+      // state after this, and a stale resolution type or human verdict would be
+      // restored on the next visit and silently resubmitted with a later review.
       setComment("");
+      setAction("Comment");
+      setResolutionType("Comment");
+      setHumanVerdict("");
       window.sessionStorage.removeItem(draftKey);
       toast.success("Review saved to this requirement");
       if (advance && nextRequirement) {

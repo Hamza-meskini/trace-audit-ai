@@ -4,11 +4,12 @@ import { api, type ReviewRequest } from "@/lib/api-client";
 export function useRequirements(
   projectId: string,
   filters?: { category?: string; status?: string; severity?: string; review?: string },
+  options?: { enabled?: boolean },
 ) {
   return useQuery({
     queryKey: ["requirements", projectId, filters],
     queryFn: () => api.getRequirements(projectId, filters),
-    enabled: !!projectId,
+    enabled: !!projectId && (options?.enabled ?? true),
   });
 }
 

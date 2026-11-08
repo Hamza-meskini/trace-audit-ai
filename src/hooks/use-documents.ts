@@ -1,12 +1,19 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { api } from "@/lib/api-client";
+import { api, type AuditProgress } from "@/lib/api-client";
+import { isAuditActive } from "@/hooks/use-audit";
 
-export function useDocuments(projectId: string) {
+export function useDocuments(projectId: string, options?: { enabled?: boolean }) {
+  const queryClient = useQueryClient();
   return useQuery({
     queryKey: ["documents", projectId],
     queryFn: () => api.getDocuments(projectId),
-    enabled: !!projectId,
-    refetchInterval: 4000,
+    enabled: !!projectId && (options?.enabled ?? true),
+    // Processing status only changes while an audit runs. AuditProgressPanel
+    // invalidates this query when a run starts, which re-arms the interval.
+    refetchInterval: () =>
+      isAuditActive(queryClient.getQueryData<AuditProgress | null>(["audit-progress", projectId]))
+        ? 4000
+        : false,
   });
 }
 

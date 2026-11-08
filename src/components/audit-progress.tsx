@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { AlertCircle, CheckCircle2, Loader2 } from "lucide-react";
-import { useAuditProgress, useCancelAudit } from "@/hooks/use-audit";
+import { isAuditActive, useAuditProgress, useCancelAudit } from "@/hooks/use-audit";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -34,16 +34,26 @@ export function AuditProgressPanel({ projectId }: { projectId: string }) {
   const client = useQueryClient();
   const lastTerminal = useRef("");
   const lastVisibleCheckpoint = useRef("");
+  const wasActive = useRef(false);
   const [now, setNow] = useState(Date.now());
   const job = query.data;
   const cancel = useCancelAudit(projectId);
-  const active =
-    job?.status === "queued" || job?.status === "running" || job?.status === "cancelling";
+  const active = isAuditActive(job);
   useEffect(() => {
     if (!active) return;
     const timer = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(timer);
   }, [active]);
+  useEffect(() => {
+    // Documents and stats poll only while a run is active (see their hooks).
+    // A run started in another tab or by a colleague is first noticed here,
+    // so refetch them once to re-arm their intervals.
+    if (active && !wasActive.current) {
+      client.invalidateQueries({ queryKey: ["documents", projectId] });
+      client.invalidateQueries({ queryKey: ["projects", projectId, "stats"] });
+    }
+    wasActive.current = active;
+  }, [active, client, projectId]);
   useEffect(() => {
     if (!job || active || lastTerminal.current === `${job.run_id}-${job.status}`) return;
     lastTerminal.current = `${job.run_id}-${job.status}`;

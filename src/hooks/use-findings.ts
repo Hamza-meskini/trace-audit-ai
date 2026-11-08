@@ -4,11 +4,12 @@ import { api } from "@/lib/api-client";
 export function useFindings(
   projectId: string,
   filters?: { severity?: string; finding_type?: string; review_state?: string; category?: string },
+  options?: { enabled?: boolean },
 ) {
   return useQuery({
     queryKey: ["findings", projectId, filters],
     queryFn: () => api.getFindings(projectId, filters),
-    enabled: !!projectId,
+    enabled: !!projectId && (options?.enabled ?? true),
   });
 }
 

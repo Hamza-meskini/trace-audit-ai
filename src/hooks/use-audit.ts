@@ -1,5 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api } from "@/lib/api-client";
+import { api, type AuditProgress } from "@/lib/api-client";
+
+/** Poll fast only while a run can change; idle tabs check back slowly. */
+export const ACTIVE_POLL_MS = 3000;
+export const IDLE_POLL_MS = 30000;
+
+export function isAuditActive(job: Pick<AuditProgress, "status"> | null | undefined): boolean {
+  return job?.status === "queued" || job?.status === "running" || job?.status === "cancelling";
+}
 
 export function useTriggerAudit(projectId: string) {
   const queryClient = useQueryClient();
@@ -24,7 +32,9 @@ export function useAuditProgress(projectId: string) {
     queryKey: ["audit-progress", projectId],
     queryFn: () => api.getAuditProgress(projectId),
     enabled: !!projectId,
-    refetchInterval: 3000,
+    // The idle interval still notices a run started from another tab or by a
+    // colleague, without querying the SQL warehouse every few seconds forever.
+    refetchInterval: (query) => (isAuditActive(query.state.data) ? ACTIVE_POLL_MS : IDLE_POLL_MS),
     retry: 1,
   });
 }

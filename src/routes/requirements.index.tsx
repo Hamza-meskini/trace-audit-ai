@@ -15,7 +15,7 @@ import { CoverageBadge, Mono, ReviewBadge } from "@/components/status";
 import { useActiveProject } from "@/hooks/use-active-project";
 import { useRequirements } from "@/hooks/use-requirements";
 import { useDocuments } from "@/hooks/use-documents";
-import { useAuditProgress } from "@/hooks/use-audit";
+import { isAuditActive, useAuditProgress } from "@/hooks/use-audit";
 import { cn } from "@/lib/utils";
 import {
   normalizeRequirementQueueSearch,
@@ -65,10 +65,7 @@ function RequirementsPage() {
 
   const { data: requirementsList, isLoading, isError, refetch } = useRequirements(activeProjectId);
   const { data: auditJob } = useAuditProgress(activeProjectId);
-  const auditActive =
-    auditJob?.status === "queued" ||
-    auditJob?.status === "running" ||
-    auditJob?.status === "cancelling";
+  const auditActive = isAuditActive(auditJob);
 
   const { data: documentsList } = useDocuments(activeProjectId);
   const categories = useMemo(
