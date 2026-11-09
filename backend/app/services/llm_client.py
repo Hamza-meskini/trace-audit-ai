@@ -44,6 +44,129 @@ DATABRICKS_MAX_ATTEMPTS = 2
 DEFAULT_DATABRICKS_TEMPERATURE = 0.0
 
 
+class LLMUnavailableError(RuntimeError):
+    """The model provider cannot serve requests; the audit must stop, not degrade.
+
+    kind is one of: auth (credential rejected), outage (endpoint cannot serve),
+    quota (rate limit persisted), transient (network or 5xx persisted).
+    """
+
+    def __init__(self, kind: str, model: str, detail: str):
+        self.kind = kind
+        self.model = model
+        self.detail = detail
+        super().__init__(f"{model} unavailable ({kind}): {detail}")
+
+    @property
+    def user_message(self) -> str:
+        reasons = {
+            "auth": "the Databricks token was rejected (check DATABRICKS_TOKEN and its scopes)",
+            "outage": "the Databricks model endpoint is not serving requests",
+            "quota": "the Databricks endpoint kept rate-limiting requests",
+            "transient": "the Databricks endpoint kept failing or timing out",
+        }
+        return (
+            f"The audit stopped because {reasons.get(self.kind, 'the model provider failed')} "
+            f"({self.model}: {self.detail[:160]}). Requirements verified before the failure were "
+            "saved; every other requirement kept its previous result. Retry when the endpoint "
+            "is available."
+        )
+
+
+# Bodies of HTTP 400/404 responses that mean the endpoint cannot serve at all,
+# as opposed to a problem with one request. Matched case-insensitively.
+OUTAGE_BODY_MARKERS = (
+    "cannot create or query foundation model endpoints",
+    "please try again later",
+    "is no longer available",
+    "does not exist",
+    "endpoint is not ready",
+    "temporarily unavailable",
+)
+
+
+def classify_llm_failure(status_code: Optional[int], body: str = "") -> Optional[str]:
+    """Return the breaker kind for a failed call, or None for a request-level problem."""
+    text = (body or "").lower()
+    if status_code is None:
+        return "transient"
+    if status_code in (401, 403):
+        return "auth"
+    if status_code == 429:
+        return "quota"
+    if status_code >= 500:
+        return "transient"
+    if status_code in (400, 404) and any(marker in text for marker in OUTAGE_BODY_MARKERS):
+        return "outage"
+    return None
+
+
+class _ModelBreaker:
+    """Per-model circuit breaker shared by every audit in the process.
+
+    LLM_BREAKER_THRESHOLD consecutive provider failures (or one rejected
+    credential) open it; while open, calls raise LLMUnavailableError without
+    touching the network. After LLM_BREAKER_COOLDOWN_SECONDS one probe call is
+    let through; a success closes it.
+    """
+
+    def __init__(self):
+        self.state: dict[str, dict[str, Any]] = {}
+
+    def check(self, model: str) -> None:
+        entry = self.state.get(model)
+        if not entry or entry.get("opened_at") is None:
+            return
+        if time.monotonic() - entry["opened_at"] >= float(settings.LLM_BREAKER_COOLDOWN_SECONDS):
+            entry["opened_at"] = None  # half-open: allow one probe
+            entry["failures"] = max(0, int(settings.LLM_BREAKER_THRESHOLD) - 1)
+            return
+        raise LLMUnavailableError(entry["kind"], model, entry["detail"])
+
+    def failure(self, model: str, kind: str, detail: str) -> Optional[LLMUnavailableError]:
+        entry = self.state.setdefault(model, {"failures": 0, "opened_at": None})
+        entry.update(failures=entry["failures"] + 1, kind=kind, detail=detail)
+        if kind == "auth" or entry["failures"] >= int(settings.LLM_BREAKER_THRESHOLD):
+            if entry.get("opened_at") is None:
+                entry["opened_at"] = time.monotonic()
+                logger.error("LLM breaker opened for %s (%s): %s", model, kind, detail[:300])
+            return LLMUnavailableError(kind, model, detail)
+        return None
+
+    def success(self, model: str) -> None:
+        self.state.pop(model, None)
+
+    def open_error(self) -> Optional[LLMUnavailableError]:
+        for model, entry in self.state.items():
+            if entry.get("opened_at") is not None:
+                return LLMUnavailableError(entry["kind"], model, entry["detail"])
+        return None
+
+    def reset(self) -> None:
+        self.state.clear()
+
+
+LLM_BREAKER = _ModelBreaker()
+
+
+def raise_if_llm_unavailable() -> None:
+    """Stage-boundary check: stop the audit when any model's breaker is open."""
+    error = LLM_BREAKER.open_error()
+    if error is not None:
+        raise error
+
+
+def llm_credentials_configured() -> bool:
+    """True when a real model can be called, so heuristic fallbacks must not stand in for it."""
+    if settings.LLM_DATABRICKS_ONLY:
+        return bool(settings.effective_databricks_token and settings.effective_databricks_base_url)
+    return bool(
+        settings.effective_databricks_token or settings.effective_gemini_api_key
+        or settings.effective_groq_api_key or settings.effective_tokenrouter_api_key
+        or settings.effective_dashscope_api_key or settings.effective_openai_api_key
+    )
+
+
 def _databricks_retry_delay(response: Any, attempt: int) -> float:
     """Honor Retry-After when the endpoint sends it, with a short jittered fallback."""
     headers = getattr(response, "headers", None)
@@ -625,6 +748,16 @@ async def _call_databricks_chat_completions_untraced(
     base_url = settings.effective_databricks_base_url
     if not token or not base_url:
         return None
+    LLM_BREAKER.check(model)
+    last_retryable_status: Optional[int] = None
+
+    def provider_failure(status: Optional[int], body: str) -> None:
+        kind = classify_llm_failure(status, body)
+        if kind is None:
+            return
+        error = LLM_BREAKER.failure(model, kind, f"HTTP {status}: {body[:300]}" if status else body[:300])
+        if error is not None:
+            raise error
 
     url = f"{base_url}/chat/completions"
 
@@ -699,6 +832,7 @@ async def _call_databricks_chat_completions_untraced(
                 resp = await client.post(url, json=payload, headers=headers)
                 elapsed = time.time() - t0
                 if resp.status_code in RETRYABLE_STATUS_CODES:
+                    last_retryable_status = resp.status_code
                     if diagnostics is not None:
                         diagnostics["rate_limit_retries"] = int(
                             diagnostics.get("rate_limit_retries", 0)
@@ -732,8 +866,11 @@ async def _call_databricks_chat_completions_untraced(
                         continue
                     print(f"  [LLM Error] Databricks returned HTTP {resp.status_code}: {resp.text[:200]}", flush=True)
                     logger.error(f"Databricks API error [{resp.status_code}] for model {model}: {resp.text}")
+                    provider_failure(resp.status_code, resp.text)
                     return None
 
+                LLM_BREAKER.success(model)
+                last_retryable_status = None
                 data = resp.json()
                 choices = data.get("choices", [])
                 if not choices:
@@ -787,10 +924,13 @@ async def _call_databricks_chat_completions_untraced(
                             await asyncio.sleep(_databricks_retry_delay(resp, attempt))
                         continue
                 return result_text
+        except LLMUnavailableError:
+            raise
         except Exception as ex:
             if attempt == DATABRICKS_MAX_ATTEMPTS - 1:
                 print(f"  [LLM Error] Databricks call failed: {type(ex).__name__}: {ex!r}", flush=True)
                 logger.error(f"Exception calling Databricks Model Serving ({model}): {ex}")
+                provider_failure(None, f"{type(ex).__name__}: {ex}")
                 return None
             print(
                 f"  [LLM Warning] Databricks {model} attempt {attempt + 1}/{DATABRICKS_MAX_ATTEMPTS} "
@@ -798,6 +938,8 @@ async def _call_databricks_chat_completions_untraced(
                 flush=True,
             )
             await asyncio.sleep(_databricks_retry_delay(None, attempt))
+    if last_retryable_status is not None:
+        provider_failure(last_retryable_status, f"still HTTP {last_retryable_status} after {DATABRICKS_MAX_ATTEMPTS} attempts")
     return None
 
 

@@ -11,6 +11,7 @@ from app.database import get_db_context
 from app.models.project import Project
 from app.services import audit_progress
 from app.services.audit_progress import AuditCancelled
+from app.services.llm_client import LLMUnavailableError
 from app.services.pipeline import run_audit_pipeline
 
 
@@ -81,6 +82,16 @@ async def _execute(job: dict) -> None:
             "cancelled",
             message="Audit cancelled; completed checkpoints were retained",
             status="cancelled",
+        )
+    except LLMUnavailableError as exc:
+        logger.error("Audit for %s stopped: %s", project_id, exc)
+        await _set_project_status(project_id, "Analysis stopped: model unavailable")
+        audit_progress.update(
+            project_id,
+            "failed",
+            status="failed",
+            error=exc.user_message,
+            error_kind=f"llm_{exc.kind}",
         )
     except asyncio.CancelledError:
         logger.info("Audit worker stopped while processing %s; the run will resume at startup", project_id)

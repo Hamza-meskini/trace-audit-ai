@@ -132,6 +132,7 @@ def test_runner_enriches_actual_verification_inputs_without_reference_leakage(mo
     data = dataset()
     prediction = nested_prediction()
     monkeypatch.setattr(runner, "RESULTS", tmp_path)
+    monkeypatch.setattr(runner, "preflight_models", AsyncMock())
     monkeypatch.setattr(runner, "_ingest_document", lambda path, doc_type: [{
         "id": path.stem, "document_id": path.stem, "document_name": path.name,
         "page_number": 2, "content": "Source content", "doc_type": doc_type, "metadata": {},

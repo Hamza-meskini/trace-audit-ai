@@ -326,6 +326,49 @@ class PipelineCancellationTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual((await db.get(Project, "p1")).status, "Analysis incomplete")
         self.assertIn("REQ-2", audit_worker._completion_message(result))
 
+    async def test_failed_model_verification_keeps_the_previous_verdict_and_links(self):
+        """REL-02: an llm_error result must not overwrite, unlink or cache anything."""
+        from app.services.classification import RequirementAssessment
+        from app.services.pipeline import run_audit_pipeline
+
+        async with self.sessions() as db:
+            req = await db.get(Requirement, "r2")
+            req.coverage_status, req.confidence, req.review_state = "Conflict", 80.0, "Approved"
+            db.add(RequirementEvidence(id="link-r2", requirement_id="r2", evidence_chunk_id="c1"))
+            await db.commit()
+
+        async def assess(**kwargs):
+            if kwargs["req_code"] == "REQ-2":
+                return RequirementAssessment(
+                    coverage_status="Unknown", confidence=0, review_state="Needs review",
+                    ai_analysis="LLM verification response was unavailable", ai_recommendation="",
+                    pipeline_diagnostics={"decision_source": "llm_error"})
+            return self._assessment()
+
+        with ExitStack() as stack:
+            self._patched_stages(stack, AsyncMock(side_effect=assess))
+            async with self.sessions() as db:
+                result = await run_audit_pipeline("p1", db, model="test-model")
+        self.assertEqual(result["failed_requirements"], ["REQ-2"])
+        async with self.sessions() as db:
+            req = await db.get(Requirement, "r2")
+            self.assertEqual((req.coverage_status, req.review_state), ("Conflict", "Approved"))
+            self.assertIsNone((req.extracted_parameters or {}).get("verification"))
+            self.assertIsNotNone(await db.get(RequirementEvidence, "link-r2"))
+            self.assertEqual((await db.get(Requirement, "r1")).coverage_status, "Supported")
+
+    async def test_provider_outage_stops_the_audit(self):
+        """REL-01: an open breaker ends the run instead of failing requirement by requirement."""
+        from app.services.llm_client import LLMUnavailableError
+        from app.services.pipeline import run_audit_pipeline
+
+        outage = LLMUnavailableError("outage", "system.ai.llama-4-maverick", "HTTP 400")
+        with ExitStack() as stack:
+            self._patched_stages(stack, AsyncMock(side_effect=outage))
+            async with self.sessions() as db:
+                with self.assertRaises(LLMUnavailableError):
+                    await run_audit_pipeline("p1", db, model="test-model")
+
     async def test_worker_records_failed_and_cancelled_project_status(self):
         @asynccontextmanager
         async def context():

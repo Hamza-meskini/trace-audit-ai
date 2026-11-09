@@ -761,6 +761,7 @@ async def assess_requirement_coverage_async(
     # Single- and multi-condition requirements share the same semantic
     # reasoner and finalizer. This prevents a keyword validator from approving
     # evidence before qualification has run.
+    from app.services.llm_client import llm_credentials_configured
     from app.services.verification_reasoner import evaluate_requirement_verification
     reasoner_result = await evaluate_requirement_verification(
         contract=contract,
@@ -768,6 +769,10 @@ async def assess_requirement_coverage_async(
         model=model,
         thinking_level=thinking_level,
         spec_doc_names=spec_doc_names,
+        # The keyword rule engine stands in only when no model is configured.
+        # With a model configured, a failed call yields an explicit llm_error
+        # result that the pipeline refuses to persist.
+        allow_deterministic_fallback=not llm_credentials_configured(),
         targeted_extraction=targeted_extraction,
         defer_secondary_adjudication=defer_secondary_adjudication,
     )

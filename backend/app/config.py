@@ -119,6 +119,11 @@ class Settings(BaseSettings):
     # Groq, OpenRouter, Hugging Face, DashScope or OpenAI.  Embeddings are not
     # an LLM stage and are unaffected.
     LLM_DATABRICKS_ONLY: bool = True
+    # Consecutive provider failures (outage, rate limit, 5xx, network) that
+    # open a model's circuit breaker and stop the audit; a rejected credential
+    # opens it at once. After the cooldown one probe call is allowed.
+    LLM_BREAKER_THRESHOLD: int = 3
+    LLM_BREAKER_COOLDOWN_SECONDS: float = 60.0
 
     # Semantic planning and atomic contract construction use Maverick, the
     # model every benchmark measured.  The fallback is stage-local and is

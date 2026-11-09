@@ -20,7 +20,7 @@ from app.schemas.verification_result import (
     VerificationAnalysisResult,
     BatchVerificationResult,
 )
-from app.services.llm_client import generate_structured
+from app.services.llm_client import LLMUnavailableError, generate_structured
 from app.services.observability import observation_context
 from app.services.units import (
     UnitCompatibility,
@@ -545,6 +545,8 @@ async def _apply_secondary_adjudication(
             max_output_tokens=4096,
             allow_model_fallback=False,
         )
+    except LLMUnavailableError:
+        raise
     except Exception as error:
         logger.warning(
             "Secondary semantic adjudication failed for %s: %s",
@@ -729,6 +731,8 @@ async def _ground_condition_citations(
             thinking_level=settings.GEMINI_THINKING_LEVEL,
             max_output_tokens=3072,
         )
+    except LLMUnavailableError:
+        raise
     except Exception as error:
         logger.warning("Citation grounding failed for %s: %s", contract.req_code, error)
         response = None
@@ -1587,11 +1591,15 @@ async def evaluate_batch_verification(
                     return_exceptions=True,
                 )
                 for outcome in grounded:
+                    if isinstance(outcome, LLMUnavailableError):
+                        raise outcome
                     if isinstance(outcome, BaseException):
                         logger.warning("Citation grounding failed for one batch item: %s", outcome)
                         continue
                     code, result = outcome
                     results[code] = result
+    except LLMUnavailableError:
+        raise
     except Exception as ex:
         logger.warning(f"Batch verification LLM call failed: {ex}. Retrying missing items individually.")
 
@@ -1630,6 +1638,8 @@ async def evaluate_batch_verification(
         )
         for item, outcome in zip(retry_items, retried):
             code = item["contract"].req_code
+            if isinstance(outcome, LLMUnavailableError):
+                raise outcome
             if isinstance(outcome, BaseException):
                 logger.error("Individual verification failed for %s: %s", code, outcome)
                 failure = VerificationAnalysisResult(
@@ -1782,6 +1792,8 @@ async def evaluate_requirement_verification(
                         thinking_level=thinking_level or settings.GEMINI_THINKING_LEVEL,
                         max_output_tokens=8192,
                     )
+                except LLMUnavailableError:
+                    raise
                 except Exception as retry_error:
                     logger.warning(
                         "Combined verification repair failed for %s: %s",
@@ -1867,6 +1879,8 @@ async def evaluate_requirement_verification(
                 qualifications=quals,
                 qualified_contents=qual_contents,
             )
+    except LLMUnavailableError:
+        raise
     except Exception as ex:
         logger.warning(f"Structured LLM verification call failed: {ex}.")
 
@@ -1886,6 +1900,8 @@ async def evaluate_requirement_verification(
             max_output_tokens=4096,
             allow_model_fallback=False,
         )
+    except LLMUnavailableError:
+        raise
     except Exception as recovery_error:
         logger.warning(
             "Compact verification recovery failed for %s: %s",

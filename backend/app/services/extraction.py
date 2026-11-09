@@ -13,7 +13,7 @@ from decimal import Decimal, InvalidOperation
 from typing import Optional, Union, Any, Literal
 from pydantic import BaseModel, Field, field_validator, model_validator
 from app.config import settings
-from app.services.llm_client import generate_structured
+from app.services.llm_client import LLMUnavailableError, generate_structured
 from app.schemas.contract_logic import ConditionValue, flat_projection
 from app.schemas.predicate import ComparisonOperator, normalize_comparison, predicate_issues
 from app.services.taxonomy import normalize_severity
@@ -2170,6 +2170,8 @@ async def _discover_requirements(
                 max_output_tokens=4096,
                 allow_model_fallback=allow_model_fallback,
             )
+        except LLMUnavailableError:
+            raise
         except Exception as exc:
             import logging
             logging.getLogger("traceaudit.extraction").warning(
@@ -2286,6 +2288,8 @@ async def _plan_requirement_clauses(
                     # cascade silently into unrelated provider models here.
                     allow_model_fallback=False,
                 )
+            except LLMUnavailableError:
+                raise
             except Exception as exc:
                 import logging
                 logging.getLogger("traceaudit.extraction").warning(
@@ -2471,6 +2475,8 @@ async def _construct_atomic_contract(
                     allow_model_fallback=False,
                     diagnostics=diagnostics,
                 )
+            except LLMUnavailableError:
+                raise
             except Exception as exc:
                 import logging
                 logging.getLogger("traceaudit.extraction").warning(

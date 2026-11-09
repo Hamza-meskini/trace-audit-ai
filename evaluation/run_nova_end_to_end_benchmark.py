@@ -58,6 +58,7 @@ from evaluation.run_fmvss305_benchmark import (
     _quote_coverage,
 )
 from validate_end_to_end_benchmark import validate
+from evaluation.run_validity import assert_run_valid, preflight_models
 
 
 MODES = {
@@ -349,6 +350,7 @@ async def _run_impl(
     if not validation["valid"]:
         raise ValueError("Invalid benchmark: " + "; ".join(validation["errors"]))
     use_oracle_contracts, use_oracle_evidence = MODES[mode]
+    await preflight_models([model, None if use_oracle_contracts else atomic_model, verification_model])
     dataset = load_dataset()
     environment = _run_environment(dataset)
     truth = dataset["requirements"]
@@ -512,6 +514,7 @@ async def _run_impl(
         spec_doc_names={item["filename"] for item in dataset["documents"]},
     )
 
+    assert_run_valid(assessments, profiles)
     print("[6/6] Scoring extraction, retrieval, reasoning, aggregation, and review safety...")
     matrix = {expected: {predicted: 0 for predicted in [*FINAL_CLASSES, "NOT_EXTRACTED"]} for expected in FINAL_CLASSES}
     final_conditions: dict[str, Iterable[Any]] = {}

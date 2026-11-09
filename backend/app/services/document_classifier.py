@@ -17,7 +17,7 @@ import logging
 from typing import Optional, Literal, Any
 from pydantic import BaseModel, Field
 from app.config import settings
-from app.services.llm_client import generate_structured
+from app.services.llm_client import LLMUnavailableError, generate_structured, llm_credentials_configured
 
 logger = logging.getLogger("traceaudit.classifier")
 
@@ -396,10 +396,17 @@ Documents:
         )
         if result and result.classifications:
             return {c.document_name: c for c in result.classifications}
+    except LLMUnavailableError:
+        raise
     except Exception as ex:
         logger.warning(f"LLM document role classification failed: {ex}")
 
     return {}
+
+
+def _reprofile_heuristic(cached: dict[str, Any]) -> bool:
+    """A cached keyword-heuristic profile is redone once a model can be called."""
+    return cached.get("classification_source") == "content_heuristic" and llm_credentials_configured()
 
 
 async def profile_document_chunks(
@@ -418,7 +425,7 @@ async def profile_document_chunks(
         ),
         None,
     )
-    if cached:
+    if cached and not _reprofile_heuristic(cached):
         try:
             return DocumentProfile.model_validate(cached)
         except Exception:
@@ -449,7 +456,7 @@ async def profile_documents(
         name = document.original_filename
         chunks = [item for item in all_chunks if item.get("document_id") == document.id]
         cached = next((item.get("document_profile") for item in chunks if item.get("document_profile")), None)
-        if cached:
+        if cached and not _reprofile_heuristic(cached):
             try:
                 profiles[document.id] = DocumentProfile.model_validate(cached)
                 continue

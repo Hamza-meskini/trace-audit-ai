@@ -44,6 +44,7 @@ from app.services.classification import (
 from app.schemas.verification_result import ConditionVerificationResult
 from app.services.audit_progress import AuditCancelled
 from app.services.pipeline_cache import stable_key
+from app.services.llm_client import LLMUnavailableError, raise_if_llm_unavailable
 from app.services.taxonomy import finding_type_for, normalize_severity, finding_severity_for
 from app.config import settings
 from app.services.document_classifier import (
@@ -240,6 +241,14 @@ async def _persist_cache_reuse(session, requirement_id: str, run_id: Optional[st
     })
     data["verification"] = verification
     req.extracted_parameters = data
+
+
+LLM_FAILURE_SOURCES = frozenset({"llm_error", "operational_failure"})
+
+
+def _is_llm_failure(assessment: RequirementAssessment) -> bool:
+    """An assessment that records a failed model call rather than a decision."""
+    return (assessment.pipeline_diagnostics or {}).get("decision_source") in LLM_FAILURE_SOURCES
 
 
 HUMAN_DECISION_STATES = ("Approved", "Rejected", "Reviewed", "Needs review")
@@ -511,6 +520,7 @@ async def _run_audit_pipeline_impl(
     # qualification; filenames remain only weak hints.
     profiling_started = time.perf_counter()
     report_progress("profiling", 0, len(documents), "Identifying document roles from their content")
+    raise_if_llm_unavailable()
     document_profiles = await profile_documents(
         documents=documents,
         all_chunks=all_chunks_for_retrieval,
@@ -693,6 +703,7 @@ async def _run_audit_pipeline_impl(
                     removed.ai_analysis = marker
                     removed.ai_recommendation = "Confirm whether this requirement was retired or moved."
 
+        raise_if_llm_unavailable()
         stage_timings["requirement_extraction_seconds"] = round(
             time.perf_counter() - extraction_started, 3
         )
@@ -967,6 +978,12 @@ async def _run_audit_pipeline_impl(
                     else:
                         assessment = cached
                         cache_hit = True
+                    if not cache_hit and _is_llm_failure(assessment):
+                        # Keep the previous verdict, links, findings and cache
+                        # entry; an unavailable model must not overwrite them.
+                        raise_if_llm_unavailable()
+                        logger.warning("Requirement %s not saved: model verification failed", code)
+                        return {**unassessed_row(code), "item": item, "llm_failed": True}
                     await save_requirement(snapshot, item, assessment, cache_hit=cache_hit)
                 async with progress_lock:
                     reasoned_count += 1
@@ -989,7 +1006,7 @@ async def _run_audit_pipeline_impl(
                         model=active_model,
                         spec_doc_names=spec_doc_names,
                     )
-                if refined is not None:
+                if refined is not None and not _is_llm_failure(refined):
                     assessment = refined
                     await save_requirement(snapshot, item, assessment, cache_hit=False)
             return {
@@ -1007,6 +1024,10 @@ async def _run_audit_pipeline_impl(
             # the remaining workers drain without starting new model calls.
             cancel_requested.set()
             return unassessed_row(code, cancelled=True)
+        except LLMUnavailableError:
+            # The provider is down: stop every worker before more calls start.
+            cancel_requested.set()
+            raise
         except Exception:
             logger.exception("Requirement %s failed during assessment", code)
             return unassessed_row(code)
@@ -1019,6 +1040,7 @@ async def _run_audit_pipeline_impl(
             task.cancel()
         await asyncio.gather(*worker_tasks, return_exceptions=True)
         raise
+    raise_if_llm_unavailable()
     if cancel_requested.is_set():
         raise AuditCancelled()
     failed_requirement_codes = [
