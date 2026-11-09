@@ -1,355 +1,86 @@
-# TraceAudit AI 🛡️
+# TraceAudit AI
 
-**Enterprise AI-Assisted Requirements Auditing & Technical Evidence Traceability Platform**
+Checks engineering requirements against the evidence in your technical documents.
 
-TraceAudit AI is a production-grade decision-support software platform engineered for hardware and systems engineering teams, product compliance auditors, and quality validation engineers. TraceAudit AI serves as an automated decision-support assistant and audit accelerator; it does not replace formal human engineering judgment or sign-off. It automatically ingests complex technical documentation, extracts structured requirement contracts, searches across multi-format evidence files, and formally analyzes specification compliance while detecting cross-document contradictions, compound condition gaps, and non-authoritative evidence modalities.
+Upload specifications, test reports and datasheets. TraceAudit extracts each requirement, finds the
+evidence for it, and gives a verdict (**Supported, Partial, Missing, Conflict or Unknown**) with the
+exact quotes it relied on. Anything uncertain goes to a human reviewer.
 
----
+> TraceAudit is a decision-support tool, not a certification authority. Final sign-off stays with
+> qualified engineers.
 
-## 🌟 Key Capabilities
+## How it works
 
-- 📄 **Multi-Format Technical Document Ingestion:** High-fidelity chunking and table parsing across PDF test reports, Word SRS specifications (`.docx`), Excel compliance matrices (`.xlsx`), and datasheets.
-- 📐 **Structured Requirement Contracts:** Extracts mandatory clauses, engineering categories, severities, atomic conditions, numeric bounds, source spans, and logical relationships for human review.
-- 🔎 **Hybrid BM25 Lexical & Dense Retrieval:** Multi-document evidence linking with code-boosting and document type diversification.
-- 🔬 **Deterministic SI Validation + LLM Semantic Reasoner:**
-  - **Local Python SI Validator:** Formally verifies metric ranges ($[T_{min}, T_{max}] \supseteq [R_{min}, R_{max}]$), threshold limits ($\le, \ge$), and timing latency without hallucinations.
-  - **Source Authority & Modality Classifier:** Distinguishes empirical test reports from theoretical simulations, calculations, and component datasheets.
-  - **Databricks Model Serving & Gemini 3.7 Flash Reasoning:** Evaluates multi-condition engineering clauses, compound predicates ($X \land Y \land Z$), and physical vs simulation modalities.
-- ⚡ **Evidence-Grounded Verification:** Validates evidence authority, scope, modality, numeric constraints, and citation provenance before an automated conclusion can be relied on.
-- 🗺️ **Interactive Traceability Matrix:** Visual network graph linking Requirements $\to$ Documents $\to$ Evidence Quotes $\to$ Audit Findings.
-- 📊 **Auditable Reporting:** Exportable executive compliance files with audit trails and human-in-the-loop review actions.
+1. **Ingest:** parses PDF, DOCX and XLSX, keeping tables, figures and page positions.
+2. **Extract:** turns each requirement into atomic conditions (numeric bounds, units, test method, scope).
+3. **Retrieve:** hybrid keyword and embedding search, with requirement IDs matched across formats.
+4. **Verify:** an LLM judges each condition against cited evidence. Python, not the model, decides the
+   final verdict: units, numeric limits, logic (ALL_OF / ANY_OF / IF_THEN) and source authority.
+5. **Review:** reviewers confirm or override verdicts. Evidence is highlighted on the source page,
+   and the result exports to Excel.
 
----
+## Stack
 
-## 📊 Latest Reproducible Benchmark Results
+- **Backend:** Python 3.13, FastAPI, SQLAlchemy (SQLite locally, Databricks SQL in production)
+- **Frontend:** React 19, TanStack Start/Router/Query, Vite, Tailwind, shadcn/ui
+- **Models:** Databricks Model Serving, Llama 4 Maverick by default. Gemini, OpenAI and Groq are optional.
 
-The figures below are development measurements from saved run artifacts, not claims of
-general regulatory compliance accuracy. Each benchmark uses frozen evaluator-only answers;
-human review remains mandatory for real engineering decisions.
+## Quick start
 
-### Nova end-to-end benchmark (development set) — 15–22 September 2026
+**Backend**
 
-**Headline: 88.33% ± 2.4 (SD) final-verdict accuracy, mean of 5 live runs** (range
-85.42–91.67%), 0 unsafe auto-closes. Nova is the **development set**: the pipeline was tuned
-against it and it is close to saturated, so it does not estimate accuracy on unseen documents.
-These runs used the batched verification path; the audit pipeline verifies one requirement at
-a time (`run_nova_end_to_end_benchmark.py --verification-path production` measures that path).
-
-An offline replay of these five runs' recorded model outputs through the current decision
-logic scores 234/240 (97.5%), with 14 auto-closes, all correct
-(`evaluation/replay_verification.py`). That is a re-scoring of fixed model outputs, not a new
-live measurement.
-
-48 synthetic requirements across 12 technical PDFs and 147 evaluator-only atomic conditions.
-The runs used Llama 4 Maverick for discovery, atomic decomposition, and verification. The
-table below is the best single run (15 September); quote the mean above, not this row.
-
-| Metric | Best single run |
-|---|---:|
-| Final requirement-verdict accuracy | **91.67%** (44/48) |
-| Final-verdict macro F1 | **91.48%** |
-| Retrieval Recall@3 | **100.00%** |
-| Document-role accuracy | **100.00%** |
-| Structured atom precision / recall / F1 | **38.26% / 38.78% / 38.51%** |
-| Combined extraction + atomic-status score | **38.10%** |
-| Atomic-status accuracy on aligned atoms | **98.25%** (38.78% alignment coverage) |
-| Strict logic equivalence | **35.42%** (17/48) |
-| Unsafe false auto-closes | **0** |
-
-The final-verdict score does not mean the contracts are complete: only 57 of 147 reference
-atoms aligned under strict structured matching. This run also recorded no targeted ai_extract
-enrichments and no retrieved figures analyzed, so it does not measure those optional stages.
-See the immutable [Nova run report](<evaluation/results/runs/20260915T140120.543292Z/report.md>)
-(a local artifact: `evaluation/results/` is not committed).
-
-**Run-to-run variation.** The table shows the best of five saved runs with this same
-three-model configuration (15–22 September 2026). Their final-verdict accuracy was 91.67%,
-85.42%, 87.50%, 87.50% and 89.58%: mean **88.33%**, range 85.42–91.67%, standard deviation
-about 2.4 points. One requirement is 2.08 points, so a difference of under ~4 points between
-two single runs is not evidence of a change. The misses are stable: requirements whose
-expected verdict is CONFLICT are 3–4 of the 4–7 misses in every run, and THM-002, FSA-004 and
-QLT-006 are downgraded to PARTIAL or MISSING in all five.
-
-### FMVSS 305 public-document benchmark — scoped run
-
-11 manually labelled clauses and 30 atomic conditions from public FMVSS 305 requirements and
-an NHTSA/Calspan laboratory report. This diagnostic run used Llama 3.3 70B with local-hybrid
-retrieval; it is not a legal compliance determination.
-
-| Metric | Result |
-|---|---:|
-| Final requirement-verdict accuracy | **90.91%** (10/11) |
-| Final-verdict macro F1 | **90.00%** |
-| Selected-clause extraction recall | **100.00%** |
-| Evidence-page Recall@3 | **78.95%** |
-| Targeted evidence enrichments | **10/11** |
-| Final atomic alignment coverage | **10.00%** |
-| Final atomic accuracy on aligned atoms | **100.00%** |
-| Unsafe false auto-closes | **0** |
-
-The aligned-atom accuracy covers only 10% of the labelled atomic set; the atomic end-to-end
-score is 10.00%. See [the FMVSS 305 benchmark guide](<evaluation/fmvss305_benchmark/README.md>).
-Three saved Llama 3.3 70B runs on 14 September 2026 scored 63.64%, 81.82% and 90.91%; the
-table shows the best. With 11 clauses, each clause moves the score by 9.1 points.
-
-## Historical Benchmark Suites
-
-The following historical summaries use earlier datasets and runners. They are retained for
-development context and are not comparable with the current production-contract results above.
-
-TraceAudit AI is evaluated across two distinct benchmark suites:
-
-### 1. Foundational Benchmark (30 Requirements)
-Evaluates core requirement extraction, basic single-condition numeric ranges, threshold comparisons, and formal compliance tracking records in an aerospace/automotive battery control system (BCU) specification suite (30 requirements, 7 technical documents, 70 evidence segments):
-
-| Metric | Score | Industry Context |
-|---|---|---|
-| **Requirement Extraction F1** | **100.0%** (Precision: 100%, Recall: 100%) | Extracts all requirements with exact numeric parameters |
-| **Retrieval Recall@3** | **91.30%** | Relevant lab report in top 3 ranked chunks |
-| **Retrieval Recall@5** | **95.65%** | Relevant lab report in top 5 ranked chunks |
-| **Verification Accuracy** | **86.67%** | Correct compliance status classification |
-| **Verification Macro F1** | **87.41%** | Balanced across Supported, Partial, Missing, Conflict |
-| **Conflict Detection F1** | **90.91%** | Catches datasheet rating & thermal derating contradictions |
-| **Missing Evidence Detection F1** | **100.0%** | Perfect recall on unverified and "Not Started" clauses |
-| **Unsupported Claim Rate** | **0.00%** | Zero false verifications on missing evidence |
-
-### 2. Complex Automotive Benchmark (100 Requirements, 172 Atomic Conditions)
-Evaluates advanced multi-condition compliance across 10 vehicle subsystems (HV BMS, Traction Inverter, DC-DC, Charging, Thermal, CAN-FD/Ethernet, UDS Diagnostics, ASIL-D Safety, ISO 21434 Cyber, EMC), testing:
-- **Multi-Condition Decomposition (172 Atomic Conditions):** Detecting partial compliance where one sub-clause passes but another is unmeasured or pending.
-- **Source Authority & Modality Discrimination:** Accurately identifying theoretical simulations (SPICE, CFD, MATLAB) and architecture specs as `UNKNOWN` for physical requirements.
-- **Entity & Scope Reasoning:** Preventing component datasheet ratings (e.g. ASIC max voltage) from creating false conflicts against system-level requirements when system tests pass.
-- **Cross-Document Contradiction Detection:** Detecting subtle datasheet deratings and hardware interface limit violations.
-
-| Metric | Score | Industry Context |
-|---|---|---|
-| **Requirement Extraction F1** | **100.0%** (Precision: 100%, Recall: 100%) | Perfect extraction across all 20 document sections |
-| **Atomic Condition Recall** | **100.0%** | All 172 atomic conditions successfully decomposed |
-| **Retrieval Document Recall@3** | **97.00%** | Correct evidence document in top 3 candidates |
-| **Retrieval Document Recall@5** | **99.00%** | Correct evidence document in top 5 candidates |
-| **Verification Accuracy** | **96.00%** | Correct 5-class compliance classification |
-| **Verification Macro F1** | **95.97%** | Balanced across Supported, Partial, Conflict, Missing, Unknown |
-| **Conflict Detection F1** | **97.56%** | Catches cross-document contradictions and derating violations |
-| **Missing Evidence F1** | **100.0%** | Perfect recall on unverified and "Not Started" clauses |
-| **Partial Compliance F1** | **95.00%** | Correctly identifies incomplete multi-condition coverage |
-| **Unknown (Simulation-Only) F1** | **92.31%** | Distinguishes simulation evidence from physical testing |
-| **Unsupported Claim Rate** | **0.00%** | Zero false verifications on missing evidence |
-| **Condition-Level Accuracy** | **81.40%** | Per-condition numeric & semantic verification |
-| **Total Benchmark Runtime** | **~371s** | 100 requirements verified in ~6 minutes |
-
----
-
-## 🏗️ System Architecture
-
-```
-                               ┌─────────────────────────────┐
-                               │ Technical Documents Archive │
-                               │ (SRS, Test Logs, Datasheets)│
-                               └──────────────┬──────────────┘
-                                              │
-                                              ▼
-                               ┌─────────────────────────────┐
-                               │ Document Ingestion Pipeline │
-                               │ (PyMuPDF, docx, openpyxl)   │
-                               └──────────────┬──────────────┘
-                                              │
-                       ┌──────────────────────┴──────────────────────┐
-                       ▼                                             ▼
-        ┌─────────────────────────────┐               ┌─────────────────────────────┐
-        │    Requirement Extractor    │               │   BM25 Retrieval & Chunks   │
-        │   (Contracts & Parameters)  │               │   (Evidence Vector Index)   │
-        └──────────────┬──────────────┘               └──────────────┬──────────────┘
-                       │                                             │
-                       └──────────────────────┬──────────────────────┘
-                                              │
-                                              ▼
-                        ┌───────────────────────────────────────────┐
-                        │   TraceAudit Hybrid Verification Engine   │
-                        ├───────────────────────────────────────────┤
-                        │ 1. Deterministic SI Range & Bounds Proof  │
-                        │ 2. Contradiction & Matrix Precedence      │
-                        │ 3. Batched LLM Reasoner (Gemini / DBX)    │
-                        └─────────────────────┬─────────────────────┘
-                                              │
-                                              ▼
-                        ┌───────────────────────────────────────────┐
-                        │  Interactive Traceability & Findings UI   │
-                        │  (React 19, Vite, TanStack Router, Tailwind)│
-                        └───────────────────────────────────────────┘
-```
-
----
-
-## 📁 Repository Structure
-
-```
-AudiTrace/
-├── backend/                        # Python FastAPI Backend
-│   ├── app/
-│   │   ├── api/                    # REST API Endpoints (Projects, Documents, Requirements)
-│   │   ├── models/                 # SQLAlchemy DB Models
-│   │   ├── schemas/                # Pydantic Schemas (Contract, Claim, Verification)
-│   │   ├── services/               # Core Auditing & Processing Engine
-│   │   │   ├── ingestion.py        # PDF, DOCX, XLSX Ingestion
-│   │   │   ├── extraction.py       # Requirement Extraction Engine
-│   │   │   ├── retrieval.py        # BM25 Lexical Retrieval Engine
-│   │   │   ├── classification.py   # Coverage Assessment & Batching
-│   │   │   ├── contradiction.py    # Cross-Document Contradiction Detector
-│   │   │   ├── llm_client.py       # Unified Gemini & Databricks AI Gateway Client
-│   │   │   ├── verification_reasoner.py # Multi-Condition Semantic Reasoner
-│   │   │   └── validators/         # Modular Deterministic SI Validators
-│   │   │       ├── numeric_range.py
-│   │   │       ├── threshold.py
-│   │   │       ├── duration.py
-│   │   │       ├── test_verdict.py
-│   │   │       └── semantic.py
-│   │   ├── config.py               # Central Settings & Model Routing
-│   │   ├── database.py             # SQLite / AioSQLite Engine
-│   │   └── main.py                 # FastAPI Application Factory
-│   └── venv/                       # Isolated Python Virtualenv
-├── evaluation/                     # Scientific Benchmark & Testing Suite
-│   ├── run_evaluation.py           # End-to-end Benchmark Runner (--oracle, --model)
-│   ├── generate_dataset.py         # Ground-Truth Specification & Test Suite
-│   ├── metrics.py                  # Evaluation Metrics Engine
-│   ├── tests/                      # Automated Unit Tests
-│   └── results/                    # Latest Benchmark Output (JSON & Markdown)
-├── src/                            # React 19 Frontend Web Application
-│   ├── components/                 # UI Component Library (shadcn/ui, Radix UI)
-│   ├── routes/                     # TanStack Router Pages (Dashboard, Findings, Matrix)
-│   ├── hooks/                      # TanStack Query Data Hooks
-│   └── lib/                        # API Client & Utility Functions
-└── package.json                    # Frontend Package Manifest & Scripts
-```
-
----
-
-## 🚀 Quick Start
-
-### 1. Prerequisites
-- **Node.js**: v20.x or higher
-- **Python**: v3.11 or higher
-- **npm** or **pnpm**
-
-### 2. Backend Setup
 ```bash
-# Navigate to backend directory
 cd backend
-
-# Create virtual environment
 python -m venv venv
-
-# Activate virtual environment (Windows PowerShell)
-.\venv\Scripts\Activate.ps1
-
-# Install backend dependencies
-pip install -r requirements.txt
-
-# Configure environment variables
-copy .env.example .env
-```
-
-Edit `backend/.env` with your preferred AI provider:
-```env
-# Option A: Google Gemini API Key (Google AI Studio)
-GEMINI_API_KEY="AIzaSy..."
-LLM_MODEL="gemini-3.7-flash"
-GEMINI_THINKING_LEVEL="HIGH"
-
-# Option B: Databricks Model Serving AI Gateway
-DATABRICKS_TOKEN="dapi..."
-DATABRICKS_BASE_URL="https://<workspace-id>.cloud.databricks.com/ai-gateway/mlflow/v1"
-DATABRICKS_MODEL="system.ai.llama-4-maverick"
-
-# Optional: Databricks layout-aware document parsing
-TRACEAUDIT_DOCUMENT_PARSER="databricks-auto"
-DATABRICKS_SQL_WAREHOUSE_ID="<warehouse-id>"
-DATABRICKS_DOCUMENT_VOLUME="/Volumes/<catalog>/<schema>/<volume>"
-# Citation-backed ai_extract evidence discovery before verification.
-DATABRICKS_TARGETED_EXTRACTION_ENABLED="true"
-DATABRICKS_TARGETED_EXTRACTION_MAX_INPUT_CHARS="800000"
-DATABRICKS_TARGETED_EXTRACTION_MAX_CANDIDATES="24"
-DATABRICKS_TARGETED_EXTRACTION_RETRY_UNCOVERED="true"
-
-# Optional Databricks MLflow traces and benchmark history
-# Install first: pip install -r requirements-mlflow.txt
-DATABRICKS_MLFLOW_TRACING_ENABLED="true"
-DATABRICKS_MLFLOW_EXPERIMENT="/Shared/auditrace"
-# Keep false for customer documents unless trace storage is access-controlled.
-DATABRICKS_MLFLOW_CAPTURE_CONTENT="false"
-```
-
-Start the FastAPI backend:
-```bash
+source venv/bin/activate        # Windows: .\venv\Scripts\Activate.ps1
+pip install -r ../requirements.txt
+cp .env.example .env            # then set DATABRICKS_TOKEN and DATABRICKS_BASE_URL
 python -m uvicorn app.main:app --reload --port 8000
 ```
-*API docs available at:* `http://localhost:8000/docs`
 
----
+API docs: http://localhost:8000/docs
 
-### 3. Frontend Setup
+**Frontend** (from the repository root)
+
 ```bash
-# In the root repository directory:
 npm install
-
-# Start Vite development server
 npm run dev
 ```
-*Application available at:* `http://localhost:5173`
 
----
+## Tests and evaluation
 
-### 4. Running Automated Tests & Benchmark Suite
 ```bash
-# Run the complete backend regression suite
-.\backend\venv\Scripts\python.exe -m pip install pytest
-.\backend\venv\Scripts\python.exe -m pytest -q
-
-# Frontend quality gates
-npm run lint
-npm run typecheck
-npm run build
-
-# Run full end-to-end audit benchmark pipeline
-.\backend\venv\Scripts\python.exe evaluation/run_evaluation.py
-
-# Run oracle retrieval experiment (isolating verifier ceiling)
-.\backend\venv\Scripts\python.exe evaluation/run_evaluation.py --oracle
+pytest -q                                              # backend tests, no model calls
+npm run lint && npm run typecheck && npm run build     # frontend checks
+python evaluation/replay_verification.py --quiet       # offline verdict replay
 ```
 
----
+The replay re-scores five recorded benchmark runs through the current decision logic. Every change
+to a verdict must be explained in `evaluation/replay_expectations.json`.
 
-## 🔒 Important Product Positioning
+**Results on the Nova benchmark** (48 requirements, 12 technical PDFs):
 
-### Deployment scope and unfinished production work
+| Measure | Result |
+|---|---|
+| Final-verdict accuracy, 5 live runs | **88.3% ± 2.4** |
+| Offline replay of those runs through current logic | 234/240 (97.5%) |
+| Unsafe auto-closes | **0** |
 
-The current application is a shared workspace. Databricks SSO identifies users at
-the proxy, but the application does not implement organization isolation, roles,
-or authenticated human sign-off. All users granted access must therefore be
-trusted with all projects, AI settings, and visitor leads. This is not yet a
-finished multi-customer SaaS.
+Nova is a development set: the pipeline was tuned on it, so these numbers do not predict accuracy
+on new documents. See [`evaluation/`](evaluation/) for the protocol and other benchmarks.
 
-Original uploads and the audit job registry currently live under `UPLOAD_DIR` on
-the app instance. The Delta database does not make those local files durable.
-Persistent object storage and a durable job queue, migration of existing
-originals, backup/restore validation, and restart testing are release requirements
-before relying on customer-data retention or scaling across app instances. See
-[Databricks app scaling guidance](https://docs.databricks.com/aws/en/dev-tools/databricks-apps/horizontal-scaling).
+## Configuration
 
-PDF reporting remains unimplemented; CSV export is available. Subscription
-billing and customer onboarding require product scope and implementation if this
-is to be sold as a self-service SaaS. Verify a real upload → audit → review →
-export workflow and access permissions on the deployed app before release.
+All settings are in [`backend/app/config.py`](backend/app/config.py) and can be set through
+environment variables or `backend/.env`. Settings that affect security and customer data (egress
+allow-list, SSO identity, `SETTINGS_ADMINS`, call recording) are covered in
+[`DEPLOYMENT.md`](DEPLOYMENT.md), along with deployment to Databricks Apps.
 
-Demo data is now opt-in with `SEED_DEMO_DATA=true`; production defaults to an
-empty workspace and `DEBUG=false`. Existing data is retained. CI runs lint,
-TypeScript, production build, Bun vulnerability checks, and backend regressions.
-Keep both frontend lockfiles under version control; Databricks builds using
-`bun.lock`. Dependency changes must pass these gates before deployment.
+## Contributing
 
-> [!IMPORTANT]
-> TraceAudit AI is an **engineering decision-support tool**, not a legal certification authority. It provides automated technical documentation analysis, evidence traceability, and inconsistency detection. Final conformity assessment and safety sign-off remain the responsibility of qualified human engineers and compliance officers.
+Issues and pull requests are welcome. Before opening a PR, make sure `pytest` and the replay pass
+and the frontend checks are clean. Never commit `.env` files, customer documents or recordings.
 
----
+## License
 
-## 📜 License
-
-MIT License. Designed & Developed for Enterprise Technical Compliance Engineering.
+[MIT](LICENSE). Third-party dependencies keep their own licences; note that PyMuPDF is AGPL-3.0.
