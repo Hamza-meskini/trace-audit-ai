@@ -14,6 +14,7 @@ from app.models.document import EvidenceChunk, Document
 from app.schemas.requirement import RequirementResponse, RequirementCreate, EvidenceResponse, RequirementReviewRequest
 from app.models.finding import Finding
 from app.services import audit_progress
+from app.services.review_status import is_human_reviewed, latest_human_decision, review_origin
 
 router = APIRouter(prefix="/projects/{project_id}/requirements", tags=["Requirements"])
 
@@ -22,7 +23,8 @@ def _review_metadata(req: Requirement) -> dict:
     """Expose compact review health without replacing the stored AI verdict."""
     data = req.extracted_parameters or {}
     history = data.get("review_history", [])
-    human = next((item for item in reversed(history) if item.get("human_verdict")), None)
+    human = latest_human_decision(history, req.review_state)
+    origin = review_origin(history, req.review_state)
     contract_issues = data.get("validation_issues", []) or []
     verification = data.get("verification", {}) or {}
     diagnostics = verification.get("diagnostics", {}) or {}
@@ -34,6 +36,8 @@ def _review_metadata(req: Requirement) -> dict:
     return {
         "human_verdict": human.get("human_verdict") if human else None,
         "human_assessment": human,
+        "review_origin": origin,
+        "human_reviewed": is_human_reviewed(history, req.review_state),
         "contract_complete": data.get("contract_complete"),
         "validation_issue_count": len(contract_issues),
         "unresolved_condition_count": unresolved,

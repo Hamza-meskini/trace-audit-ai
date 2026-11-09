@@ -609,15 +609,20 @@ def _attach_literal_citation_spans(
     evidence_contents: dict[str, str],
     provenance: dict[str, dict[str, Any]],
 ) -> bool:
-    """Attach offsets when the current quote is already a literal source span."""
-    if not result.quote:
+    """Attach offsets when the current quote is a literal span of the evidence it cites.
+
+    Only the cited items are searched (ACC-03): a quote found in some other
+    retrieved chunk is not silently re-pointed to it, and a token-sized quote
+    such as a bare "PASS" is not treated as grounded.
+    """
+    if not result.quote or len(_normalized_grounding_tokens(result.quote)) < 4:
         return False
     normalized_refs = []
     for evidence_id in result.evidence_ids:
         match = re.search(r"(\d+)", str(evidence_id))
         if match:
             normalized_refs.append(f"E{match.group(1)}")
-    search_order = list(dict.fromkeys(normalized_refs + list(evidence_contents)))
+    search_order = list(dict.fromkeys(normalized_refs))
     for evidence_id in search_order:
         content = evidence_contents.get(evidence_id, "")
         offsets = locate_exact_quote_span(result.quote, content)

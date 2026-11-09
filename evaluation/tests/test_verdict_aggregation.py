@@ -691,8 +691,10 @@ class TestConditionEvidenceAudit(unittest.TestCase):
                 "E2": f"Test result: {quote} Verdict: Passed.",
             },
         )
-        self.assertEqual(merged[0].evidence_ids, ["E2"])
-        self.assertEqual(merged[0].validation_state, "VALID")
+        # ACC-03: a quote found only in uncited evidence refutes the citation
+        # instead of silently re-pointing it.
+        self.assertEqual(merged[0].evidence_ids, ["E1"])
+        self.assertEqual(merged[0].validation_state, "CONTRADICTED")
 
     def test_partial_quote_match_does_not_reassign_provenance(self):
         contract = make_contract(conditions=[cond("C1")])
@@ -989,8 +991,8 @@ class TestFullPipelineToApiResponse(unittest.TestCase):
             status="SUPPORTED",
             confidence=95.0,
             condition_results=[
-                ConditionVerificationResult(condition_id="REQ-BAT-001-C1", status="PROVEN", evidence_ids=["E1"], quote="Galvanic isolation measured at 3.2 kV"),
-                ConditionVerificationResult(condition_id="REQ-BAT-001-C2", status="PROVEN", evidence_ids=["E2"], quote="Contactor opening latency measured at 8.4 ms"),
+                ConditionVerificationResult(condition_id="REQ-BAT-001-C1", status="PROVEN", evidence_ids=["E1"], quote="Galvanic isolation measured at 3.2 kV", execution_state="EXECUTED", relationship="SATISFIES", evidence_value_role="OBSERVED", observed_value="3.2"),
+                ConditionVerificationResult(condition_id="REQ-BAT-001-C2", status="PROVEN", evidence_ids=["E2"], quote="Contactor opening latency measured at 8.4 ms", execution_state="EXECUTED", relationship="SATISFIES", evidence_value_role="OBSERVED", observed_value="8.4"),
             ],
             reason="All conditions verified by lab test reports.",
         )

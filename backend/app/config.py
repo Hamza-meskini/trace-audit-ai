@@ -158,7 +158,7 @@ class Settings(BaseSettings):
     # deterministic verdict logic changes (aggregation, qualification, review
     # gate) so cached verdicts are recomputed; human sign-offs survive when the
     # verdict and its evidence are unchanged.
-    VERDICT_LOGIC_VERSION: str = "verdict-2026-11-09-atomic-conflict"
+    VERDICT_LOGIC_VERSION: str = "verdict-2026-11-09-trust-guards"
     AUDIT_CACHE_MAX_ENTRIES: int = 50_000
     
     # Gemini Thinking Configuration (https://ai.google.dev/gemini-api/docs/thinking)

@@ -23,6 +23,9 @@ from app.models.document import Document, EvidenceChunk
 from app.models.finding import Finding
 from app.models.project import Project
 from app.models.requirement import Requirement, RequirementEvidence
+from app.services.review_status import (
+    AUTO_CLOSED, comments_after, is_human_reviewed, latest_human_decision, review_label,
+)
 
 # ── Color Palette ─────────────────────────────────────────────────────────────
 NAVY_HEADER = "1E293B"       # Slate 800 - table header
@@ -56,6 +59,7 @@ REVIEW_STATE_COLORS: dict[str, tuple[str, str]] = {
     "Needs review": ("FEF3C7", "92400E"),
     "Open": ("FEF3C7", "92400E"),
     "Reviewed": ("E0E7FF", "3730A3"),
+    AUTO_CLOSED: ("F1F5F9", "475569"),
 }
 
 EVIDENCE_STATUS_COLORS: dict[str, tuple[str, str]] = {
@@ -112,10 +116,14 @@ def _clean_str(val: Any) -> str:
 def _extract_req_details(req: Requirement) -> dict[str, Any]:
     params = req.extracted_parameters or {}
     history = params.get("review_history", []) or []
-    human_event = next((item for item in reversed(history) if item.get("human_verdict") or item.get("action")), None)
+    human_event = latest_human_decision(history, req.review_state)
     human_verdict = human_event.get("human_verdict") if human_event else None
     reviewer = human_event.get("reviewer") if human_event else ""
     comment = human_event.get("comment") if human_event else ""
+    later = [f"{c.get('reviewer') or 'Reviewer'}: {c.get('comment') or ''}".strip()
+             for c in comments_after(history, human_event)]
+    if later:
+        comment = (comment + "\n\n" if comment else "") + "Later comments (not decisions):\n" + "\n".join(later)
 
     contract_issues = params.get("validation_issues", []) or []
     verification = params.get("verification", {}) or {}
@@ -150,6 +158,8 @@ def _extract_req_details(req: Requirement) -> dict[str, Any]:
 
     return {
         "human_verdict": human_verdict,
+        "review_label": review_label(history, req.review_state),
+        "human_reviewed": is_human_reviewed(history, req.review_state),
         "reviewer": reviewer,
         "comment": comment,
         "contract_complete": cc_str,
@@ -210,8 +220,10 @@ async def generate_audit_report_excel(db: AsyncSession, project_id: str) -> byte
         "Not applicable": 0,
     }
     severity_counts: dict[str, int] = {"Critical": 0, "High": 0, "Medium": 0, "Low": 0}
-    review_counts: dict[str, int] = {"Approved": 0, "Rejected": 0, "Needs review": 0, "Open": 0, "Reviewed": 0}
+    review_counts: dict[str, int] = {"Approved": 0, "Rejected": 0, "Needs review": 0, "Open": 0, "Reviewed": 0,
+                                     AUTO_CLOSED: 0}
     human_reviewed_count = 0
+    review_labels: dict[str, str] = {}
     validation_issues_count = 0
 
     for req in requirements:
@@ -221,13 +233,14 @@ async def generate_audit_report_excel(db: AsyncSession, project_id: str) -> byte
         sev = req.severity or "Medium"
         severity_counts[sev] = severity_counts.get(sev, 0) + 1
 
-        rev = req.review_state or "Open"
+        meta = _extract_req_details(req)
+        rev = meta["review_label"]
+        review_labels[req.id] = rev
         review_counts[rev] = review_counts.get(rev, 0) + 1
 
-        if rev in ("Reviewed", "Approved", "Rejected"):
+        if meta["human_reviewed"]:
             human_reviewed_count += 1
 
-        meta = _extract_req_details(req)
         if meta["validation_issues_count"] > 0 or meta["unresolved_conditions_count"] > 0:
             validation_issues_count += 1
 
@@ -310,7 +323,8 @@ async def generate_audit_report_excel(db: AsyncSession, project_id: str) -> byte
         cell_m.border = _card_border()
 
         cell_b = ws_summary[c_bot]
-        cell_b.value = "Verified metric"
+        cell_b.value = (f"{review_counts[AUTO_CLOSED]} more auto-closed, not reviewed"
+                        if title == "HUMAN REVIEWED" else "Verified metric")
         cell_b.font = Font(name="Calibri", size=8, italic=True, color="94A3B8")
         cell_b.fill = PatternFill(start_color="FAFAFA", end_color="FAFAFA", fill_type="solid")
         cell_b.alignment = Alignment(horizontal="center", vertical="center")
@@ -508,7 +522,7 @@ async def generate_audit_report_excel(db: AsyncSession, project_id: str) -> byte
             req.severity or "Medium",
             req.coverage_status or "Unknown",
             conf_pct,
-            req.review_state or "Open",
+            meta["review_label"],
             meta["human_verdict"] or "",
             meta["reviewer"] or "",
             meta["comment"] or "",
@@ -741,7 +755,8 @@ async def generate_audit_report_excel(db: AsyncSession, project_id: str) -> byte
             req_title,
             finding.finding_type or "Audit discrepancy",
             finding.severity or "Medium",
-            finding.review_state or "Open",
+            (review_labels.get(finding.requirement_id, finding.review_state)
+             if finding.review_state == "Reviewed" else finding.review_state) or "Open",
             finding.category or "Uncategorized",
             finding.description or "No description provided.",
             finding.assigned_to or "Unassigned",

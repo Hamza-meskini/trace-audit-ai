@@ -45,6 +45,7 @@ from app.schemas.verification_result import ConditionVerificationResult
 from app.services.audit_progress import AuditCancelled
 from app.services.pipeline_cache import stable_key
 from app.services.llm_client import LLMUnavailableError, raise_if_llm_unavailable
+from app.services.review_status import latest_human_decision
 from app.services.taxonomy import finding_type_for, normalize_severity, finding_severity_for
 from app.config import settings
 from app.services.document_classifier import (
@@ -251,20 +252,9 @@ def _is_llm_failure(assessment: RequirementAssessment) -> bool:
     return (assessment.pipeline_diagnostics or {}).get("decision_source") in LLM_FAILURE_SOURCES
 
 
-HUMAN_DECISION_STATES = ("Approved", "Rejected", "Reviewed", "Needs review")
-
-
 def _latest_human_decision(req: Requirement) -> dict | None:
     """The reviewer event that set the current review state, if a human set it."""
-    for event in reversed((req.extracted_parameters or {}).get("review_history") or []):
-        if event.get("system"):
-            return None
-        if event.get("action") == "Comment":
-            continue
-        if event.get("action") == req.review_state and req.review_state in HUMAN_DECISION_STATES:
-            return event
-        return None
-    return None
+    return latest_human_decision((req.extracted_parameters or {}).get("review_history"), req.review_state)
 
 
 def _carry_human_review(

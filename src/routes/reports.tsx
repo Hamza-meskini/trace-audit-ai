@@ -75,7 +75,7 @@ function ReportsPage() {
       item.severity,
       item.coverage_status,
       item.human_verdict || "",
-      item.review_state,
+      item.review_origin === "auto" ? "Auto-closed" : item.review_state,
       item.confidence,
       item.sources_count,
       item.contract_complete == null ? "Not recorded" : item.contract_complete,
@@ -127,9 +127,8 @@ function ReportsPage() {
     status,
     count: rows.filter((item) => item.coverage_status === status).length,
   }));
-  const reviewed = rows.filter((item) =>
-    ["Reviewed", "Approved", "Rejected"].includes(item.review_state),
-  ).length;
+  const reviewed = rows.filter((item) => item.human_reviewed).length;
+  const autoClosed = rows.filter((item) => item.review_origin === "auto").length;
   const unresolved = rows.filter(
     (item) => (item.validation_issue_count || 0) + (item.unresolved_condition_count || 0) > 0,
   ).length;
@@ -204,11 +203,12 @@ function ReportsPage() {
             <dd>{new Date().toLocaleDateString()}</dd>
           </dl>
         </header>
-        <section className="mt-7 grid grid-cols-2 gap-5 md:grid-cols-4">
+        <section className="mt-7 grid grid-cols-2 gap-5 md:grid-cols-5">
           {[
             ["Requirements", stats.data.requirements],
             ["Human reviewed", reviewed],
-            ["Need review", rows.length - reviewed],
+            ["Auto-closed (not reviewed)", autoClosed],
+            ["Need review", rows.length - reviewed - autoClosed],
             ["With validation issues", unresolved],
           ].map(([label, value]) => (
             <div key={String(label)}>

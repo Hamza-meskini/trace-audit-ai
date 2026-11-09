@@ -239,6 +239,9 @@ class ConditionVerificationResult(BaseModel):
     # validation metadata.
     validation_state: SkipJsonSchema[ConditionValidationState] = "UNRESOLVED"
     validation_notes: SkipJsonSchema[list[str]] = Field(default_factory=list)
+    # Sticky reasons this result cannot close a requirement without a human.
+    # Unlike validation_state, a later VALID write never clears them.
+    review_flags: SkipJsonSchema[list[str]] = Field(default_factory=list)
     observed_parameter: Optional[str] = None
     observed_value: Optional[str] = None
     observed_min_value: Optional[float] = None

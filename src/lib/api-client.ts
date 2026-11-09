@@ -297,6 +297,8 @@ export interface ApiRequirement {
   review_history?: ReviewEvent[];
   human_verdict?: CoverageStatus | null;
   human_assessment?: ReviewEvent | null;
+  review_origin?: "human" | "auto" | "re-audit" | "open" | null;
+  human_reviewed?: boolean;
   contract_complete?: boolean | null;
   validation_issue_count?: number;
   unresolved_condition_count?: number;

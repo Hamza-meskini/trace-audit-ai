@@ -98,9 +98,7 @@ function RequirementsPage() {
         : b.req_code.localeCompare(a.req_code),
     );
   }, [requirementsList, tab, search]);
-  const reviewed = (requirementsList || []).filter((item) =>
-    ["Reviewed", "Approved", "Rejected"].includes(item.review_state),
-  ).length;
+  const reviewed = (requirementsList || []).filter((item) => item.human_reviewed).length;
 
   return (
     <div className="mx-auto max-w-[1400px]">
@@ -109,7 +107,7 @@ function RequirementsPage() {
         subtitle="Review extracted requirements and their evidence coverage."
         actions={
           <span className="text-xs text-muted-foreground">
-            {reviewed} reviewed · {(requirementsList?.length || 0) - reviewed} remaining
+            {reviewed} human reviewed · {(requirementsList?.length || 0) - reviewed} remaining
           </span>
         }
       />

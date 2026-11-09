@@ -395,6 +395,107 @@ def _missing_visual_attributes(
     return [token for token in dict.fromkeys(required) if token not in observed]
 
 
+_REQ_CODE_RE = re.compile(r"\b(REQ[-_]?[A-Za-z0-9_-]*\d+)\b", re.IGNORECASE)
+_QUOTE_NUMBER_RE = re.compile(r"(?<![\w.])[-+]?\d[\d,]*(?:\.\d+)?")
+
+
+def _norm_code(code: str) -> str:
+    return re.sub(r"[-_\s]+", "-", (code or "").strip().upper())
+
+
+def _quote_rows(quote: str, cited_contents: dict[str, str]) -> list[str]:
+    """The source lines a quote sits on, so a row's requirement column is seen too."""
+    needle = re.sub(r"\s+", " ", quote).strip().lower()
+    head = needle[:40]
+    rows = []
+    for content in cited_contents.values():
+        for line in content.splitlines():
+            flat = re.sub(r"\s+", " ", line).strip().lower()
+            if len(flat) >= 8 and (head in flat or flat in needle):
+                rows.append(line)
+    return rows
+
+
+def _foreign_requirement_codes(
+    own_code: Optional[str],
+    quote: Optional[str],
+    cited_contents: dict[str, str],
+) -> list[str]:
+    """Requirement IDs on the quoted rows when none of them is this requirement's ID."""
+    if not own_code or not quote:
+        return []
+    text = "\n".join([quote, *_quote_rows(quote, cited_contents)])
+    codes = {_norm_code(match) for match in _REQ_CODE_RE.findall(text)}
+    if not codes or _norm_code(own_code) in codes:
+        return []
+    return sorted(codes)
+
+
+def _quote_numbers(quote: str) -> list[float]:
+    values = []
+    for token in _QUOTE_NUMBER_RE.findall(quote or ""):
+        candidates = {token.replace(",", "")}
+        if token.count(",") == 1 and "." not in token:
+            candidates.add(token.replace(",", "."))  # decimal comma
+        for candidate in candidates:
+            try:
+                values.append(float(candidate))
+            except ValueError:
+                pass
+    return values
+
+
+def _is_numeric_condition(cond: Any) -> bool:
+    threshold = getattr(cond, "threshold", None)
+    return bool(
+        getattr(cond, "unit", None)
+        or (isinstance(threshold, (int, float)) and not isinstance(threshold, bool))
+        or getattr(cond, "min_value", None) is not None
+        or getattr(cond, "max_value", None) is not None
+    )
+
+
+def _proven_value_defects(cond: Any, cr: ConditionVerificationResult) -> list[str]:
+    """Reasons a PROVEN result cannot close a requirement without review (ACC-02)."""
+    flags = []
+    if cr.execution_state != "EXECUTED":
+        flags.append(f"execution {cr.execution_state}, not EXECUTED")
+    if cr.relationship != "SATISFIES":
+        flags.append(f"relationship {cr.relationship}, not SATISFIES")
+    if cr.evidence_value_role == "REQUIRED_OR_PLANNED":
+        flags.append("cited value is required or planned, not observed")
+    if cond is None or not _is_numeric_condition(cond):
+        return flags
+    if cr.evidence_value_role == "STATUS_ONLY":
+        flags.append("numeric condition proven by a status word only")
+        return flags
+    observed = []
+    for raw in (cr.observed_value, cr.observed_min_value, cr.observed_max_value):
+        if raw is None:
+            continue
+        try:
+            observed.append(float(str(raw).replace(",", "").strip()))
+        except ValueError:
+            # The model sometimes states the value as prose ("coverage includes
+            # 350 V DC and 820 V DC"); every number it names must be quoted.
+            observed.extend(dict.fromkeys(
+                value for value in _quote_numbers(str(raw)) if not value.is_integer() or value != 0
+            ))
+    if not observed:
+        flags.append("no observed value")
+        return flags
+    in_quote = _quote_numbers(cr.quote or "")
+    missing = [
+        value for value in observed
+        if not any(abs(value - number) <= max(1e-9, abs(value) * 1e-6) for number in in_quote)
+    ]
+    if missing:
+        flags.append(
+            "observed value " + ", ".join(f"{value:g}" for value in missing) + " is not in the quoted span"
+        )
+    return flags
+
+
 def _invalidate_unsupported_proof(
     result: ConditionVerificationResult,
     note: str,
@@ -482,21 +583,17 @@ def audit_condition_evidence(
                     if _quote_is_exactly_traceable(cr.quote, content)
                 }
                 if reconciled_refs:
-                    previous_refs = sorted(refs)
-                    cr.evidence_ids = sorted(reconciled_refs, key=lambda item: int(re.search(r"\d+", item).group()))
-                    refs = reconciled_refs
-                    cited_contents = {
-                        ref: qualified_contents[ref]
-                        for ref in refs
-                        if ref in qualified_contents
-                    }
-                    matching_refs = reconciled_refs
+                    # ACC-03: the quote exists only in evidence the model did
+                    # not cite. Re-pointing the citation would let an uncited
+                    # chunk decide the condition, so the citation is refuted.
                     _add_validation_note(
                         cr,
-                        "UNRESOLVED",
-                        "Citation IDs were reconciled by exact quote traceability from "
-                        f"{', '.join(previous_refs) or 'none'} to {', '.join(cr.evidence_ids)}.",
+                        "CONTRADICTED",
+                        "The quote is not in the cited evidence "
+                        f"({', '.join(sorted(refs)) or 'none'}); it appears only in uncited "
+                        f"{', '.join(sorted(reconciled_refs))}. The citation was not re-pointed.",
                     )
+                    continue
                 else:
                     _add_validation_note(
                         cr,
@@ -524,6 +621,20 @@ def audit_condition_evidence(
                 "the LLM status was preserved.",
             )
             continue
+
+        foreign = _foreign_requirement_codes(contract.req_code, cr.quote, cited_contents)
+        if foreign:
+            _invalidate_unsupported_proof(
+                cr,
+                "The cited passage names another requirement ("
+                + ", ".join(foreign)
+                + ") and not this one; it cannot decide this condition. Status normalized to INCONCLUSIVE.",
+            )
+            continue
+        if cr.status == "PROVEN":
+            for flag in _proven_value_defects(cond, cr):
+                if flag not in cr.review_flags:
+                    cr.review_flags.append(flag)
 
         if cr.status == "PROVEN":
             ok = any(b.qualification_status == "QUALIFIED" for b in backing)

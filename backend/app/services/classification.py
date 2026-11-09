@@ -206,6 +206,14 @@ def _supported_review_gate(
                 + "."
             )
 
+        flagged = [
+            f"{result.condition_id} ({'; '.join(result.review_flags)})"
+            for result in proof_results
+            if result.status == "PROVEN" and result.review_flags
+        ]
+        if flagged:
+            reasons.append("Proof needs human confirmation: " + ", ".join(flagged) + ".")
+
         unresolved = [
             result.condition_id
             for result in proof_results

@@ -44,6 +44,8 @@ class RequirementResponse(BaseModel):
     review_history: list[dict[str, Any]] = Field(default_factory=list)
     human_verdict: str | None = None
     human_assessment: dict[str, Any] | None = None
+    review_origin: str | None = None
+    human_reviewed: bool = False
     contract_complete: bool | None = None
     validation_issue_count: int = 0
     unresolved_condition_count: int = 0
