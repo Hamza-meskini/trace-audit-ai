@@ -14,7 +14,7 @@ from typing import Any
 
 from app.models.document import EvidenceChunk
 from app.config import settings
-from app.services.llm_client import call_vision_with_fallback
+from app.services.llm_client import call_vision_with_fallback, vision_model_chain
 
 
 logger = logging.getLogger("traceaudit.requirement_visual_recovery")
@@ -69,8 +69,7 @@ def _cached_recovery(page_chunks: list[dict[str, Any]]) -> dict[str, Any] | None
 
 
 def _vision_models() -> list[str]:
-    return [settings.DATABRICKS_VISION_MODEL, settings.OPENROUTER_VISION_MODEL, settings.GEMINI_VISION_MODEL,
-            settings.GROQ_VISION_MODEL, settings.HF_VISION_MODEL]
+    return vision_model_chain()
 
 
 async def recover_requirement_text_from_pages(

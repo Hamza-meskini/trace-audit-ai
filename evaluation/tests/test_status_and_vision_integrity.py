@@ -92,6 +92,7 @@ def test_requirement_subject_precedes_category():
 
 
 def test_stale_visual_description_replaced_and_current_cache_reused(monkeypatch):
+    monkeypatch.setattr(settings, "LLM_DATABRICKS_ONLY", False)
     monkeypatch.setattr(settings, "GEMINI_API_KEY", "test")
     monkeypatch.setattr(settings, "GEMINI_VISION_MODEL", "configured-vision-model")
     monkeypatch.setattr(visual_analysis, "_render_figure_png", lambda *_: b"png")

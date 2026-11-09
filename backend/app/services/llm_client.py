@@ -512,6 +512,9 @@ async def call_vision_with_fallback(
             return {"text": _strip_reasoning_tags(text).strip(), "provider": "databricks",
                     "model": settings.DATABRICKS_VISION_MODEL, "attempted": attempted}
 
+    if settings.LLM_DATABRICKS_ONLY:
+        return {"text": "", "provider": "", "model": "", "attempted": attempted}
+
     if "openrouter" not in skipped and settings.effective_openrouter_api_key:
         attempted.append({
             "provider": "openrouter",
@@ -1362,6 +1365,27 @@ async def call_openai_chat_completions(
         return None
 
 
+def vision_model_chain(primary_fallback_model: Optional[str] = None) -> list[str]:
+    """Models the figure-vision cascade may use; part of every vision cache key."""
+    if settings.LLM_DATABRICKS_ONLY:
+        return [settings.DATABRICKS_VISION_MODEL]
+    return [settings.DATABRICKS_VISION_MODEL, settings.OPENROUTER_VISION_MODEL,
+            primary_fallback_model or settings.GEMINI_VISION_MODEL,
+            settings.GROQ_VISION_MODEL, settings.HF_VISION_MODEL]
+
+
+def ensure_model_allowed(model: Optional[str] = None) -> str:
+    """Return the provider for ``model``; refuse non-Databricks models when LLM_DATABRICKS_ONLY."""
+    provider = resolve_llm_provider(model)
+    if settings.LLM_DATABRICKS_ONLY and provider != "databricks":
+        raise ValueError(
+            f"Model {model or settings.LLM_MODEL!r} routes to {provider!r}, but "
+            "LLM_DATABRICKS_ONLY is enabled; use a Databricks model such as "
+            "system.ai.llama-4-maverick."
+        )
+    return provider
+
+
 def resolve_llm_provider(model: Optional[str] = None) -> str:
     """Resolve the effective provider: explicit CLI/env provider wins, with model-family compatibility guards."""
     active_model = (model or settings.LLM_MODEL or "").strip().lower()
@@ -1425,7 +1449,7 @@ async def _generate_structured_unlimited(
 ) -> Optional[T]:
     """Generate structured output validated against a Pydantic schema using TokenRouter, Groq, Databricks, Gemini, or OpenAI."""
     active_model = model or settings.LLM_MODEL
-    provider = resolve_llm_provider(active_model)
+    provider = ensure_model_allowed(active_model)
 
     if provider == "dashscope" and not settings.effective_dashscope_api_key:
         raise RuntimeError(
@@ -1518,6 +1542,7 @@ async def _generate_structured_unlimited(
     if (
         not raw_response
         and allow_model_fallback
+        and not settings.LLM_DATABRICKS_ONLY
         and active_model != "system.ai.llama-4-maverick"
         and provider != "dashscope"
     ):
@@ -1601,7 +1626,7 @@ async def generate_text(
 ) -> Optional[str]:
     """Generate free-form text response with dynamic provider routing and fallbacks."""
     active_model = model or settings.LLM_MODEL
-    provider = resolve_llm_provider(active_model)
+    provider = ensure_model_allowed(active_model)
     res: Optional[str] = None
 
     if provider == "dashscope" and not settings.effective_dashscope_api_key:
@@ -1662,7 +1687,7 @@ async def generate_text(
             if res:
                 return res
 
-    if active_model == "system.ai.llama-4-maverick":
+    if active_model == "system.ai.llama-4-maverick" or settings.LLM_DATABRICKS_ONLY:
         return None
 
     # 5. TokenRouter fallback

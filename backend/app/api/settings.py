@@ -54,6 +54,10 @@ async def load_persisted_settings(db) -> None:
     if not stored:
         return
     model = stored.get("model") or settings.LLM_MODEL
+    if settings.LLM_DATABRICKS_ONLY and resolve_llm_provider(model) != "databricks":
+        # A model saved before Databricks-only mode must not re-enable another provider.
+        model = settings.LLM_MODEL
+        stored.pop("provider", None)
     provider = stored.get("provider") or resolve_llm_provider(model)
     thinking_level = stored.get("thinking_level") or settings.GEMINI_THINKING_LEVEL
     _apply_runtime(model, provider, thinking_level)
@@ -72,8 +76,14 @@ async def get_ai_settings():
         supported_thinking_levels=SUPPORTED_THINKING_LEVELS,
         has_gemini_key=has_gemini,
         has_openai_key=has_openai,
-        available_models=SUPPORTED_MODELS,
+        available_models=_available_models(),
     )
+
+
+def _available_models() -> list[dict]:
+    if settings.LLM_DATABRICKS_ONLY:
+        return [m for m in SUPPORTED_MODELS if m.get("provider") == "databricks"]
+    return SUPPORTED_MODELS
 
 
 @router.post("/ai", response_model=AiSettingsResponse)
@@ -83,7 +93,7 @@ async def update_ai_settings(body: UpdateAiSettingsRequest, db=Depends(get_db, s
     thinking_level = settings.GEMINI_THINKING_LEVEL
 
     if body.model:
-        valid_model_ids = {m["id"] for m in SUPPORTED_MODELS}
+        valid_model_ids = {m["id"] for m in _available_models()}
         if body.model not in valid_model_ids:
             raise HTTPException(
                 status_code=400,

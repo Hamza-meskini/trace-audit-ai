@@ -15,6 +15,7 @@ from app.services import llm_client
 @pytest.fixture(autouse=True)
 def disable_databricks_for_legacy_cascade_tests(monkeypatch):
     monkeypatch.setattr(settings, "DATABRICKS_VISION_MODEL", "")
+    monkeypatch.setattr(settings, "LLM_DATABRICKS_ONLY", False)
 
 
 def test_openai_message_text_accepts_string_and_part_lists():

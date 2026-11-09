@@ -101,8 +101,9 @@ class Settings(BaseSettings):
     HF_TOKEN: str = ""
     HUGGINGFACE_TOKEN: str = ""
 
-    # On-demand technical-figure description cascade. OpenRouter is tried
-    # first; Gemini, Groq, and Hugging Face remain bounded fallbacks.
+    # On-demand technical-figure description cascade. Databricks is tried
+    # first; OpenRouter, Gemini, Groq and Hugging Face are bounded fallbacks
+    # used only when LLM_DATABRICKS_ONLY is false.
     OPENROUTER_VISION_MODEL: str = "openrouter/free"
     GEMINI_VISION_MODEL: str = "models/gemini-3.6-flash"
     GROQ_VISION_MODEL: str = "qwen/qwen3.6-27b"
@@ -112,13 +113,18 @@ class Settings(BaseSettings):
     LLM_PROVIDER: str = "databricks"  # "gemini", "groq", "databricks", or "openai"
     LLM_MODEL: str = "system.ai.llama-4-maverick"  # Default: Databricks Llama 4 Maverick
 
-    # Requirement discovery can use the caller-selected model (Maverick in the
-    # extraction benchmark), while semantic planning and atomic construction use
-    # a reasoning-focused model.  The fallback is stage-local and is attempted
-    # only when the primary atomic model returns no schema-valid response.
-    # TokenRouter's configured GLM 5.3 route avoids Gemini quota contention for
-    # semantic planning and atomic contract construction.
-    ATOMIC_DECOMPOSITION_MODEL: str = "z-ai/glm-5.3-free"
+    # When true, every LLM stage (discovery, profiling, contract construction,
+    # verification, figure vision) stays on Databricks: requests for models of
+    # other providers are refused and no call cascades to TokenRouter, Gemini,
+    # Groq, OpenRouter, Hugging Face, DashScope or OpenAI.  Embeddings are not
+    # an LLM stage and are unaffected.
+    LLM_DATABRICKS_ONLY: bool = True
+
+    # Semantic planning and atomic contract construction use Maverick, the
+    # model every benchmark measured.  The fallback is stage-local and is
+    # attempted only when the primary atomic model returns no schema-valid
+    # response; identical primary and fallback models are called once.
+    ATOMIC_DECOMPOSITION_MODEL: str = "system.ai.llama-4-maverick"
     ATOMIC_DECOMPOSITION_FALLBACK_MODEL: str = "system.ai.llama-4-maverick"
     ATOMIC_DECOMPOSITION_THINKING_LEVEL: str = "PROVIDER_DEFAULT"
     # Keep the former planner available for controlled extraction comparisons.

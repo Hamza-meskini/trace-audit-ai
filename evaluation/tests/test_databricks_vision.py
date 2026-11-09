@@ -35,6 +35,7 @@ def test_image_payload(monkeypatch):
 
 def test_databricks_first_then_fallback_and_skip(monkeypatch):
     configure(monkeypatch)
+    monkeypatch.setattr(settings, "LLM_DATABRICKS_ONLY", False)
     databricks = AsyncMock(return_value="Maverick transcription")
     fallback = AsyncMock(return_value={"text": "fallback transcription", "model": "vision"})
     monkeypatch.setattr(llm_client, "call_databricks_chat_completions", databricks)

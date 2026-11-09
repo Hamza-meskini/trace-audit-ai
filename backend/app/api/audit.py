@@ -12,6 +12,7 @@ from app.models.project import Project
 from app.models.document import Document
 from app.services import audit_progress
 from app.services import audit_worker
+from app.services.llm_client import ensure_model_allowed
 
 logger = logging.getLogger("traceaudit.api")
 
@@ -42,8 +43,12 @@ async def trigger_audit(
     documents = (await db.execute(select(Document.id).where(Document.project_id == project_id))).first()
     if not documents:
         raise HTTPException(422, "Upload documents before starting an audit")
+    model_name = body.model if body and body.model else None
     try:
-        model_name = body.model if body and body.model else None
+        ensure_model_allowed(model_name)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    try:
         thinking = body.thinking_level if body and body.thinking_level else None
         job = audit_progress.start(project_id, model_name, thinking)
         audit_worker.wake()

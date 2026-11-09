@@ -5,12 +5,19 @@ import sys
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
+import pytest
 from pydantic import BaseModel
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "backend"))
 
 from app.config import settings
 from app.services import llm_client
+
+
+@pytest.fixture(autouse=True)
+def allow_multi_provider_routing(monkeypatch):
+    """These tests cover the multi-provider mode behind LLM_DATABRICKS_ONLY=false."""
+    monkeypatch.setattr(settings, "LLM_DATABRICKS_ONLY", False)
 
 
 class ExampleResult(BaseModel):

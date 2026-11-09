@@ -13,7 +13,7 @@ from typing import Any
 
 from app.config import settings
 from app.models.document import Document, EvidenceChunk
-from app.services.llm_client import call_vision_with_fallback
+from app.services.llm_client import call_vision_with_fallback, vision_model_chain
 
 
 logger = logging.getLogger("traceaudit.visual_analysis")
@@ -128,7 +128,7 @@ async def describe_figure_candidates(
         metadata = first.get("metadata") or {}
         visual = dict(metadata.get("visual_analysis") or {})
         description = str(visual.get("description") or "").strip()
-        vision_models = [settings.DATABRICKS_VISION_MODEL, settings.OPENROUTER_VISION_MODEL, active_model, settings.GROQ_VISION_MODEL, settings.HF_VISION_MODEL]
+        vision_models = vision_model_chain(active_model)
         cache_valid = (
             visual.get("status") == "complete" and bool(description)
             and (
