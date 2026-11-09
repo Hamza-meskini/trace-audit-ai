@@ -295,7 +295,9 @@ def parameters_compatible(
         }
         for form in text_forms:
             for alias in aliases:
-                if alias in form:
+                # ACC-11: whole words only, so "current" is not found inside
+                # "currently" and "ip" not inside "trip".
+                if re.search(r"(?<![a-z0-9])" + re.escape(alias.lower()) + r"(?![a-z0-9])", form):
                     return True
         # A contradicting recognized parameter in the quote is a mismatch.
         return None

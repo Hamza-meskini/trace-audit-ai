@@ -35,7 +35,9 @@ def test_request_controls(monkeypatch, model, effort, expected, timeout):
     assert result == '{"value":"ok"}'
     payload = client.post.call_args.kwargs["json"]
     assert payload.get("reasoning_effort") == expected
-    factory.assert_called_once_with(timeout=timeout)
+    factory.assert_called_once()
+    assert factory.call_args.kwargs["timeout"] == timeout
+    assert factory.call_args.kwargs["event_hooks"]["request"], "egress hook must be installed"
 
 
 @pytest.mark.parametrize("structured", [True, False])

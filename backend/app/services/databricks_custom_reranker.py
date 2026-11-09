@@ -14,6 +14,7 @@ import httpx
 
 from app.config import settings
 from app.services.databricks_document_ai import _workspace_hostname
+from app.services.egress import check_egress
 from app.services.observability import trace_span
 from app.services.pipeline_cache import get_json, set_json, stable_key
 from app.services.request_limits import outbound_slot
@@ -61,6 +62,7 @@ def _invoke_reranker(queries: list[str], documents: list[str]) -> list[list[floa
                     remaining = deadline - time.monotonic()
                     if remaining <= 0:
                         raise RuntimeError(f"Custom reranker {endpoint} exceeded its {budget:g}s request budget")
+                    check_egress(url)
                     try:
                         response = httpx.post(
                             url,

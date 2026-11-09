@@ -59,6 +59,13 @@ class Settings(BaseSettings):
     APP_VERSION: str = "0.1.0"
     DEBUG: bool = False
     SEED_DEMO_DATA: bool = False
+    # SQL echo logs bound parameters, which include document text. It is a
+    # separate opt-in so DEBUG=true does not copy customer content into logs.
+    SQL_ECHO: bool = False
+    # Provider error bodies and raw model output can quote customer documents.
+    # By default logs carry only their length and a short hash; set true for
+    # local debugging to log a secret-redacted excerpt instead.
+    LOG_PROVIDER_BODIES: bool = False
 
     # Database
     DATABASE_BACKEND: str = "sqlite"  # "sqlite" for local dev, "databricks" for Databricks Apps production
@@ -74,6 +81,15 @@ class Settings(BaseSettings):
 
     # File storage (local filesystem for MVP)
     UPLOAD_DIR: str = "./uploads"
+    # Forwarded SSO identity headers: "auto" trusts them only inside the
+    # Databricks Apps runtime (where the proxy sets them); "true"/"false" force.
+    TRUST_FORWARDED_IDENTITY: str = "auto"
+
+    # Upload limits. Each file is capped at 50 MB in the documents API; these
+    # bound a whole request (checked from Content-Length before parsing, and
+    # again on the bytes actually read).
+    MAX_UPLOAD_FILES_PER_REQUEST: int = 25
+    MAX_REQUEST_BODY_MB: int = 250
 
     # Frontend static files directory (for single-server serving in Databricks Apps)
     FRONTEND_DIR: str = os.getenv("FRONTEND_DIR", "../dist/client")
@@ -124,6 +140,16 @@ class Settings(BaseSettings):
     # opens it at once. After the cooldown one probe call is allowed.
     LLM_BREAKER_THRESHOLD: int = 3
     LLM_BREAKER_COOLDOWN_SECONDS: float = 60.0
+    # REL-03: probe each role model with a cached one-token query before an audit starts.
+    AUDIT_READINESS_CHECK: bool = True
+    # ARC-01: keep schema-valid verification answers across re-audits (layer 1).
+    LLM_RESPONSE_CACHE_ENABLED: bool = True
+
+    # Outbound HTTP allow-list (services/egress.py). The Databricks workspace
+    # host is always allowed; list extra hosts here (exact names, "*.suffix",
+    # or "*"). Gemini embeddings need "generativelanguage.googleapis.com".
+    EGRESS_ALLOWED_HOSTS: list[str] = []
+    EGRESS_ENFORCED: bool = True
 
     # Semantic planning and atomic contract construction use Maverick, the
     # model every benchmark measured.  The fallback is stage-local and is
@@ -142,6 +168,15 @@ class Settings(BaseSettings):
     # audit from monopolising all model or reranker slots when several projects
     # run at the same time.
     LLM_GLOBAL_CONCURRENCY: int = 8
+    # REL-06: optional even pacing per provider/model; 0 = no pacing (Retry-After
+    # cooldowns are always shared across callers).
+    LLM_REQUESTS_PER_MINUTE: int = 0
+    # EVA-03: opt-in raw request/answer recording. Empty = off. Must be outside
+    # the git checkout (recordings hold customer text).
+    LLM_RECORD_DIR: str = ""
+    # ARC-02: SSO users (X-Forwarded-User or email) allowed to change the global
+    # AI settings when the app runs behind Databricks Apps SSO. Empty = nobody.
+    SETTINGS_ADMINS: list[str] = []
     # End-to-end requirement workers. Each worker can hold a verdict slot and a
     # citation slot, so four stays inside the global cap of eight.
     AUDIT_REQUIREMENT_CONCURRENCY: int = 4
@@ -158,7 +193,7 @@ class Settings(BaseSettings):
     # deterministic verdict logic changes (aggregation, qualification, review
     # gate) so cached verdicts are recomputed; human sign-offs survive when the
     # verdict and its evidence are unchanged.
-    VERDICT_LOGIC_VERSION: str = "verdict-2026-11-09-trust-guards"
+    VERDICT_LOGIC_VERSION: str = "verdict-2026-11-09-batch4"
     AUDIT_CACHE_MAX_ENTRIES: int = 50_000
     
     # Gemini Thinking Configuration (https://ai.google.dev/gemini-api/docs/thinking)

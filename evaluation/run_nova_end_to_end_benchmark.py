@@ -29,7 +29,66 @@ sys.path.insert(0, str(BACKEND))
 sys.path.insert(0, str(BENCHMARK))
 
 from app.config import settings
-from app.services.classification import batch_assess_requirements
+from app.services import call_ledger
+from app.services.effective_config import effective_config
+from app.services.classification import (
+    assess_requirement_coverage_async,
+    batch_assess_requirements,
+    refine_deferred_assessment,
+)
+
+
+async def production_path_assessments(
+    req_items: list[dict[str, Any]],
+    *,
+    model: str,
+    thinking_level: str | None,
+    spec_doc_names: set[str],
+    concurrency: int = 4,
+) -> dict[str, Any]:
+    """Verify each requirement exactly as app/services/pipeline.py does (EVA-04)."""
+    gate = asyncio.Semaphore(max(1, concurrency))
+
+    async def one(item: dict[str, Any]):
+        async with gate:
+            assessment = await assess_requirement_coverage_async(
+                req_code=item["req_code"],
+                title=item.get("title") or "",
+                description=item.get("description") or "",
+                category=item.get("category") or "General",
+                candidate_chunks=item.get("candidate_chunks") or [],
+                model=model,
+                thinking_level=thinking_level,
+                spec_doc_names=spec_doc_names,
+                conditions=item.get("conditions"),
+                semantic_clauses=item.get("semantic_clauses"),
+                clause_coverage=item.get("clause_coverage"),
+                unmapped_obligations=item.get("unmapped_obligations"),
+                contract_complete=item.get("contract_complete"),
+                logic=item.get("logic"),
+                logic_tree=item.get("logic_tree"),
+                decomposition_confidence=item.get("decomposition_confidence"),
+                ambiguities=item.get("ambiguities"),
+                validation_issues=item.get("validation_issues"),
+                targeted_extraction=item.get("targeted_extraction"),
+                defer_partial=True,
+                defer_secondary_adjudication=True,
+            )
+            if (
+                assessment.review_state == "Needs review"
+                and (assessment.pipeline_diagnostics or {}).get("secondary_adjudication_deferred")
+            ):
+                refined = await refine_deferred_assessment(
+                    assessment,
+                    item.get("candidate_chunks") or [],
+                    model=model,
+                    spec_doc_names=spec_doc_names,
+                )
+                if refined is not None:
+                    assessment = refined
+            return item["req_code"], assessment
+
+    return dict(await asyncio.gather(*(one(item) for item in req_items)))
 from app.services.document_classifier import profile_documents
 from app.services.extraction import ExtractedRequirement
 from app.services.contract_transport import extraction_contract_payload
@@ -343,6 +402,7 @@ async def _run_impl(
     resume: bool,
     retrieval_backend: str = "auto",
     run_id: str | None = None,
+    verification_path: str = "batch",
 ) -> dict[str, Any]:
     if mode not in MODES:
         raise ValueError(f"Unknown mode: {mode}")
@@ -502,17 +562,29 @@ async def _run_impl(
         model=model,
     )
     verification_inputs = copy.deepcopy(req_items)
-    assessments = await batch_assess_requirements(
-        req_items=req_items,
-        model=verification_model,
-        thinking_level=(
-            verification_thinking_level
-            or thinking_level
-            or settings.GEMINI_THINKING_LEVEL
-        ),
-        batch_size=batch_size,
-        spec_doc_names={item["filename"] for item in dataset["documents"]},
+    active_verification_thinking = (
+        verification_thinking_level
+        or thinking_level
+        or settings.GEMINI_THINKING_LEVEL
     )
+    spec_names = {item["filename"] for item in dataset["documents"]}
+    if verification_path == "production":
+        # EVA-04: the single-requirement path the audit pipeline runs.
+        assessments = await production_path_assessments(
+            req_items,
+            model=verification_model,
+            thinking_level=active_verification_thinking,
+            spec_doc_names=spec_names,
+            concurrency=batch_size,
+        )
+    else:
+        assessments = await batch_assess_requirements(
+            req_items=req_items,
+            model=verification_model,
+            thinking_level=active_verification_thinking,
+            batch_size=batch_size,
+            spec_doc_names=spec_names,
+        )
 
     assert_run_valid(assessments, profiles)
     print("[6/6] Scoring extraction, retrieval, reasoning, aggregation, and review safety...")
@@ -520,7 +592,7 @@ async def _run_impl(
     final_conditions: dict[str, Iterable[Any]] = {}
     raw_conditions: dict[str, Iterable[Any]] = {}
     rows = []
-    false_supported = unsafe = review_correct = 0
+    false_supported = unsafe = unsafe_any = review_correct = 0
     for expected in truth:
         req_id = expected["requirement_id"]
         assessment = assessments.get(req_id)
@@ -532,6 +604,8 @@ async def _run_impl(
         is_false_supported = predicted == "SUPPORTED" and expected["expected_status"] != "SUPPORTED"
         false_supported += int(is_false_supported)
         unsafe += int(is_false_supported and review == "Reviewed")
+        # EVA-07: a wrong auto-closed CONFLICT is just as unsafe.
+        unsafe_any += int(predicted != expected["expected_status"] and str(review) == "Reviewed")
         diagnostics = _field(assessment, "pipeline_diagnostics", {}) or {}
         raw = diagnostics.get("llm_condition_results", [])
         final = list(_field(assessment, "condition_results", []) or [])
@@ -602,6 +676,7 @@ async def _run_impl(
             "review_state_accuracy": _percent(review_correct, len(truth)),
             "false_supported": false_supported,
             "unsafe_false_auto_closes": unsafe,
+            "unsafe_auto_closes": unsafe_any,
         },
     }
     result = {
@@ -616,6 +691,7 @@ async def _run_impl(
         "verification_model": verification_model,
         "atomic_thinking_level": atomic_thinking_level,
         "verification_thinking_level": verification_thinking_level,
+        "verification_path": verification_path,
         "thinking_level": thinking_level,
         "generation_config": {
             "provider": settings.LLM_PROVIDER,
@@ -625,6 +701,10 @@ async def _run_impl(
             "resume": resume,
             "environment": environment,
         },
+        # ARC-02: every setting the run used, secrets removed.
+        "effective_config": effective_config(),
+        # REL-05: which model answered each call, and where it fell back.
+        "llm_call_ledger": call_ledger.summarize(call_ledger.current()),
         "runtime_seconds": round(time.time() - started, 2),
         "validation": validation,
         "documents": {"requirements": dataset["documents"], "evidence": dataset["evidence_documents"]},
@@ -691,6 +771,7 @@ async def run(
     batch_size: int,
     resume: bool,
     retrieval_backend: str = "auto",
+    verification_path: str = "batch",
 ) -> dict[str, Any]:
     """Run Nova under one root trace and persist its reproducibility settings."""
     benchmark_run_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S.%fZ")
@@ -715,7 +796,7 @@ async def run(
                 "retrieval_backend": retrieval_backend,
                 "resume": resume,
             },
-        ) as span:
+        ) as span, call_ledger.recording():
             result = await _run_impl(
                 mode=mode,
                 model=model,
@@ -729,6 +810,7 @@ async def run(
                 resume=resume,
                 retrieval_backend=retrieval_backend,
                 run_id=benchmark_run_id,
+                verification_path=verification_path,
             )
             set_span_outputs(span, {
                 "run_id": result["run_id"],
@@ -769,14 +851,28 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--verification-model", default=None, help="Defaults to the primary model")
     parser.add_argument("--verification-thinking-level", default=None)
     parser.add_argument("--batch-size", type=int, default=4)
+    parser.add_argument("--verification-path", choices=["batch", "production"], default="batch",
+                        help="batch: batched verification (historic benchmarks); production: the "
+                             "single-requirement path the audit pipeline runs (EVA-04). "
+                             "--batch-size then sets its concurrency.")
     parser.add_argument("--retrieval-backend", choices=["auto", "local", "databricks"], default="auto")
-    parser.add_argument("--no-resume", action="store_true", default=True,
-                        help="Fresh extraction (default); old contracts are not reused.")
+    # ARC-02: --no-resume defaulted to True, so resuming was impossible. Fresh
+    # extraction stays the default; --resume reuses a completed extraction and
+    # must be kept out of protocol arms.
+    parser.add_argument("--resume", action="store_true", default=False,
+                        help="Reuse a completed extraction for this model pair (not for protocol arms).")
+    parser.add_argument("--no-resume", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--validate-only", action="store_true")
     return parser.parse_args()
 
 
 def main() -> int:
+    # REL-05: a cp1252 Windows console raised 'charmap' errors mid-run.
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError):
+            pass
     args = parse_args()
     if args.validate_only:
         result = validate()
@@ -811,8 +907,9 @@ def main() -> int:
         verification_model,
         args.verification_thinking_level,
         args.batch_size,
-        not args.no_resume,
+        args.resume and not args.no_resume,
         args.retrieval_backend,
+        verification_path=args.verification_path,
     ))
     return 0
 

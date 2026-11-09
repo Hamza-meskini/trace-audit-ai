@@ -20,11 +20,23 @@ from app.schemas.verification_result import (
     VerificationAnalysisResult,
     BatchVerificationResult,
 )
-from app.services.llm_client import LLMUnavailableError, generate_structured
+from app.services.llm_client import LLMUnavailableError
+# ARC-01: verification calls go through the durable answer cache, so a
+# verdict-logic change re-runs only the deterministic logic.
+from app.services.llm_response_cache import generate_structured
 from app.services.observability import observation_context
+from app.services.prompt_fencing import (
+    FENCE_NOTE,
+    INJECTION_NOTE,
+    fence_evidence,
+    instruction_flags,
+    scrub_label,
+)
 from app.services.units import (
     UnitCompatibility,
+    convert_difference,
     convert_value,
+    is_difference_parameter,
     unit_compatibility,
 )
 from app.services.evidence_qualification import (
@@ -136,6 +148,13 @@ def _logic_retry_condition_ids(
     """Identify unresolved Boolean gates that deserve one focused LLM pass."""
     by_id = {result.condition_id: result for result in results}
     unresolved = {"PENDING", "UNTESTED", "INCONCLUSIVE"}
+    # REL-04: a first pass that found no test of any condition is a legitimate
+    # MISSING result, not an unresolved gate. Repairing it never changed it.
+    expected_ids = {condition.condition_id for condition in contract.atomic_conditions}
+    if expected_ids and expected_ids <= set(by_id) and all(
+        by_id[condition_id].status == "UNTESTED" for condition_id in expected_ids
+    ):
+        return []
     if contract.logic_tree is not None:
         from app.schemas.contract_logic import leaf_ids, supporting_path
 
@@ -143,6 +162,11 @@ def _logic_retry_condition_ids(
             op = node.get("operator")
             if op == "ANY_OF":
                 governed = leaf_ids(node)
+                # REL-04: an alternative set with a supporting path is a
+                # legitimate satisfied state; its unused branches need no repair.
+                proof, missing = supporting_path(node, by_id)
+                if not missing and any(r.status == "PROVEN" for r in proof):
+                    return []
                 if any(i not in by_id or by_id[i].status in unresolved for i in governed):
                     return governed
             if op == "IF_THEN":
@@ -164,7 +188,7 @@ def _logic_retry_condition_ids(
     if contract.logic.operator == "ANY_OF":
         governed = list(contract.logic.condition_ids)
         statuses = {(by_id.get(item).status if by_id.get(item) else "UNTESTED") for item in governed}
-        if statuses & unresolved:
+        if "PROVEN" not in statuses and statuses & unresolved:
             # Revisit the whole alternative set so the model can select a
             # proven path and mark genuinely unused branches NOT_APPLICABLE.
             return governed
@@ -386,6 +410,20 @@ def _independent_secondary_model(primary_model: str) -> Optional[str]:
         for candidate in settings.DATABRICKS_FALLBACK_MODELS
         if candidate and candidate.lower() != primary_model.lower()
     ), None)
+
+
+def adjudicator_configuration_warning() -> Optional[str]:
+    """ACC-07: say so at startup when the enabled adjudicator can never run."""
+    if not settings.SECONDARY_ADJUDICATOR_ENABLED:
+        return None
+    if _independent_secondary_model(settings.LLM_MODEL) is not None:
+        return None
+    return (
+        "SECONDARY_ADJUDICATOR_ENABLED is true but no adjudicator model differs from the primary "
+        f"model {settings.LLM_MODEL!r} (SECONDARY_ADJUDICATOR_MODEL is empty and "
+        "DATABRICKS_FALLBACK_MODELS has no other model), so secondary adjudication never runs. "
+        "Set SECONDARY_ADJUDICATOR_MODEL or disable the adjudicator."
+    )
 
 
 def _focused_evidence_catalog(
@@ -830,7 +868,10 @@ def _structured_numeric_status(
         except ValueError:
             observed_value = None
     if observed_value is not None:
-        observed_value = convert_value(observed_value, result.observed_unit, condition.unit)
+        # ACC-12: a tolerance/deviation is a difference, converted without the
+        # temperature offset.
+        converter = convert_difference if is_difference_parameter(condition.parameter) else convert_value
+        observed_value = converter(observed_value, result.observed_unit, condition.unit)
         if observed_value is None and observed_value_was_numeric:
             return None, (
                 "Recognized units could not be converted safely; semantic status was preserved."
@@ -896,6 +937,20 @@ def _record_reconciliation_diagnostics(
     })
 
 
+def _quals_with_chunks(qualifications: list, chunks: list[dict[str, Any]]) -> list[tuple]:
+    """Pair each qualification with its chunk by evidence ID (ACC-11).
+
+    qualify_evidence_chunks skips specification chunks, so a positional zip
+    would pair a qualification with the wrong chunk after the first skip.
+    """
+    pairs = []
+    for qualification in qualifications:
+        match = re.fullmatch(r"E(\d+)", str(getattr(qualification, "evidence_id", "") or ""))
+        if match and 1 <= int(match.group(1)) <= len(chunks):
+            pairs.append((qualification, chunks[int(match.group(1)) - 1]))
+    return pairs
+
+
 def _audit_llm_condition_metadata(
     contract: RequirementContract,
     analysis: VerificationAnalysisResult,
@@ -910,7 +965,8 @@ def _audit_llm_condition_metadata(
     conditions = {condition.condition_id: condition for condition in contract.atomic_conditions}
 
     for result in analysis.condition_results:
-        result.validation_state = "UNRESOLVED"
+        result.validation_state = "UNRESOLVED"  # unconfirmed default, not a marker
+        result.validation_floor = None
         result.validation_notes = []
         condition = conditions.get(result.condition_id)
         if condition is None:
@@ -933,7 +989,7 @@ def _audit_llm_condition_metadata(
             result.relationship = "NOT_ADDRESSED"
             if result.evidence_value_role in ("OBSERVED", "UNCLEAR"):
                 result.evidence_value_role = "NOT_ADDRESSED"
-            result.validation_state = "VALID"
+            result.mark_validation("VALID")
             result.validation_notes.append(
                 f"Normalized impossible {previous_status}/NOT_EXECUTED combination to UNTESTED; "
                 "no executed observation exists to prove or fail the condition."
@@ -956,7 +1012,7 @@ def _audit_llm_condition_metadata(
         )
         decisive = result.status in ("PROVEN", "FAILED")
         if structured_problem:
-            result.validation_state = (
+            result.mark_validation(
                 "CONTRADICTED"
                 if problem_state == "CONTRADICTED" and decisive
                 else "UNRESOLVED"
@@ -967,19 +1023,23 @@ def _audit_llm_condition_metadata(
             and decisive
             and result.status != structured_status
         ):
-            result.validation_state = "CONTRADICTED"
+            result.mark_validation("CONTRADICTED")
             result.validation_notes.append(
                 f"Structured observed values do not support semantic status {result.status}; "
                 "the LLM status was preserved."
             )
         elif structured_status == result.status:
-            result.validation_state = "VALID"
+            result.mark_validation("VALID")
             result.validation_notes.append("Structured observed values confirm the semantic status.")
         elif (
             is_numeric
             and result.status in ("PROVEN", "FAILED", "PENDING")
             and result.validation_state not in ("VALID", "CONTRADICTED")
         ):
+            # TRU-03: for PENDING this is a marker a later qualification VALID
+            # must not erase. PROVEN numerics are guarded by ACC-02 review flags.
+            if result.status == "PENDING":
+                result.mark_validation("UNRESOLVED")
             result.validation_notes.append(
                 "Structured numeric fields were insufficient for an independent consistency check; "
                 "semantic status was preserved."
@@ -991,7 +1051,7 @@ def _audit_llm_condition_metadata(
             result.relationship == "NOT_ADDRESSED"
             or result.evidence_value_role == "NOT_ADDRESSED"
         ):
-            result.validation_state = "CONTRADICTED"
+            result.mark_validation("CONTRADICTED")
             result.validation_notes.append(
                 "PENDING conflicts with structured NOT_ADDRESSED metadata; the LLM status was preserved."
             )
@@ -1000,7 +1060,7 @@ def _audit_llm_condition_metadata(
             "PARTIALLY_EXECUTED",
             "EXECUTED",
         ):
-            result.validation_state = "CONTRADICTED"
+            result.mark_validation("CONTRADICTED")
             result.validation_notes.append(
                 "PENDING lacks a partially executed or executed empirical result; "
                 "the semantic status was preserved and must remain under review."
@@ -1015,14 +1075,14 @@ def _audit_llm_condition_metadata(
             previous_status = result.status
             if previous_status in ("PROVEN", "FAILED"):
                 result.status = "INCONCLUSIVE"
-                result.validation_state = "CONTRADICTED"
+                result.mark_validation("CONTRADICTED")
                 result.validation_notes.append(
                     f"Normalized impossible {previous_status}/{result.relationship} combination to "
                     "INCONCLUSIVE; the structured relationship contradicts the semantic status."
                 )
             else:
                 if result.validation_state != "CONTRADICTED":
-                    result.validation_state = "UNRESOLVED"
+                    result.mark_validation("UNRESOLVED")
                 result.validation_notes.append(
                     f"Structured relationship {result.relationship} is inconsistent with status {result.status}; "
                     "semantic status was preserved."
@@ -1033,7 +1093,7 @@ def _audit_llm_condition_metadata(
             or result.evidence_value_role != "OBSERVED"
             or result.relationship != "VIOLATES"
         ):
-            result.validation_state = "CONTRADICTED"
+            result.mark_validation("CONTRADICTED")
             result.validation_notes.append(
                 "FAILED lacks a consistent executed, observed, violating result after LLM adjudication; "
                 "the semantic status was preserved and must remain under review."
@@ -1044,7 +1104,7 @@ def _audit_llm_condition_metadata(
             and condition.requires_visual_evidence
             and result.subject_identity != "CONFIRMED"
         ):
-            result.validation_state = "CONTRADICTED"
+            result.mark_validation("CONTRADICTED")
             result.validation_notes.append(
                 "Visual proof does not confirm the controlled subject identity; the semantic status was preserved."
             )
@@ -1058,7 +1118,7 @@ def _audit_llm_condition_metadata(
             )
             and result.coverage_scope != "ALL_REQUIRED"
         ):
-            result.validation_state = "CONTRADICTED"
+            result.mark_validation("CONTRADICTED")
             result.validation_notes.append(
                 "Visual proof does not establish the complete required population scope; "
                 "the semantic status was preserved."
@@ -1191,6 +1251,16 @@ _STATUS_DECISION_RULES = (
 )
 
 
+def _log_instruction_flags(req_code: str, flagged: dict[str, list[str]]) -> None:
+    """Record instruction-like evidence by pattern name only (never the text)."""
+    if flagged:
+        logger.warning(
+            "Instruction-like text in evidence for %s: %s",
+            req_code,
+            "; ".join(f"{evidence_id}={','.join(flags)}" for evidence_id, flags in sorted(flagged.items())),
+        )
+
+
 def build_verification_prompt(
     contract: RequirementContract,
     evidence_chunks: list[dict[str, Any]],
@@ -1205,8 +1275,9 @@ def build_verification_prompt(
 
     quals = qualify_evidence_chunks(contract, evidence_chunks)
     formatted_evidence = []
+    flagged: dict[str, list[str]] = {}
     for i, (q, c) in enumerate(zip(quals, evidence_chunks), 1):
-        doc_name = c.get("document_name", "Document")
+        doc_name = scrub_label(c.get("document_name", "Document"))
         page = c.get("page_number")
         page_str = f", Page {page}" if page else ""
         content = _isolate_relevant_passage(
@@ -1218,10 +1289,15 @@ def build_verification_prompt(
         metadata = c.get("metadata") or {}
         structure = str(metadata.get("block_type") or "text")
         context_note = "; structural context" if metadata.get("context_only") else ""
+        flags = instruction_flags(content)
+        if flags:
+            flagged[q.evidence_id] = flags
+        flag_note = f"; {INJECTION_NOTE}" if flags else ""
         formatted_evidence.append(
             f"--- [Evidence Excerpt #{i} ({q.evidence_id}): {doc_name}{page_str}; "
-            f"block={structure}{context_note}] ---\n{anno}\n{content}\n"
+            f"block={structure}{context_note}{flag_note}] ---\n{anno}\n{fence_evidence(content)}\n"
         )
+    _log_instruction_flags(contract.req_code, flagged)
 
     evidence_block = "\n".join(formatted_evidence) if formatted_evidence else "[No evidence retrieved]"
     targeted_block = (
@@ -1248,6 +1324,7 @@ def build_verification_prompt(
 {chr(10).join(cond_descriptions)}
 
 Retrieved Technical Evidence:
+{FENCE_NOTE}
 {evidence_block}
 
 Targeted Structured Extraction (advisory summary derived from the excerpts above):
@@ -1383,8 +1460,9 @@ def build_batch_verification_prompt(
 
         quals = qualify_evidence_chunks(contract, evidence_chunks)
         formatted_evidence = []
+        flagged: dict[str, list[str]] = {}
         for j, (q, c) in enumerate(zip(quals, evidence_chunks), 1):
-            doc_name = c.get("document_name", "Document")
+            doc_name = scrub_label(c.get("document_name", "Document"))
             page = c.get("page_number")
             page_str = f", Page {page}" if page else ""
             content = _isolate_relevant_passage(
@@ -1396,10 +1474,15 @@ def build_batch_verification_prompt(
             metadata = c.get("metadata") or {}
             structure = str(metadata.get("block_type") or "text")
             context_note = "; structural context" if metadata.get("context_only") else ""
+            flags = instruction_flags(content)
+            if flags:
+                flagged[q.evidence_id] = flags
+            flag_note = f"; {INJECTION_NOTE}" if flags else ""
             formatted_evidence.append(
                 f"  [Excerpt #{j} ({q.evidence_id}): {doc_name}{page_str}; "
-                f"block={structure}{context_note}]\n  {anno}\n  {content}"
+                f"block={structure}{context_note}{flag_note}]\n  {anno}\n  {fence_evidence(content)}"
             )
+        _log_instruction_flags(contract.req_code, flagged)
         evidence_str = "\n".join(formatted_evidence) if formatted_evidence else "  [No independent evidence retrieved]"
         targeted_str = (
             json.dumps(targeted_extraction, ensure_ascii=False, indent=2)
@@ -1423,7 +1506,7 @@ def build_batch_verification_prompt(
             f"- Specification Clause: {contract.raw_text}\n"
             f"- Regulatory Logic: {_logic_line(contract)}\n"
             f"- Atomic Conditions to Verify:\n{chr(10).join(cond_lines)}\n"
-            f"- Retrieved Technical Evidence:\n{evidence_str}\n"
+            f"- Retrieved Technical Evidence:\n  {FENCE_NOTE}\n{evidence_str}\n"
             f"- Targeted Structured Extraction (advisory; raw excerpts remain authoritative):\n{targeted_str}\n"
         )
 
@@ -1541,7 +1624,7 @@ async def evaluate_batch_verification(
                             contract,
                             c.get("metadata"),
                         )
-                        for q, c in zip(quals, cand_chunks)
+                        for q, c in _quals_with_chunks(quals, cand_chunks)
                     }
                     provisional = VerificationAnalysisResult(
                         status=item_res.status,
@@ -1709,7 +1792,7 @@ async def refine_deferred_verification(
             contract,
             chunk.get("metadata"),
         )
-        for qualification, chunk in zip(qualifications, evidence_chunks)
+        for qualification, chunk in _quals_with_chunks(qualifications, evidence_chunks)
     }
     refined.condition_results, citation_diagnostics = await _ground_condition_citations(
         contract,
@@ -1864,7 +1947,7 @@ async def evaluate_requirement_verification(
                     contract,
                     c.get("metadata"),
                 )
-                for q, c in zip(quals, evidence_chunks)
+                for q, c in _quals_with_chunks(quals, evidence_chunks)
             }
             result.condition_results, citation_diagnostics = await _ground_condition_citations(
                 contract,
@@ -1943,7 +2026,7 @@ async def evaluate_requirement_verification(
                 contract,
                 chunk.get("metadata"),
             )
-            for qualification, chunk in zip(quals, evidence_chunks)
+            for qualification, chunk in _quals_with_chunks(quals, evidence_chunks)
         }
         recovery_analysis.condition_results, citation_diagnostics = (
             await _ground_condition_citations(

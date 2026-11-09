@@ -19,7 +19,7 @@ from app.services.units import (
 )
 
 
-REQ_CODE_REGEX = re.compile(r"\b(REQ[-_]?[A-Za-z0-9_-]*\d+)\b", re.IGNORECASE)
+from app.services.requirement_ids import REQ_CODE_RE as REQ_CODE_REGEX  # noqa: E402,F401
 
 
 ClaimType = Literal[

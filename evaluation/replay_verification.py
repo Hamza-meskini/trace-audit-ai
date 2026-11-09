@@ -39,6 +39,21 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent
 RUNS_DIR = REPO / "evaluation" / "results" / "runs"
 EXPECTATIONS_PATH = REPO / "evaluation" / "replay_expectations.json"
+# EVA-01: committed, gzipped copies of the five saved runs so CI can replay
+# without the git-ignored evaluation/results directory.
+FIXTURES_DIR = REPO / "evaluation" / "fixtures" / "replay"
+
+
+def load_saved_run(run_id: str) -> dict:
+    local = RUNS_DIR / run_id / "results.json"
+    if local.exists():
+        return json.loads(local.read_text(encoding="utf-8"))
+    fixture = FIXTURES_DIR / f"{run_id}.results.json.gz"
+    if fixture.exists():
+        import gzip
+        with gzip.open(fixture, "rt", encoding="utf-8") as handle:
+            return json.load(handle)
+    raise SystemExit(f"{run_id}: no saved run in {RUNS_DIR} and no fixture in {FIXTURES_DIR}")
 DEFAULT_RUNS = (
     "20260915T140120.543292Z",
     "20260915T222056.820191Z",
@@ -167,6 +182,8 @@ settings.DATABRICKS_MLFLOW_TRACING_ENABLED = False
 
 from app.services import llm_client  # noqa: E402
 from app.services import verification_reasoner as vr  # noqa: E402
+sys.path.insert(0, str(REPO / "evaluation"))
+from scoring import auto_close_safety  # noqa: E402
 from app.services.classification import batch_assess_requirements  # noqa: E402
 from app.schemas.verification_result import (  # noqa: E402
     BatchVerificationResult,
@@ -377,7 +394,7 @@ def _derived_statuses(req_items: list[dict], recordings: dict[str, Recording]) -
 
 
 async def replay_run(run_id: str) -> dict:
-    saved = json.loads((RUNS_DIR / run_id / "results.json").read_text(encoding="utf-8"))
+    saved = load_saved_run(run_id)
     if not saved.get("verification_inputs"):
         raise SystemExit(f"{run_id} has no verification_inputs and cannot be replayed")
     rows = {row["requirement_id"]: row for row in saved["requirements"]}
@@ -460,6 +477,10 @@ def summarize(instances: list[dict]) -> dict:
         "recall": per_class,
         "auto_closed": len(auto),
         "auto_closed_correct": sum(item["predicted"] == item["expected"] for item in auto),
+        # EVA-07: the shared scorer's count of every wrong auto-close.
+        "unsafe_auto_closes": auto_close_safety(
+            (item["expected"], item["predicted"], item["review"]) for item in instances
+        )["unsafe_auto_closes"],
         # Protocol metric: an auto-closed SUPPORTED that is wrong.
         "unsafe_false_auto_closes": sum(
             1 for item in auto if item["predicted"] == "SUPPORTED" and item["expected"] != "SUPPORTED"

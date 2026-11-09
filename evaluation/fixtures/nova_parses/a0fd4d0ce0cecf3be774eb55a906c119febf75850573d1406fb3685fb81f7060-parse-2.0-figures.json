@@ -1,0 +1,539 @@
+{
+ "source_sha256": "a0fd4d0ce0cecf3be774eb55a906c119febf75850573d1406fb3685fb81f7060",
+ "parse_version": "2.0",
+ "figure_descriptions": true,
+ "result": {
+  "document": {
+   "elements": [
+    {
+     "bbox": [
+      {
+       "coord": [
+        172,
+        461,
+        734,
+        515
+       ],
+       "page_id": 0
+      }
+     ],
+     "confidence": 1,
+     "content": "NOVA PROGRAM",
+     "description": null,
+     "id": 0,
+     "type": "title"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        172,
+        725,
+        1327,
+        896
+       ],
+       "page_id": 0
+      }
+     ],
+     "confidence": 1,
+     "content": "Nova Manufacturing and Quality\nRequirements",
+     "description": null,
+     "id": 1,
+     "type": "title"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        172,
+        1878,
+        772,
+        1993
+       ],
+       "page_id": 0
+      }
+     ],
+     "confidence": 1,
+     "content": "Domain: Manufacturing quality\nRevision A | Synthetic extraction benchmark",
+     "description": null,
+     "id": 2,
+     "type": "text"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        124,
+        89,
+        870,
+        129
+       ],
+       "page_id": 1
+      }
+     ],
+     "confidence": 1,
+     "content": "Nova Manufacturing and Quality Requirements",
+     "description": null,
+     "id": 3,
+     "type": "page_header"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        1239,
+        98,
+        1528,
+        126
+       ],
+       "page_id": 1
+      }
+     ],
+     "confidence": 1,
+     "content": "Controlled copy | Page 2 of 4",
+     "description": null,
+     "id": 4,
+     "type": "page_number"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        124,
+        271,
+        693,
+        316
+       ],
+       "page_id": 1
+      }
+     ],
+     "confidence": 1,
+     "content": "2. Functional requirements",
+     "description": null,
+     "id": 5,
+     "type": "section_header"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        164,
+        435,
+        729,
+        465
+       ],
+       "page_id": 1
+      }
+     ],
+     "confidence": 1,
+     "content": "REQ-NVA-QLT-001 | Instrument calibration",
+     "description": null,
+     "id": 6,
+     "type": "section_header"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        164,
+        487,
+        1460,
+        554
+       ],
+       "page_id": 1
+      }
+     ],
+     "confidence": 1,
+     "content": "Every instrument used for acceptance measurements shall show its serial number and a calibration expiry date\nlater than the test date.",
+     "description": null,
+     "id": 7,
+     "type": "text"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        164,
+        795,
+        711,
+        828
+       ],
+       "page_id": 1
+      }
+     ],
+     "confidence": 1,
+     "content": "REQ-NVA-QLT-002 | Software traceability",
+     "description": null,
+     "id": 8,
+     "type": "section_header"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        164,
+        847,
+        724,
+        954
+       ],
+       "page_id": 1
+      }
+     ],
+     "confidence": 1,
+     "content": "Each released controller shall record a software\npart number and a build hash that match the\napproved release manifest.",
+     "description": null,
+     "id": 9,
+     "type": "text"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        888,
+        795,
+        1398,
+        828
+       ],
+       "page_id": 1
+      }
+     ],
+     "confidence": 1,
+     "content": "REQ-NVA-QLT-003 | Sampling records",
+     "description": null,
+     "id": 10,
+     "type": "section_header"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        888,
+        847,
+        1490,
+        954
+       ],
+       "page_id": 1
+      }
+     ],
+     "confidence": 1,
+     "content": "For every production lot, the inspection record shall\nidentify the lot, state the sample size, and name the\nsampling plan.",
+     "description": null,
+     "id": 11,
+     "type": "text"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        124,
+        2248,
+        723,
+        2271
+       ],
+       "page_id": 1
+      }
+     ],
+     "confidence": 1,
+     "content": "Synthetic benchmark document - no real product or certification claim",
+     "description": null,
+     "id": 12,
+     "type": "page_footer"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        124,
+        89,
+        870,
+        129
+       ],
+       "page_id": 2
+      }
+     ],
+     "confidence": 1,
+     "content": "Nova Manufacturing and Quality Requirements",
+     "description": null,
+     "id": 13,
+     "type": "page_header"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        1239,
+        98,
+        1528,
+        126
+       ],
+       "page_id": 2
+      }
+     ],
+     "confidence": 1,
+     "content": "Controlled copy | Page 3 of 4",
+     "description": null,
+     "id": 14,
+     "type": "page_number"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        124,
+        271,
+        901,
+        316
+       ],
+       "page_id": 2
+      }
+     ],
+     "confidence": 1,
+     "content": "3. Verification-oriented requirements",
+     "description": null,
+     "id": 15,
+     "type": "section_header"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        124,
+        391,
+        1528,
+        657
+       ],
+       "page_id": 2
+      }
+     ],
+     "confidence": 0.9984,
+     "content": "<table><tr><th>Identifier</th><th>Requirement title</th><th>Normative requirement</th></tr><tr><td>REQ-NVA-QLT-004</td><td>Weld acceptance</td><td>Every inspected busbar weld shall have an effective diameter of at least 4.5 mm, porosity below 8 percent, and no crack visible at 10x magnification.</td></tr><tr><td>REQ-NVA-QLT-005</td><td>Label content</td><td>The product label shall include the hardware revision, software revision, and a machine-readable serial number matching the human-readable serial number.</td></tr></table>",
+     "description": null,
+     "id": 16,
+     "type": "table"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        124,
+        709,
+        399,
+        744
+       ],
+       "page_id": 2
+      }
+     ],
+     "confidence": 1,
+     "content": "Applicability notes",
+     "description": null,
+     "id": 17,
+     "type": "section_header"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        124,
+        826,
+        1528,
+        1013
+       ],
+       "page_id": 2
+      }
+     ],
+     "confidence": 0.9992,
+     "content": "<table><tr><th>Context</th><th>Interpretation</th></tr><tr><td>Unless a requirement states otherwise</td><td>Limits apply to the complete production-intent assembly.</td></tr><tr><td>Use of shall</td><td>The complete sentence is normative; table columns do not split obligations.</td></tr></table>",
+     "description": null,
+     "id": 18,
+     "type": "table"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        124,
+        2250,
+        724,
+        2271
+       ],
+       "page_id": 2
+      }
+     ],
+     "confidence": 1,
+     "content": "Synthetic benchmark document - no real product or certification claim",
+     "description": null,
+     "id": 19,
+     "type": "page_footer"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        124,
+        89,
+        870,
+        129
+       ],
+       "page_id": 3
+      }
+     ],
+     "confidence": 1,
+     "content": "Nova Manufacturing and Quality Requirements",
+     "description": null,
+     "id": 20,
+     "type": "page_header"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        1239,
+        98,
+        1528,
+        129
+       ],
+       "page_id": 3
+      }
+     ],
+     "confidence": 1,
+     "content": "Controlled copy | Page 4 of 4",
+     "description": null,
+     "id": 21,
+     "type": "page_number"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        124,
+        271,
+        777,
+        316
+       ],
+       "page_id": 3
+      }
+     ],
+     "confidence": 1,
+     "content": "4. Normative installation figure",
+     "description": null,
+     "id": 22,
+     "type": "section_header"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        207,
+        451,
+        1447,
+        1188
+       ],
+       "page_id": 3
+      }
+     ],
+     "confidence": 0.9882,
+     "content": "Installation control - REQ-NVA-QLT-006\nINPUT\nOUTPUT\nThe blue sealant bead shall form a continuous closed loop, remain between the two red tolerance boundaries, and show no gap wider than 0.5 mm in the inspection image.",
+     "description": "A diagram illustrates a flow from a blue \"INPUT\" box to a red \"OUTPUT\" box, connected by an arrow.",
+     "id": 23,
+     "type": "figure"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        124,
+        1240,
+        829,
+        1268
+       ],
+       "page_id": 3
+      }
+     ],
+     "confidence": 1,
+     "content": "Figure 4-1. Colored geometry and embedded annotation are normative.",
+     "description": null,
+     "id": 24,
+     "type": "caption"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        172,
+        1813,
+        364,
+        1843
+       ],
+       "page_id": 3
+      }
+     ],
+     "confidence": 1,
+     "content": "Engineering note",
+     "description": null,
+     "id": 25,
+     "type": "section_header"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        172,
+        1890,
+        1103,
+        2000
+       ],
+       "page_id": 3
+      }
+     ],
+     "confidence": 1,
+     "content": "The figure annotation forms part of the controlled requirement baseline.\nColor, direction, sequence, and geometric relationships must be interpreted visually.",
+     "description": null,
+     "id": 26,
+     "type": "text"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        124,
+        2248,
+        724,
+        2274
+       ],
+       "page_id": 3
+      }
+     ],
+     "confidence": 1,
+     "content": "Synthetic benchmark document - no real product or certification claim",
+     "description": null,
+     "id": 27,
+     "type": "page_footer"
+    }
+   ],
+   "pages": [
+    {
+     "id": 0,
+     "image_uri": "fixture://a0fd4d0ce0ce/page-0.png"
+    },
+    {
+     "id": 1,
+     "image_uri": "fixture://a0fd4d0ce0ce/page-1.png"
+    },
+    {
+     "id": 2,
+     "image_uri": "fixture://a0fd4d0ce0ce/page-2.png"
+    },
+    {
+     "id": 3,
+     "image_uri": "fixture://a0fd4d0ce0ce/page-3.png"
+    }
+   ]
+  },
+  "error_status": null,
+  "metadata": {
+   "file_metadata": null,
+   "id": "fixture",
+   "version": "2.0"
+  }
+ }
+}

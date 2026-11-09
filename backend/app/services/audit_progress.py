@@ -41,6 +41,25 @@ def latest(project_id):
     return json.loads(row[0]) if row else None
 
 
+ACTIVE_STATUSES = ("queued", "running", "cancelling")
+
+
+def active_project_ids():
+    """Projects with an audit queued, running or being cancelled."""
+    with _connect() as connection:
+        rows = connection.execute("SELECT project_id, payload FROM runs").fetchall()
+    return [project_id for project_id, payload in rows if json.loads(payload).get("status") in ACTIVE_STATUSES]
+
+
+def forget(project_id):
+    """Delete a project's progress record (its events can quote audit errors)."""
+    with _connect() as connection:
+        connection.execute("DELETE FROM runs WHERE project_id = ?", (project_id,))
+
+
+MAX_REQUEUE_ATTEMPTS = 3
+
+
 def start(project_id, model, thinking_level=None):
     now = datetime.now(timezone.utc).isoformat()
     with _connect() as connection:
@@ -142,7 +161,10 @@ def recover_interrupted(requeue=False):
         for project_id, raw in rows:
             payload = json.loads(raw)
             if payload["status"] in ("running", "cancelling"):
-                if requeue and not payload.get("cancel_requested"):
+                # REL-07: a run that keeps dying (e.g. it crashes the server)
+                # must not be requeued forever.
+                attempts = int(payload.get("attempt") or 0)
+                if requeue and not payload.get("cancel_requested") and attempts < MAX_REQUEUE_ATTEMPTS:
                     payload.update(
                         status="queued",
                         stage="queued",
@@ -153,6 +175,11 @@ def recover_interrupted(requeue=False):
                 else:
                     payload.update(
                         status="interrupted",
-                        error="Server restarted before this audit completed. Start a new run.",
+                        error=(
+                            f"This audit was interrupted {attempts} times and will not be resumed "
+                            "automatically. Completed checkpoints were kept; start a new run."
+                            if requeue and attempts >= MAX_REQUEUE_ATTEMPTS
+                            else "Server restarted before this audit completed. Start a new run."
+                        ),
                     )
                 connection.execute("UPDATE runs SET payload=? WHERE project_id=?", (json.dumps(payload), project_id))

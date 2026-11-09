@@ -1,4 +1,4 @@
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useMemo } from "react";
 import { AlertCircle, ArrowUpDown, Search, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -17,6 +17,7 @@ import { useRequirements } from "@/hooks/use-requirements";
 import { useDocuments } from "@/hooks/use-documents";
 import { isAuditActive, useAuditProgress } from "@/hooks/use-audit";
 import { cn } from "@/lib/utils";
+import { getErrorMessage } from "@/lib/api-client";
 import {
   normalizeRequirementQueueSearch,
   parseRequirementQueueSearch,
@@ -63,7 +64,13 @@ function RequirementsPage() {
   const updateSearch = (patch: RequirementQueueSearch) =>
     navigate({ to: "/requirements", search: { ...search, ...patch }, replace: true });
 
-  const { data: requirementsList, isLoading, isError, refetch } = useRequirements(activeProjectId);
+  const {
+    data: requirementsList,
+    isLoading,
+    isError,
+    error,
+    refetch,
+  } = useRequirements(activeProjectId);
   const { data: auditJob } = useAuditProgress(activeProjectId);
   const auditActive = isAuditActive(auditJob);
 
@@ -114,10 +121,15 @@ function RequirementsPage() {
 
       <Panel bodyClassName="p-4">
         <div className="flex flex-wrap items-center gap-2">
-          <div className="flex flex-wrap rounded-lg border border-border bg-surface p-0.5">
+          <div
+            className="flex flex-wrap rounded-lg border border-border bg-surface p-0.5"
+            role="group"
+            aria-label="Coverage status"
+          >
             {tabs.map((t) => (
               <button
                 key={t}
+                aria-pressed={tab === t}
                 onClick={() => updateSearch({ tab: t })}
                 className={cn(
                   "rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
@@ -220,7 +232,7 @@ function RequirementsPage() {
           <div role="alert" className="flex items-center justify-between gap-4 p-6 text-sm">
             <span className="flex items-center gap-2">
               <AlertCircle className="size-4" />
-              Requirements could not be loaded.
+              Requirements could not be loaded. {getErrorMessage(error)}
             </span>
             <Button variant="outline" size="sm" onClick={() => refetch()}>
               Retry
@@ -289,10 +301,21 @@ function RequirementsPage() {
                           search,
                         })
                       }
-                      className="cursor-pointer border-b border-border/70 transition-colors last:border-0 hover:bg-accent/50"
+                      className="cursor-pointer border-b border-border/70 transition-colors last:border-0 hover:bg-accent/50 focus-within:bg-accent/50"
                     >
                       <td className="whitespace-nowrap px-5 py-3">
-                        <Mono className="text-foreground">{r.req_code}</Mono>
+                        {/* A real link so the queue works with Tab/Enter and
+                            each requirement can be opened in a new tab. */}
+                        <Link
+                          to="/requirements/$id"
+                          params={{ id: r.id }}
+                          search={search}
+                          onClick={(event) => event.stopPropagation()}
+                          className="rounded-sm underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                          aria-label={`Review ${r.req_code}: ${r.title}`}
+                        >
+                          <Mono className="text-foreground">{r.req_code}</Mono>
+                        </Link>
                       </td>
                       <td className="max-w-[420px] px-5 py-3 font-medium">{r.title}</td>
                       <td className="whitespace-nowrap px-5 py-3 text-muted-foreground">

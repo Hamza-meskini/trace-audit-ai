@@ -13,6 +13,12 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, HTMLResponse
 
 from app.config import settings
+from app.services.log_redaction import install_log_redaction
+from app.services.http_security import SecurityMiddleware
+from app.services.identity import request_identity
+
+install_log_redaction()
+
 from app.database import init_db, get_db_context
 from app.api.settings import load_persisted_settings
 
@@ -40,6 +46,18 @@ async def lifespan(app: FastAPI):
     async with get_db_context() as db:
         await load_persisted_settings(db)
 
+    from app.services.verification_reasoner import adjudicator_configuration_warning
+    if (adjudicator_warning := adjudicator_configuration_warning()):
+        logger.warning(adjudicator_warning)
+    from app.services.egress import log_startup_report
+    log_startup_report()
+    from app.services.identity import forwarded_identity_trusted
+    if forwarded_identity_trusted() and not Path(settings.UPLOAD_DIR).is_absolute():
+        # SEC-04: originals on a relative path live on the app's local disk;
+        # their survival across restarts is unverified (DEPLOYMENT.md).
+        logger.warning("UPLOAD_DIR is relative (%s); uploaded originals may not survive an app restart",
+                       settings.UPLOAD_DIR)
+
     audit_worker.start()
     try:
         yield
@@ -55,14 +73,26 @@ app = FastAPI(
     root_path=settings.ROOT_PATH,
 )
 
-# CORS — allow all local development origins (5173, 8080, 3000, etc.)
+# CORS — only the local development frontend calls the API cross-origin
+# (Vite on 5173/8080/3000 -> uvicorn on 8000); the deployed app is
+# same-origin. The frontend never sends credentials, so none are allowed.
+_cors_origins = settings.CORS_ORIGINS or ["http://localhost:5173", "http://localhost:8080", "http://localhost:3000"]
+_cors_origin_regex = r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$" if settings.DEBUG else None
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.CORS_ORIGINS or ["http://localhost:5173", "http://localhost:8080", "http://localhost:3000"],
-    allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$" if settings.DEBUG else None,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=_cors_origins,
+    allow_origin_regex=_cors_origin_regex,
+    allow_credentials=False,
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
+    allow_headers=["Content-Type", "Accept"],
+)
+# Added last, so it runs first: security headers, cross-site write guard and a
+# request-size cap ahead of routing and multipart parsing.
+app.add_middleware(
+    SecurityMiddleware,
+    allowed_origins=_cors_origins,
+    allowed_origin_regex=_cors_origin_regex,
+    max_body_bytes=settings.MAX_REQUEST_BODY_MB * 1024 * 1024,
 )
 
 # Register API routers
@@ -82,16 +112,11 @@ async def health_check():
 
 @app.get("/api/me")
 async def current_user(request: Request):
-    """Expose authenticated user identity from Databricks SSO proxy headers."""
-    user = (
-        request.headers.get("X-Forwarded-User")
-        or request.headers.get("X-Databricks-User")
-        or request.headers.get("X-Forwarded-Email")
-    )
-    if user:
-        email = request.headers.get("X-Forwarded-Email", user)
-        return {"user": user, "username": user, "email": email, "authenticated": True,
-                "provider": "databricks_sso"}
+    """Expose the SSO identity when the Databricks Apps proxy vouches for it."""
+    identity = request_identity(request)
+    if identity.verified:
+        return {"user": identity.user, "username": identity.display, "email": identity.email or identity.user,
+                "authenticated": True, "provider": "databricks_sso"}
     return {"user": "Local reviewer", "username": "Local reviewer", "email": None,
             "authenticated": False, "provider": "local"}
 

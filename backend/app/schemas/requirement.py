@@ -68,7 +68,9 @@ class RequirementCreate(BaseModel):
 
 class RequirementReviewRequest(BaseModel):
     action: Literal["Approved", "Rejected", "Reviewed", "Needs review", "Comment"]
-    reviewer: str = Field(min_length=1, max_length=120)
+    # Display text only when an SSO identity is present; required otherwise
+    # (checked in the endpoint).
+    reviewer: str = Field(default="", max_length=120)
     comment: str = Field(min_length=1, max_length=5000)
     resolution_type: Literal[
         "Confirm AI assessment", "Override verdict", "Evidence issue",

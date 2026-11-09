@@ -9,6 +9,7 @@ points with tripwires for the whole interpreter.
 """
 
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -27,9 +28,20 @@ FIXTURES = (
 )
 
 
+FIXTURES_DIR = REPO / "evaluation" / "fixtures" / "replay"
+
+
+def _run_available(run_id: str) -> bool:
+    return (RUNS_DIR / run_id / "results.json").exists() or (FIXTURES_DIR / f"{run_id}.results.json.gz").exists()
+
+
+@unittest.skipIf(
+    os.environ.get("TRACEAUDIT_REPLAY_IN_SEPARATE_JOB") == "1",
+    "CI runs the replay gate as its own (non-blocking) job",
+)
 @unittest.skipUnless(
-    all((RUNS_DIR / run_id / "results.json").exists() for run_id in FIXTURES),
-    "saved Nova runs are not present (evaluation/results is git-ignored)",
+    all(_run_available(run_id) for run_id in FIXTURES),
+    "saved Nova runs are not present (neither evaluation/results nor evaluation/fixtures/replay)",
 )
 class ReplayFidelityTests(unittest.TestCase):
     def _replay(self, *args: str) -> dict:

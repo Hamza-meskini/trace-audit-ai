@@ -9,12 +9,14 @@ llm_client.resolve_llm_provider — no local copy of the routing rules here.
 from typing import Optional
 from sqlalchemy import select
 from pydantic import BaseModel
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 
 from app.config import settings, SUPPORTED_MODELS, SUPPORTED_THINKING_LEVELS
 from app.database import get_db
 from app.models.setting import AppSetting
 from app.services.llm_client import resolve_llm_provider
+from app.services import audit_progress
+from app.services.identity import forwarded_identity_trusted, request_identity
 
 router = APIRouter(prefix="/settings", tags=["Settings"])
 
@@ -86,9 +88,39 @@ def _available_models() -> list[dict]:
     return SUPPORTED_MODELS
 
 
+def guard_settings_change(request: Request) -> None:
+    """ARC-02: the AI settings are global, so changing them is restricted.
+
+    Behind Databricks Apps SSO only users listed in SETTINGS_ADMINS may change
+    them. Locally (no trusted identity) the route stays open for development;
+    the cross-site write guard still applies. Never while an audit is active:
+    a mid-run switch would mix models inside one run.
+    """
+    if forwarded_identity_trusted():
+        identity = request_identity(request)
+        admins = {name.strip().lower() for name in settings.SETTINGS_ADMINS if name and name.strip()}
+        names = {value.lower() for value in (identity.user, identity.email) if value}
+        if not identity.verified or not (names & admins):
+            raise HTTPException(
+                status_code=403,
+                detail="Only workspace administrators listed in SETTINGS_ADMINS can change the AI settings.",
+            )
+    active = audit_progress.active_project_ids()
+    if active:
+        raise HTTPException(
+            status_code=409,
+            detail=f"{len(active)} audit(s) are running; change the AI settings after they finish.",
+        )
+
+
 @router.post("/ai", response_model=AiSettingsResponse)
-async def update_ai_settings(body: UpdateAiSettingsRequest, db=Depends(get_db, scope="function")):
+async def update_ai_settings(
+    body: UpdateAiSettingsRequest,
+    request: Request,
+    db=Depends(get_db, scope="function"),
+):
     """Update and persist the active LLM model and/or thinking level."""
+    guard_settings_change(request)
     model = settings.LLM_MODEL
     thinking_level = settings.GEMINI_THINKING_LEVEL
 

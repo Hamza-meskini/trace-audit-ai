@@ -36,18 +36,49 @@ SUPPORTED_SUFFIXES = {
 VOLUME_PATH_RE = re.compile(r"^/Volumes/[^/]+/[^/]+/[^/]+(?:/.*)?$")
 
 
+def _span(attrs: list[tuple[str, str | None]], name: str) -> int:
+    value = dict(attrs).get(name)
+    try:
+        return max(1, min(int(str(value).strip()), 100))
+    except (TypeError, ValueError):
+        return 1
+
+
 class _TableHTMLParser(HTMLParser):
+    """Read an HTML table into a rectangular grid.
+
+    ``colspan``/``rowspan`` cells are repeated into every position they cover,
+    so a row never loses the header (or merged group label) that names its
+    column. Rows inside ``<thead>``, or made only of ``<th>`` cells at the top
+    of the table, are header rows.
+    """
+
     def __init__(self) -> None:
         super().__init__()
         self.rows: list[list[str]] = []
-        self._row: list[str] | None = None
+        self.header_rows = 0
+        self.merged_cells = 0
+        self._row: list[tuple[str, int, int]] | None = None
+        self._row_all_th = True
+        self._row_in_thead = False
         self._cell: list[str] | None = None
+        self._cell_spans = (1, 1)
+        self._cell_is_th = False
+        self._in_thead = False
+        self._header_closed = False
+        self._carry: dict[int, tuple[str, int]] = {}  # column -> (text, rows left)
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
-        if tag == "tr":
+        if tag == "thead":
+            self._in_thead = True
+        elif tag == "tr":
             self._row = []
+            self._row_all_th = True
+            self._row_in_thead = self._in_thead
         elif tag in {"td", "th"} and self._row is not None:
             self._cell = []
+            self._cell_spans = (_span(attrs, "colspan"), _span(attrs, "rowspan"))
+            self._cell_is_th = tag == "th"
         elif tag == "br" and self._cell is not None:
             self._cell.append(" ")
 
@@ -56,22 +87,77 @@ class _TableHTMLParser(HTMLParser):
             self._cell.append(data)
 
     def handle_endtag(self, tag: str) -> None:
-        if tag in {"td", "th"} and self._row is not None and self._cell is not None:
-            self._row.append(" ".join("".join(self._cell).split()))
+        if tag == "thead":
+            self._in_thead = False
+        elif tag in {"td", "th"} and self._row is not None and self._cell is not None:
+            colspan, rowspan = self._cell_spans
+            self._row.append((" ".join("".join(self._cell).split()), colspan, rowspan))
+            self._row_all_th = self._row_all_th and self._cell_is_th
+            if colspan > 1 or rowspan > 1:
+                self.merged_cells += 1
             self._cell = None
         elif tag == "tr" and self._row is not None:
-            if any(self._row):
-                self.rows.append(self._row)
+            self._finish_row()
             self._row = None
 
+    def _finish_row(self) -> None:
+        assert self._row is not None
+        carried = self._carry          # cells spanning down from earlier rows
+        self._carry = {}
+        placed: dict[int, str] = {}
+        column = 0
+        for text, colspan, rowspan in self._row:
+            while column in carried:
+                column += 1
+            for offset in range(colspan):
+                placed[column + offset] = text
+                if rowspan > 1:
+                    self._carry[column + offset] = (text, rowspan - 1)
+            column += colspan
+        for col, (text, remaining) in carried.items():
+            placed.setdefault(col, text)
+            if remaining > 1:
+                self._carry[col] = (text, remaining - 1)
+        width = max(placed, default=-1) + 1
+        grid = [placed.get(index, "") for index in range(width)]
+        if not any(grid):
+            return
+        is_header = (self._row_in_thead or self._row_all_th) and not self._header_closed
+        if is_header:
+            self.header_rows += 1
+        else:
+            self._header_closed = True
+        self.rows.append(grid)
 
-def _table_rows(value: str) -> list[list[str]]:
+
+def _parse_table(value: str) -> _TableHTMLParser | None:
     parser = _TableHTMLParser()
     try:
         parser.feed(value)
     except Exception:
-        return []
-    return parser.rows
+        return None
+    return parser
+
+
+def _table_rows(value: str) -> list[list[str]]:
+    parser = _parse_table(value)
+    return parser.rows if parser else []
+
+
+def table_header_path(rows: list[list[str]], header_rows: int) -> list[str]:
+    """One label per column joining its stacked header cells (``Limits > Max > V``)."""
+    if header_rows <= 0 or not rows:
+        return list(rows[0]) if rows else []
+    width = max(len(row) for row in rows)
+    path: list[str] = []
+    for column in range(width):
+        parts: list[str] = []
+        for row in rows[:header_rows]:
+            cell = row[column] if column < len(row) else ""
+            if cell and (not parts or parts[-1] != cell):
+                parts.append(cell)
+        path.append(" > ".join(parts))
+    return path
 
 
 def _sha256(file_path: str | Path) -> str:
@@ -186,6 +272,47 @@ def _databricks_clients() -> tuple[Any, Any]:
             "Databricks document parsing dependencies are missing; install backend/requirements.txt"
         ) from exc
     return sql, WorkspaceClient
+
+
+def delete_remote_artifacts(source_sha256: str) -> int:
+    """Delete the parsed figure images kept in the Volume for one source file.
+
+    The uploaded input copy is already removed after each parse; the image
+    folder ``<volume>/auditrace-document-ai-images/<sha256>`` persists. Returns
+    the number of files deleted (0 when the folder does not exist).
+    """
+    if not re.fullmatch(r"[0-9a-f]{64}", source_sha256 or ""):
+        raise ValueError("source_sha256 must be a SHA-256 hex digest")
+    _, workspace_client_cls = _databricks_clients()
+    host, token, _warehouse_id, volume = _document_ai_config()
+    image_dir = f"{volume}/auditrace-document-ai-images/{source_sha256}"
+    workspace = workspace_client_cls(host=f"https://{host}", token=token)
+    deleted = 0
+    directories = [image_dir]
+    pending = [image_dir]
+    while pending:
+        current = pending.pop()
+        try:
+            entries = list(workspace.files.list_directory_contents(current))
+        except Exception as exc:
+            if current == image_dir and (
+                "NOT_FOUND" in str(exc) or "404" in str(exc) or type(exc).__name__ == "NotFound"
+            ):
+                return 0
+            raise
+        for entry in entries:
+            path = str(getattr(entry, "path", "") or "")
+            if not path.startswith(image_dir + "/"):
+                continue
+            if getattr(entry, "is_directory", False):
+                directories.append(path)
+                pending.append(path)
+            else:
+                workspace.files.delete(path)
+                deleted += 1
+    for directory in reversed(directories):
+        workspace.files.delete_directory(directory)
+    return deleted
 
 
 def _run_remote_parse(file_path: str, source_sha256: str) -> dict[str, Any]:
@@ -332,6 +459,66 @@ def _bbox(raw_bbox: Any) -> tuple[int | None, BoundingBox | None]:
     return (int(page_id) + 1 if isinstance(page_id, int) else None), box
 
 
+def _page_point_scale(file_path: str, raw_elements: list[Any]) -> dict[str, Any] | None:
+    """Pixels-per-point of ai_parse_document boxes, measured against the PDF itself.
+
+    ai_parse_document reports boxes in the pixels of the page image it
+    rendered, not in PDF points (Nova: 1653x2278 boxes on 595x842 pages), so
+    figure crops and on-page highlights land in the wrong place. The PDF's own
+    text layer is the ruler: each text element whose first line occurs exactly
+    once on its page gives one measurement (box centre over located centre),
+    and the median is used. Returns None for non-PDFs and for pages without a
+    usable text layer (scans), where boxes stay in image pixels.
+    """
+    if Path(file_path).suffix.lower() != ".pdf":
+        return None
+    try:
+        import pymupdf
+    except ImportError:  # pragma: no cover
+        try:
+            import fitz as pymupdf  # type: ignore[no-redef]
+        except ImportError:
+            return None
+    x_ratios: list[float] = []
+    y_ratios: list[float] = []
+    try:
+        with pymupdf.open(file_path) as document:
+            for raw in raw_elements:
+                if not isinstance(raw, dict) or str(raw.get("type") or "") not in {"text", "title", "section_header"}:
+                    continue
+                entries = raw.get("bbox") if isinstance(raw.get("bbox"), list) else []
+                first = entries[0] if entries and isinstance(entries[0], dict) else {}
+                coord, page_id = first.get("coord"), first.get("page_id")
+                if not isinstance(coord, list) or len(coord) != 4 or not isinstance(page_id, int):
+                    continue
+                if not 0 <= page_id < len(document):
+                    continue
+                needle = html.unescape(str(raw.get("content") or "")).strip().split("\n")[0][:40]
+                if len(needle) < 12:
+                    continue
+                hits = document[page_id].search_for(needle)
+                if len(hits) != 1:
+                    continue
+                located = hits[0]
+                if located.x0 + located.x1 > 2 and located.y0 + located.y1 > 2:
+                    x_ratios.append((coord[0] + coord[2]) / (located.x0 + located.x1))
+                    y_ratios.append((coord[1] + coord[3]) / (located.y0 + located.y1))
+                if len(x_ratios) >= 40:
+                    break
+    except Exception as exc:  # A damaged PDF must not fail the parse.
+        logger.warning("Could not measure parse box scale for %s: %s", file_path, exc)
+        return None
+    if len(x_ratios) < 3:
+        return None
+    x_ratios.sort()
+    y_ratios.sort()
+    return {
+        "x": x_ratios[len(x_ratios) // 2],
+        "y": y_ratios[len(y_ratios) // 2],
+        "anchors": len(x_ratios),
+    }
+
+
 def _adapt_parse_result(
     result: dict[str, Any],
     *,
@@ -352,6 +539,7 @@ def _adapt_parse_result(
     elements: list[DocumentElement] = []
     counts: dict[str, int] = {}
     skipped_layout_markers = 0
+    box_scale = _page_point_scale(file_path, raw_elements)
     type_map = {
         "title": "title",
         "section_header": "heading",
@@ -376,6 +564,11 @@ def _adapt_parse_result(
         if element_type != "figure" and not content:
             continue
         page_number, box = _bbox(raw.get("bbox"))
+        if box is not None and box_scale:
+            box = BoundingBox(
+                box.x0 / box_scale["x"], box.y0 / box_scale["y"],
+                box.x1 / box_scale["x"], box.y1 / box_scale["y"],
+            )
         page_id = page_number - 1 if page_number else None
         if element_type in {"title", "heading"} and content:
             if element_type == "title":
@@ -391,7 +584,12 @@ def _adapt_parse_result(
         }
         if element_type == "table":
             metadata["raw_html"] = content
-            metadata["rows"] = _table_rows(content)
+            table = _parse_table(content)
+            metadata["rows"] = table.rows if table else []
+            if table and (table.header_rows > 1 or table.merged_cells):
+                metadata["header_rows"] = table.header_rows
+                metadata["merged_cells"] = table.merged_cells
+                metadata["header_path"] = table_header_path(table.rows, table.header_rows)
         if element_type == "figure":
             metadata["visual_description"] = description
 
@@ -405,10 +603,13 @@ def _adapt_parse_result(
                     break
                 if prior.element_type != "figure" or prior.metadata.get("caption"):
                     continue
+                # The window was tuned in image pixels; keep it when boxes
+                # are in PDF points.
+                per_point = box_scale["y"] if box_scale else 1.0
                 close_below = (
                     prior.bbox is not None
                     and box is not None
-                    and -8 <= box.y0 - prior.bbox.y1 <= 180
+                    and -8 / per_point <= box.y0 - prior.bbox.y1 <= 180 / per_point
                 )
                 immediately_follows = prior is elements[-1] and (prior.bbox is None or box is None)
                 if close_below or immediately_follows:
@@ -443,6 +644,13 @@ def _adapt_parse_result(
         ),
         "page_parse_errors": errors,
         "skipped_layout_markers": skipped_layout_markers,
+        # "pdf_points" when boxes were rescaled from image pixels using the
+        # PDF's text layer; "image_pixels" when no measurement was possible.
+        "bbox_coordinate_space": "pdf_points" if box_scale else "image_pixels",
+        "bbox_pixels_per_point": (
+            {"x": round(box_scale["x"], 4), "y": round(box_scale["y"], 4), "anchors": box_scale["anchors"]}
+            if box_scale else None
+        ),
         "databricks_parse_cache_path": str(cache_path),
         "databricks_cache_hit": cache_hit,
     }

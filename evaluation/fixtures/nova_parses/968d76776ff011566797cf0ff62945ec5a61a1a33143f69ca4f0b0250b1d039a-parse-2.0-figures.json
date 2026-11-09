@@ -1,0 +1,539 @@
+{
+ "source_sha256": "968d76776ff011566797cf0ff62945ec5a61a1a33143f69ca4f0b0250b1d039a",
+ "parse_version": "2.0",
+ "figure_descriptions": true,
+ "result": {
+  "document": {
+   "elements": [
+    {
+     "bbox": [
+      {
+       "coord": [
+        172,
+        461,
+        734,
+        515
+       ],
+       "page_id": 0
+      }
+     ],
+     "confidence": 1,
+     "content": "NOVA PROGRAM",
+     "description": null,
+     "id": 0,
+     "type": "title"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        172,
+        725,
+        1479,
+        896
+       ],
+       "page_id": 0
+      }
+     ],
+     "confidence": 1,
+     "content": "Nova Environmental and Mechanical\nRequirements",
+     "description": null,
+     "id": 1,
+     "type": "title"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        172,
+        1878,
+        772,
+        1993
+       ],
+       "page_id": 0
+      }
+     ],
+     "confidence": 1,
+     "content": "Domain: Environmental qualification\nRevision A | Synthetic extraction benchmark",
+     "description": null,
+     "id": 2,
+     "type": "text"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        124,
+        89,
+        938,
+        129
+       ],
+       "page_id": 1
+      }
+     ],
+     "confidence": 1,
+     "content": "Nova Environmental and Mechanical Requirements",
+     "description": null,
+     "id": 3,
+     "type": "page_header"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        1239,
+        98,
+        1528,
+        126
+       ],
+       "page_id": 1
+      }
+     ],
+     "confidence": 1,
+     "content": "Controlled copy | Page 2 of 4",
+     "description": null,
+     "id": 4,
+     "type": "page_number"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        124,
+        271,
+        693,
+        316
+       ],
+       "page_id": 1
+      }
+     ],
+     "confidence": 1,
+     "content": "2. Functional requirements",
+     "description": null,
+     "id": 5,
+     "type": "section_header"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        164,
+        435,
+        681,
+        465
+       ],
+       "page_id": 1
+      }
+     ],
+     "confidence": 1,
+     "content": "REQ-NVA-ENV-001 | Ingress protection",
+     "description": null,
+     "id": 6,
+     "type": "section_header"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        164,
+        487,
+        1098,
+        515
+       ],
+       "page_id": 1
+      }
+     ],
+     "confidence": 1,
+     "content": "Connector J17 shall remain IP67 after immersion in 1 m of water for 30 minutes.",
+     "description": null,
+     "id": 7,
+     "type": "text"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        164,
+        795,
+        708,
+        826
+       ],
+       "page_id": 1
+      }
+     ],
+     "confidence": 1,
+     "content": "REQ-NVA-ENV-002 | Vibration endurance",
+     "description": null,
+     "id": 8,
+     "type": "section_header"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        164,
+        847,
+        736,
+        954
+       ],
+       "page_id": 1
+      }
+     ],
+     "confidence": 1,
+     "content": "The enclosure shall withstand 30 g RMS random\nvibration for 8 hours per axis without loss of\nelectrical continuity.",
+     "description": null,
+     "id": 9,
+     "type": "text"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        890,
+        795,
+        1401,
+        826
+       ],
+       "page_id": 1
+      }
+     ],
+     "confidence": 1,
+     "content": "REQ-NVA-ENV-003 | Mechanical shock",
+     "description": null,
+     "id": 10,
+     "type": "section_header"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        890,
+        847,
+        1487,
+        954
+       ],
+       "page_id": 1
+      }
+     ],
+     "confidence": 1,
+     "content": "Following three 50 g half-sine shocks on each axis,\nno fastener shall loosen and the enclosure shall\nshow no crack longer than 2 mm.",
+     "description": null,
+     "id": 11,
+     "type": "text"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        126,
+        2250,
+        723,
+        2269
+       ],
+       "page_id": 1
+      }
+     ],
+     "confidence": 1,
+     "content": "Synthetic benchmark document - no real product or certification claim",
+     "description": null,
+     "id": 12,
+     "type": "page_footer"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        124,
+        89,
+        938,
+        129
+       ],
+       "page_id": 2
+      }
+     ],
+     "confidence": 1,
+     "content": "Nova Environmental and Mechanical Requirements",
+     "description": null,
+     "id": 13,
+     "type": "page_header"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        1239,
+        98,
+        1528,
+        124
+       ],
+       "page_id": 2
+      }
+     ],
+     "confidence": 1,
+     "content": "Controlled copy | Page 3 of 4",
+     "description": null,
+     "id": 14,
+     "type": "page_number"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        124,
+        271,
+        901,
+        316
+       ],
+       "page_id": 2
+      }
+     ],
+     "confidence": 1,
+     "content": "3. Verification-oriented requirements",
+     "description": null,
+     "id": 15,
+     "type": "section_header"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        124,
+        391,
+        1528,
+        688
+       ],
+       "page_id": 2
+      }
+     ],
+     "confidence": 0.9989,
+     "content": "<table><tr><th>Identifier</th><th>Requirement title</th><th>Normative requirement</th></tr><tr><td>REQ-NVA-ENV-004</td><td>Salt-mist resistance</td><td>After 96 hours of salt-mist exposure, connector contact resistance shall remain below 15 mOhm, sealing surfaces shall show no red corrosion, and labels shall remain legible.</td></tr><tr><td>REQ-NVA-ENV-005</td><td>Mounting integrity</td><td>Each of the four mounting bolts shall be tightened to 22 Nm, marked with torque witness paint, and retain at least 18 Nm after vibration.</td></tr></table>",
+     "description": null,
+     "id": 16,
+     "type": "table"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        124,
+        737,
+        399,
+        772
+       ],
+       "page_id": 2
+      }
+     ],
+     "confidence": 1,
+     "content": "Applicability notes",
+     "description": null,
+     "id": 17,
+     "type": "section_header"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        124,
+        854,
+        1528,
+        1041
+       ],
+       "page_id": 2
+      }
+     ],
+     "confidence": 0.9992,
+     "content": "<table><tr><th>Context</th><th>Interpretation</th></tr><tr><td>Unless a requirement states otherwise</td><td>Limits apply to the complete production-intent assembly.</td></tr><tr><td>Use of shall</td><td>The complete sentence is normative; table columns do not split obligations.</td></tr></table>",
+     "description": null,
+     "id": 18,
+     "type": "table"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        124,
+        2250,
+        724,
+        2271
+       ],
+       "page_id": 2
+      }
+     ],
+     "confidence": 1,
+     "content": "Synthetic benchmark document - no real product or certification claim",
+     "description": null,
+     "id": 19,
+     "type": "page_footer"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        124,
+        89,
+        938,
+        129
+       ],
+       "page_id": 3
+      }
+     ],
+     "confidence": 1,
+     "content": "Nova Environmental and Mechanical Requirements",
+     "description": null,
+     "id": 20,
+     "type": "page_header"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        1239,
+        98,
+        1528,
+        129
+       ],
+       "page_id": 3
+      }
+     ],
+     "confidence": 1,
+     "content": "Controlled copy | Page 4 of 4",
+     "description": null,
+     "id": 21,
+     "type": "page_number"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        124,
+        269,
+        777,
+        316
+       ],
+       "page_id": 3
+      }
+     ],
+     "confidence": 1,
+     "content": "4. Normative installation figure",
+     "description": null,
+     "id": 22,
+     "type": "section_header"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        207,
+        451,
+        1447,
+        1188
+       ],
+       "page_id": 3
+      }
+     ],
+     "confidence": 0.9884,
+     "content": "Installation control - REQ-NVA-ENV-006\nINPUT\nOUTPUT\nWith the enclosure mounted in vehicle orientation, the drain slot shall face downward, remain outside the gasket boundary, and provide an unobstructed opening of at least 18 mm2.",
+     "description": "A diagram shows a blue \"INPUT\" box connected by an arrow to a red \"OUTPUT\" box, with text describing the enclosure's orientation.",
+     "id": 23,
+     "type": "figure"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        124,
+        1240,
+        830,
+        1268
+       ],
+       "page_id": 3
+      }
+     ],
+     "confidence": 1,
+     "content": "Figure 4-1. Colored geometry and embedded annotation are normative.",
+     "description": null,
+     "id": 24,
+     "type": "caption"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        172,
+        1813,
+        364,
+        1843
+       ],
+       "page_id": 3
+      }
+     ],
+     "confidence": 1,
+     "content": "Engineering note",
+     "description": null,
+     "id": 25,
+     "type": "section_header"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        172,
+        1890,
+        1103,
+        2000
+       ],
+       "page_id": 3
+      }
+     ],
+     "confidence": 1,
+     "content": "The figure annotation forms part of the controlled requirement baseline.\nColor, direction, sequence, and geometric relationships must be interpreted visually.",
+     "description": null,
+     "id": 26,
+     "type": "text"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        124,
+        2248,
+        724,
+        2274
+       ],
+       "page_id": 3
+      }
+     ],
+     "confidence": 1,
+     "content": "Synthetic benchmark document - no real product or certification claim",
+     "description": null,
+     "id": 27,
+     "type": "page_footer"
+    }
+   ],
+   "pages": [
+    {
+     "id": 0,
+     "image_uri": "fixture://968d76776ff0/page-0.png"
+    },
+    {
+     "id": 1,
+     "image_uri": "fixture://968d76776ff0/page-1.png"
+    },
+    {
+     "id": 2,
+     "image_uri": "fixture://968d76776ff0/page-2.png"
+    },
+    {
+     "id": 3,
+     "image_uri": "fixture://968d76776ff0/page-3.png"
+    }
+   ]
+  },
+  "error_status": null,
+  "metadata": {
+   "file_metadata": null,
+   "id": "fixture",
+   "version": "2.0"
+  }
+ }
+}

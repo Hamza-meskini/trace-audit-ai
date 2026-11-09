@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   AlertCircle,
@@ -8,14 +8,40 @@ import {
   FileText,
   Image,
   Loader2,
+  Quote,
   Table2,
 } from "lucide-react";
-import { api, type BlockMetadata, type DocumentBlock } from "@/lib/api-client";
+import { api, getErrorMessage, type BlockMetadata, type DocumentBlock } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { citationPattern, containsCitation, splitByCitation } from "@/lib/highlight";
+
+function Highlighted({ text, pattern }: { text: string; pattern: RegExp | null }) {
+  return (
+    <>
+      {splitByCitation(text, pattern).map((segment, i) =>
+        segment.match ? (
+          <mark key={i} className="rounded-sm bg-warning/30 px-0.5 text-foreground">
+            {segment.text}
+          </mark>
+        ) : (
+          segment.text
+        ),
+      )}
+    </>
+  );
+}
 
 /** Render only text nodes, never HTML from a document or an LLM. */
-export function StructuredText({ text }: { text: string }) {
+export function StructuredText({
+  text,
+  highlight,
+}: {
+  text: string;
+  /** Cited span to mark, matched case- and whitespace-insensitively. */
+  highlight?: string | null | undefined;
+}) {
+  const pattern = citationPattern(highlight);
   const lines = text.split("\n");
   const groups: { table: boolean; lines: string[] }[] = [];
   for (const line of lines) {
@@ -30,7 +56,7 @@ export function StructuredText({ text }: { text: string }) {
         if (!group.table)
           return (
             <p key={i} className="whitespace-pre-wrap break-words">
-              {group.lines.join("\n")}
+              <Highlighted text={group.lines.join("\n")} pattern={pattern} />
             </p>
           );
         const rows = group.lines
@@ -49,7 +75,7 @@ export function StructuredText({ text }: { text: string }) {
                 <tr>
                   {rows[0]?.map((cell, j) => (
                     <th key={j} className="border-b px-3 py-2 font-medium whitespace-pre-wrap">
-                      {cell}
+                      <Highlighted text={cell} pattern={pattern} />
                     </th>
                   ))}
                 </tr>
@@ -59,7 +85,7 @@ export function StructuredText({ text }: { text: string }) {
                   <tr key={j} className="border-b last:border-0">
                     {row.map((cell, k) => (
                       <td key={k} className="px-3 py-2 align-top whitespace-pre-wrap">
-                        {cell}
+                        <Highlighted text={cell} pattern={pattern} />
                       </td>
                     ))}
                   </tr>
@@ -115,20 +141,41 @@ export function ExtractedBlock({
   block,
   projectId,
   isPdf = true,
+  highlight,
+  cited = false,
 }: {
   block: DocumentBlock;
   projectId: string;
   isPdf?: boolean;
+  highlight?: string | null | undefined;
+  /** This block is the cited chunk or contains the cited span. */
+  cited?: boolean;
 }) {
   const kind = block.metadata.block_type || "text";
   const visual = block.metadata.visual_analysis;
   const Icon = kind === "table" ? Table2 : kind === "figure" ? Image : FileText;
+  const ref = useRef<HTMLElement>(null);
+  useEffect(() => {
+    if (cited) ref.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }, [cited]);
   return (
-    <article className="rounded-xl border bg-card p-4">
+    <article
+      ref={ref}
+      className={cn(
+        "rounded-xl border bg-card p-4",
+        cited && "border-warning ring-2 ring-warning/40",
+      )}
+      aria-label={cited ? "Cited source passage" : undefined}
+    >
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
         <span className="flex items-center gap-2">
           <Icon className="size-4" />
           {kind.replaceAll("_", " ")}
+          {cited && (
+            <span className="rounded bg-warning-soft px-1.5 py-0.5 font-medium text-warning">
+              Cited
+            </span>
+          )}
         </span>
         <span>{block.page_number ? `Page ${block.page_number}` : "Page not recorded"}</span>
       </div>
@@ -145,7 +192,7 @@ export function ExtractedBlock({
           </p>
         </div>
       )}
-      <StructuredText text={block.content} />
+      <StructuredText text={block.content} highlight={highlight} />
       {visual && (
         <p className="mt-3 border-t pt-3 text-xs text-muted-foreground">
           Visual interpretation: {visual.status || "not available"}
@@ -161,17 +208,28 @@ export function DocumentInspector({
   projectId,
   documentId,
   initialPage = 1,
+  highlight,
+  chunkId,
 }: {
   projectId: string;
   documentId: string;
   initialPage?: number;
+  /** Cited span text to highlight in the extracted content of the cited page. */
+  highlight?: string | null | undefined;
+  /** Evidence chunk the citation points at, outlined when it is on the cited page. */
+  chunkId?: string | null | undefined;
 }) {
   const [page, setPage] = useState(initialPage);
-  const [mode, setMode] = useState<"original" | "extracted">("original");
+  const hasCitation = !!highlight?.trim() || !!chunkId;
+  // The original page is rendered as an image with no text layer, so a citation
+  // opens on the extracted content, where the cited span can actually be marked.
+  const [mode, setMode] = useState<"original" | "extracted">(
+    hasCitation ? "extracted" : "original",
+  );
   const [zoom, setZoom] = useState(false);
   const query = useQuery({
     queryKey: ["document-inspection", projectId, documentId, page],
-    queryFn: () => api.inspectDocument(projectId, documentId, page),
+    queryFn: ({ signal }) => api.inspectDocument(projectId, documentId, page, signal),
     enabled: !!documentId && !!projectId,
   });
   if (query.isPending)
@@ -185,13 +243,19 @@ export function DocumentInspector({
     return (
       <div role="alert" className="p-6 text-sm">
         <AlertCircle className="mb-2 size-5" />
-        Could not load this document.{" "}
+        Could not load this document. {getErrorMessage(query.error)}{" "}
         <Button variant="outline" size="sm" onClick={() => query.refetch()}>
           Retry
         </Button>
       </div>
     );
   const data = query.data;
+  const onCitedPage = hasCitation && page === initialPage;
+  const pattern = citationPattern(highlight);
+  const isCited = (block: DocumentBlock) =>
+    onCitedPage &&
+    ((!!chunkId && block.id === chunkId) || containsCitation(block.content, pattern));
+  const citedOnPage = data.blocks.some(isCited);
   const pageCount = Math.max(data.document.page_count || 1, ...data.available_pages, 1);
   return (
     <section
@@ -274,6 +338,37 @@ export function DocumentInspector({
           </div>
         </div>
       </div>
+      {hasCitation && (
+        <div
+          role="note"
+          aria-label="Cited text"
+          className="flex flex-wrap items-start gap-2 border-b bg-warning-soft/60 px-4 py-3 text-xs"
+        >
+          <Quote className="mt-0.5 size-3.5 shrink-0 text-warning" />
+          <div className="min-w-0 flex-1">
+            {highlight?.trim() && (
+              <p className="line-clamp-3 break-words italic">“{highlight.trim()}”</p>
+            )}
+            <p className="mt-1 text-muted-foreground">
+              {!onCitedPage
+                ? `The citation is on page ${initialPage}.`
+                : citedOnPage
+                  ? "Marked in the extracted content of this page. Confirm it against the original page."
+                  : "The cited text was not found in the extracted content of this page. Check the original page."}
+            </p>
+          </div>
+          {onCitedPage && citedOnPage && mode === "original" && (
+            <button className="shrink-0 underline" onClick={() => setMode("extracted")}>
+              Show marked text
+            </button>
+          )}
+          {!onCitedPage && (
+            <button className="shrink-0 underline" onClick={() => setPage(initialPage)}>
+              Go to cited page
+            </button>
+          )}
+        </div>
+      )}
       <div className="max-h-[75vh] overflow-auto bg-muted/30 p-3">
         {mode === "original" && data.is_pdf ? (
           <>
@@ -307,6 +402,8 @@ export function DocumentInspector({
                   block={block}
                   projectId={projectId}
                   isPdf={data.is_pdf}
+                  highlight={onCitedPage ? highlight : null}
+                  cited={isCited(block)}
                 />
               ))
             ) : (
@@ -318,6 +415,15 @@ export function DocumentInspector({
           </div>
         )}
       </div>
+      {data.diagnostics?.["parser_fallback"] ? (
+        <p
+          role="alert"
+          className="border-t bg-amber-50 p-3 text-xs text-amber-900 dark:bg-amber-950 dark:text-amber-100"
+        >
+          The preferred layout parser failed for this document and a local fallback produced its
+          text, so tables and figures may be degraded. Requirements that cite it stay under review.
+        </p>
+      ) : null}
       <details className="border-t p-4 text-xs">
         <summary className="cursor-pointer font-medium">
           Processing & source details · {data.counts.tables} table blocks · {data.counts.figures}{" "}

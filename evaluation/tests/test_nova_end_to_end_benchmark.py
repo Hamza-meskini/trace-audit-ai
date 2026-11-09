@@ -121,9 +121,15 @@ def test_transport_matches_production_and_preserves_nested_logic():
     assert len(prediction.logic_tree["children"]) == 2
 
 
+def test_cli_resume_is_an_explicit_opt_in(monkeypatch):
+    monkeypatch.setattr("sys.argv", ["nova", "--resume"])
+    assert runner.parse_args().resume is True
+
+
 def test_cli_defaults_to_fresh_extraction(monkeypatch):
     monkeypatch.setattr("sys.argv", ["nova"])
-    assert runner.parse_args().no_resume is True
+    # ARC-02: fresh extraction is the default and --resume is the opt-in.
+    assert runner.parse_args().resume is False
     assert runner.parse_args().retrieval_backend == "auto"
 
 

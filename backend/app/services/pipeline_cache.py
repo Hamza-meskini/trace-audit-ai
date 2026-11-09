@@ -48,6 +48,26 @@ def get_json(namespace: str, cache_key: str) -> Any | None:
         return None
 
 
+def delete_referencing(namespace: str, needles: list[str]) -> int:
+    """Delete entries in ``namespace`` whose payload mentions any of ``needles``."""
+    needles = [needle for needle in dict.fromkeys(needles) if needle]
+    if not needles:
+        return 0
+    database = Path(settings.UPLOAD_DIR) / ".pipeline-cache.sqlite3"
+    if not database.is_file():
+        return 0
+    deleted = 0
+    with _connect() as connection, connection:
+        for needle in needles:
+            escaped = needle.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+            cursor = connection.execute(
+                "DELETE FROM entries WHERE namespace=? AND payload LIKE ? ESCAPE '\\'",
+                (namespace, f"%{escaped}%"),
+            )
+            deleted += cursor.rowcount or 0
+    return deleted
+
+
 def set_json(namespace: str, cache_key: str, payload: Any) -> None:
     created_at = datetime.now(timezone.utc).isoformat()
     encoded = json.dumps(payload, separators=(",", ":"), ensure_ascii=False, default=str)

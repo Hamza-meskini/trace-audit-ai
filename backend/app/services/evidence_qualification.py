@@ -10,6 +10,7 @@ produced here. Never duplicate these rules elsewhere.
 """
 
 import logging
+import re
 from typing import Any, Optional
 
 from app.schemas.claim import (
@@ -64,6 +65,38 @@ def _evidence_method(authority: str, passage_modality: str) -> str:
     if passage_modality in {"simulation", "calculation", "inspection"}:
         return passage_modality
     return AUTHORITY_TO_METHOD.get(authority, "unknown")
+
+
+_REFERENCE_CUE_RE = re.compile(
+    r"(?:\bsee|\bper|\brefer(?:s|red)?\s+to|\breference[sd]?|\baccording\s+to|\bas\s+in|"
+    r"\bcf\.?|\bdefined\s+(?:in|by)|\bunder|\bderived\s+from|\btraces?\s+to)\W{0,6}$",
+    re.IGNORECASE,
+)
+
+
+def _requirement_id_pattern(req_code: Optional[str]) -> Optional[re.Pattern]:
+    parts = [part for part in re.split(r"[-_\s]+", (req_code or "").strip()) if part]
+    if len(parts) < 2:
+        return None
+    return re.compile(
+        r"(?<![A-Za-z0-9])" + r"[-_\s]?".join(re.escape(part) for part in parts) + r"(?![A-Za-z0-9])",
+        re.IGNORECASE,
+    )
+
+
+def evidence_attributed_to_requirement(req_code: Optional[str], content: str) -> bool:
+    """ACC-05 (L1c): the passage names this requirement's ID as its subject.
+
+    A mention that only cross-references the requirement ("see REQ-X",
+    "per REQ-X") does not count.
+    """
+    pattern = _requirement_id_pattern(req_code)
+    if pattern is None or not content:
+        return False
+    for match in pattern.finditer(content):
+        if not _REFERENCE_CUE_RE.search(content[max(0, match.start() - 30):match.start()]):
+            return True
+    return False
 
 
 def qualify_evidence(
@@ -162,6 +195,17 @@ def qualify_evidence(
         param_ok = False
     else:
         param_ok = None
+
+    # ACC-05 (L1c): a passage that names this requirement's own ID settles an
+    # unknown scope or parameter alignment. An explicit False is never overridden.
+    id_attributed = evidence_attributed_to_requirement(
+        getattr(contract, "req_code", None), local_content,
+    )
+    if id_attributed:
+        if scope_ok is None:
+            scope_ok = True
+        if param_ok is None:
+            param_ok = True
 
     # Authoritative = a formal record OF THE KIND THE REQUIREMENT DEMANDS:
     # empirical / matrix records for physical requirements, a simulation study

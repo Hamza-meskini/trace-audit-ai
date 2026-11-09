@@ -1,5 +1,4 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useState } from "react";
 import { Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
@@ -12,6 +11,9 @@ import { useFindings } from "@/hooks/use-findings";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/projects")({
+  validateSearch: (search: Record<string, unknown>): { section?: ProjectTab | undefined } => ({
+    section: tabs.find((t) => t === search["section"] && t !== "Overview"),
+  }),
   head: () => ({
     meta: [
       { title: "Projects — TraceAudit" },
@@ -37,12 +39,19 @@ const tabs = [
   "Traceability",
   "Reports",
 ] as const;
+type ProjectTab = (typeof tabs)[number];
 
 import { useActiveProject } from "@/hooks/use-active-project";
 
 function ProjectPage() {
-  const [tab, setTab] = useState<(typeof tabs)[number]>("Overview");
   const navigate = useNavigate();
+  const tab: ProjectTab = Route.useSearch().section ?? "Overview";
+  const setTab = (next: ProjectTab) =>
+    navigate({
+      to: "/projects",
+      search: (prev) => ({ ...prev, section: next === "Overview" ? undefined : next }),
+      replace: true,
+    });
 
   const {
     activeProject: project,
@@ -126,6 +135,7 @@ function ProjectPage() {
         {tabs.map((t) => (
           <button
             key={t}
+            aria-pressed={tab === t}
             onClick={() => setTab(t)}
             className={cn(
               "-mb-px border-b-2 px-3 py-2 text-sm transition-colors",
@@ -188,7 +198,20 @@ function ProjectPage() {
                         p.id === project.id ? "bg-accent/30 font-medium" : "",
                       )}
                     >
-                      <td className="px-5 py-3 font-medium">{p.name}</td>
+                      <td className="px-5 py-3 font-medium">
+                        <button
+                          type="button"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            selectProject(p.id);
+                          }}
+                          aria-pressed={p.id === project.id}
+                          aria-label={`Make ${p.name} the active project`}
+                          className="rounded-sm text-left hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        >
+                          {p.name}
+                        </button>
+                      </td>
                       <td className="px-5 py-3">
                         <Mono className="text-muted-foreground">{p.audit_id}</Mono>
                       </td>
@@ -223,13 +246,23 @@ function ProjectPage() {
                     className="cursor-pointer border-b border-border/70 last:border-0 hover:bg-accent/50"
                   >
                     <td className="px-5 py-3">
-                      <Mono>{r.req_code}</Mono>
+                      <Link
+                        to="/requirements/$id"
+                        params={{ id: r.id }}
+                        onClick={(event) => event.stopPropagation()}
+                        className="rounded-sm hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        aria-label={`Review ${r.req_code}: ${r.title}`}
+                      >
+                        <Mono>{r.req_code}</Mono>
+                      </Link>
                     </td>
                     <td className="px-5 py-3 font-medium">{r.title}</td>
                     <td className="px-5 py-3">
                       <CoverageBadge status={r.coverage_status} />
                     </td>
-                    <td className="px-5 py-3 tabular text-muted-foreground">{r.confidence}%</td>
+                    <td className="px-5 py-3 tabular text-muted-foreground">
+                      {Math.round(r.confidence)}%
+                    </td>
                   </tr>
                 ))}
               </tbody>

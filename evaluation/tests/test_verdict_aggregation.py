@@ -1194,21 +1194,24 @@ class TestFullPipelineToApiResponse(unittest.TestCase):
             non_spec_items=[],
             outcome=ValidationOutcome(
                 status="SUPPORTED",
-                confidence=95.0,
+                confidence=79.0,
                 reason="Support predicted with limited confidence.",
                 condition_results=[valid],
             ),
             pipeline_diagnostics={
                 "decision_source": "llm",
                 "llm_provisional_status": "SUPPORTED",
-                "llm_provisional_confidence": 79.0,
+                "llm_provisional_confidence": 95.0,
                 "final_status": "SUPPORTED",
             },
         )
 
         self.assertEqual(assessment.coverage_status, "Supported")
         self.assertEqual(assessment.review_state, "Needs review")
-        self.assertIn("LLM confidence 79.0%", assessment.pipeline_diagnostics["review_gate"]["reasons"][0])
+        # TRU-04: the gate reads the Python-aggregated confidence, not the model's self-report.
+        reasons = " ".join(assessment.pipeline_diagnostics["review_gate"]["reasons"])
+        self.assertIn("aggregated confidence 79.0%", reasons)
+        self.assertNotIn("LLM confidence", reasons)
 
     def test_provisional_partial_aggregated_supported_requires_review(self):
         """Holistic/atomic disagreement flags likely under-decomposition."""

@@ -9,6 +9,39 @@
  "changes": [
   {
    "run_id": "20260915T222056.820191Z",
+   "requirement_id": "REQ-NVA-CYS-001",
+   "gold": "SUPPORTED",
+   "saved_status": "SUPPORTED",
+   "saved_review": "Needs review",
+   "expected_status": "SUPPORTED",
+   "expected_review": "Reviewed",
+   "reason": "ACC-05 (L1c): the cited chunk names this requirement's own ID, so unknown scope/parameter alignment is settled; qualification no longer abstains and the gate auto-closes the correct SUPPORTED.",
+   "commit": "ACC-05"
+  },
+  {
+   "run_id": "20260916T133251.054900Z",
+   "requirement_id": "REQ-NVA-CYS-001",
+   "gold": "SUPPORTED",
+   "saved_status": "SUPPORTED",
+   "saved_review": "Needs review",
+   "expected_status": "SUPPORTED",
+   "expected_review": "Reviewed",
+   "reason": "ACC-05 (L1c): the cited chunk names this requirement's own ID, so unknown scope/parameter alignment is settled; qualification no longer abstains and the gate auto-closes the correct SUPPORTED.",
+   "commit": "ACC-05"
+  },
+  {
+   "run_id": "20260922T123239.778672Z",
+   "requirement_id": "REQ-NVA-CYS-001",
+   "gold": "SUPPORTED",
+   "saved_status": "SUPPORTED",
+   "saved_review": "Needs review",
+   "expected_status": "SUPPORTED",
+   "expected_review": "Reviewed",
+   "reason": "TRU-04 (G1): the auto-close gate reads the Python-aggregated confidence instead of the model's self-reported 85%; every audited condition is PROVEN and VALID, so the correct SUPPORTED auto-closes.",
+   "commit": "TRU-04"
+  },
+  {
+   "run_id": "20260915T222056.820191Z",
    "requirement_id": "REQ-NVA-CYS-003",
    "gold": "CONFLICT",
    "saved_status": "PARTIAL",
@@ -39,6 +72,39 @@
    "expected_review": "Needs review",
    "reason": "Aggregation abstained only on UNRESOLVED evidence or malformed bounds while the atomic aggregate was CONFLICT; the atomic CONFLICT is kept (still review-only, confidence capped at 80) instead of the holistic PARTIAL label.",
    "commit": "fdc59fb"
+  },
+  {
+   "run_id": "20260915T140120.543292Z",
+   "requirement_id": "REQ-NVA-ELE-005",
+   "gold": "UNKNOWN",
+   "saved_status": "MISSING",
+   "saved_review": "Needs review",
+   "expected_status": "UNKNOWN",
+   "expected_review": "Needs review",
+   "reason": "ACC-04 (L3a): the nested IF_THEN evaluator now applies the flat rule; an untested antecedent with an inconclusive consequent is UNKNOWN, not MISSING.",
+   "commit": "ACC-04"
+  },
+  {
+   "run_id": "20260915T222056.820191Z",
+   "requirement_id": "REQ-NVA-ELE-005",
+   "gold": "UNKNOWN",
+   "saved_status": "MISSING",
+   "saved_review": "Needs review",
+   "expected_status": "UNKNOWN",
+   "expected_review": "Needs review",
+   "reason": "ACC-04 (L3a): the nested IF_THEN evaluator now applies the flat rule; an untested antecedent with an inconclusive consequent is UNKNOWN, not MISSING.",
+   "commit": "ACC-04"
+  },
+  {
+   "run_id": "20260916T133251.054900Z",
+   "requirement_id": "REQ-NVA-ELE-005",
+   "gold": "UNKNOWN",
+   "saved_status": "MISSING",
+   "saved_review": "Needs review",
+   "expected_status": "UNKNOWN",
+   "expected_review": "Needs review",
+   "reason": "ACC-04 (L3a): the nested IF_THEN evaluator now applies the flat rule; an untested antecedent with an inconclusive consequent is UNKNOWN, not MISSING.",
+   "commit": "ACC-04"
   },
   {
    "run_id": "20260922T115355.064325Z",

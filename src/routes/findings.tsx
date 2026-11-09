@@ -1,5 +1,5 @@
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { useMemo } from "react";
 import { Search, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,8 +15,29 @@ import { Mono, ReviewBadge, SeverityBadge, normalizeSeverity } from "@/component
 import { useActiveProject } from "@/hooks/use-active-project";
 import { useFindings, useUpdateFinding } from "@/hooks/use-findings";
 import { cn } from "@/lib/utils";
+import { getErrorMessage } from "@/lib/api-client";
+
+interface FindingsSearch {
+  severity?: string | undefined;
+  type?: string | undefined;
+  status?: string | undefined;
+  category?: string | undefined;
+  reviewer?: string | undefined;
+  query?: string | undefined;
+}
+
+const FINDINGS_FILTERS = ["severity", "type", "status", "category", "reviewer", "query"] as const;
 
 export const Route = createFileRoute("/findings")({
+  // Filters live in the URL so a triage view can be bookmarked or shared.
+  validateSearch: (search: Record<string, unknown>): FindingsSearch => {
+    const result: FindingsSearch = {};
+    for (const key of FINDINGS_FILTERS) {
+      const value = search[key];
+      if (typeof value === "string" && value && value !== "all") result[key] = value;
+    }
+    return result;
+  },
   head: () => ({
     meta: [
       { title: "Findings & Triage — TraceAudit" },
@@ -47,17 +68,35 @@ function FindingsPage() {
   const navigate = useNavigate();
   const { activeProjectId } = useActiveProject();
 
-  const [severity, setSeverity] = useState("all");
-  const [type, setType] = useState("all");
-  const [status, setStatus] = useState("all");
-  const [category, setCategory] = useState("all");
-  const [reviewer, setReviewer] = useState("all");
-  const [query, setQuery] = useState("");
+  const search = Route.useSearch();
+  const severity = search.severity || "all";
+  const type = search.type || "all";
+  const status = search.status || "all";
+  const category = search.category || "all";
+  const reviewer = search.reviewer || "all";
+  const query = search.query || "";
+  const updateSearch = (patch: FindingsSearch) =>
+    navigate({
+      to: "/findings",
+      search: (prev) => {
+        const next: Record<string, unknown> = { ...prev, ...patch };
+        for (const key of FINDINGS_FILTERS) if (!next[key] || next[key] === "all") delete next[key];
+        return next;
+      },
+      replace: true,
+    });
+  const setSeverity = (value: string) => updateSearch({ severity: value });
+  const setType = (value: string) => updateSearch({ type: value });
+  const setStatus = (value: string) => updateSearch({ status: value });
+  const setCategory = (value: string) => updateSearch({ category: value });
+  const setReviewer = (value: string) => updateSearch({ reviewer: value });
+  const setQuery = (value: string) => updateSearch({ query: value });
 
   const {
     data: findingsList,
     isLoading,
     isError,
+    error,
     refetch,
   } = useFindings(activeProjectId, {
     severity,
@@ -108,7 +147,7 @@ function FindingsPage() {
   if (isError)
     return (
       <div role="alert" className="rounded-xl border bg-card p-8 text-sm">
-        Findings could not be loaded.{" "}
+        Findings could not be loaded. {getErrorMessage(error)}{" "}
         <Button variant="outline" className="ml-3" onClick={() => void refetch()}>
           Retry
         </Button>
@@ -226,14 +265,16 @@ function FindingsPage() {
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => {
-                    setSeverity("all");
-                    setType("all");
-                    setStatus("all");
-                    setCategory("all");
-                    setReviewer("all");
-                    setQuery("");
-                  }}
+                  onClick={() =>
+                    updateSearch({
+                      severity: undefined,
+                      type: undefined,
+                      status: undefined,
+                      category: undefined,
+                      reviewer: undefined,
+                      query: undefined,
+                    })
+                  }
                 >
                   Reset filters
                 </Button>
@@ -266,10 +307,27 @@ function FindingsPage() {
                         params: { id: f.requirement_id },
                       })
                     }
-                    className="cursor-pointer border-b border-border/70 transition-colors last:border-0 hover:bg-accent/50"
+                    className={cn(
+                      "border-b border-border/70 transition-colors last:border-0 focus-within:bg-accent/50",
+                      f.requirement_id && "cursor-pointer hover:bg-accent/50",
+                    )}
                   >
                     <td className="whitespace-nowrap px-5 py-3">
-                      <Mono className="text-foreground">{f.finding_code}</Mono>
+                      {f.requirement_id ? (
+                        // A real link: reachable with Tab, opens with Enter,
+                        // and can be opened in a new tab or copied.
+                        <Link
+                          to="/requirements/$id"
+                          params={{ id: f.requirement_id }}
+                          onClick={(event) => event.stopPropagation()}
+                          className="rounded-sm underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                          aria-label={`Open requirement for finding ${f.finding_code}`}
+                        >
+                          <Mono className="text-foreground">{f.finding_code}</Mono>
+                        </Link>
+                      ) : (
+                        <Mono className="text-foreground">{f.finding_code}</Mono>
+                      )}
                     </td>
                     <td className="px-5 py-3">{f.finding_type}</td>
                     <td className="max-w-[340px] px-5 py-3">

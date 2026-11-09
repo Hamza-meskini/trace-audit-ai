@@ -145,6 +145,8 @@ class GeminiEmbeddingTests(unittest.IsolatedAsyncioTestCase):
             patch.object(embedding, "_consecutive_rate_limits", 0),
             patch.object(embedding, "_embedding_cache", {}),
             patch.object(embedding.httpx, "AsyncClient", _RecordingClient),
+            # These tests exercise the Gemini path, so Google is an approved host.
+            patch.object(embedding.settings, "EGRESS_ALLOWED_HOSTS", ["generativelanguage.googleapis.com"]),
             patch.object(embedding.asyncio, "sleep", AsyncMock()),
             patch.object(
                 Settings, "effective_gemini_api_key", new_callable=PropertyMock, return_value=self.KEY

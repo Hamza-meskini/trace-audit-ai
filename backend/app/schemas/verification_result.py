@@ -17,6 +17,7 @@ VerificationTopLevelStatus = Literal[
     "NOT_APPLICABLE",
 ]
 ConditionValidationState = Literal["VALID", "UNRESOLVED", "CONTRADICTED"]
+_VALIDATION_RANK = {"VALID": 0, "UNRESOLVED": 1, "CONTRADICTED": 2}
 EvidenceRelationship = Literal["SATISFIES", "VIOLATES", "PARTIAL_COVERAGE", "NOT_ADDRESSED", "UNCLEAR"]
 EvidenceValueRole = Literal["OBSERVED", "REQUIRED_OR_PLANNED", "STATUS_ONLY", "NOT_ADDRESSED", "UNCLEAR"]
 TestExecutionState = Literal[
@@ -242,6 +243,9 @@ class ConditionVerificationResult(BaseModel):
     # Sticky reasons this result cannot close a requirement without a human.
     # Unlike validation_state, a later VALID write never clears them.
     review_flags: SkipJsonSchema[list[str]] = Field(default_factory=list)
+    # TRU-03: the strongest marker any validator raised. validation_state never
+    # drops below it, so a later VALID cannot erase an UNRESOLVED marker.
+    validation_floor: SkipJsonSchema[Optional[ConditionValidationState]] = None
     observed_parameter: Optional[str] = None
     observed_value: Optional[str] = None
     observed_min_value: Optional[float] = None
@@ -267,6 +271,15 @@ class ConditionVerificationResult(BaseModel):
     def _validate_subject_identity(cls, value: Any) -> str:
         clean = _normalize_enum_token(value)
         return coerce_enum(clean, ("CONFIRMED", "UNCONFIRMED", "NOT_REQUIRED", "UNKNOWN")) or "UNKNOWN"
+
+    def mark_validation(self, state: str) -> None:
+        """Record a validator outcome; markers only ever move the state upward."""
+        if state != "VALID" and _VALIDATION_RANK[state] > _VALIDATION_RANK.get(self.validation_floor or "VALID", 0):
+            self.validation_floor = state  # type: ignore[assignment]
+        floor = self.validation_floor or "VALID"
+        self.validation_state = (  # type: ignore[assignment]
+            state if _VALIDATION_RANK[state] >= _VALIDATION_RANK[floor] else floor
+        )
 
     @field_validator("execution_state", mode="before")
     @classmethod

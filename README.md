@@ -27,12 +27,24 @@ The figures below are development measurements from saved run artifacts, not cla
 general regulatory compliance accuracy. Each benchmark uses frozen evaluator-only answers;
 human review remains mandatory for real engineering decisions.
 
-### Nova end-to-end benchmark — 15 September 2026
+### Nova end-to-end benchmark (development set) — 15–22 September 2026
+
+**Headline: 88.33% ± 2.4 (SD) final-verdict accuracy, mean of 5 live runs** (range
+85.42–91.67%), 0 unsafe auto-closes. Nova is the **development set**: the pipeline was tuned
+against it and it is close to saturated, so it does not estimate accuracy on unseen documents.
+These runs used the batched verification path; the audit pipeline verifies one requirement at
+a time (`run_nova_end_to_end_benchmark.py --verification-path production` measures that path).
+
+An offline replay of these five runs' recorded model outputs through the current decision
+logic scores 234/240 (97.5%), with 14 auto-closes, all correct
+(`evaluation/replay_verification.py`). That is a re-scoring of fixed model outputs, not a new
+live measurement.
 
 48 synthetic requirements across 12 technical PDFs and 147 evaluator-only atomic conditions.
-The run used Llama 4 Maverick for discovery, atomic decomposition, and verification.
+The runs used Llama 4 Maverick for discovery, atomic decomposition, and verification. The
+table below is the best single run (15 September); quote the mean above, not this row.
 
-| Metric | Result |
+| Metric | Best single run |
 |---|---:|
 | Final requirement-verdict accuracy | **91.67%** (44/48) |
 | Final-verdict macro F1 | **91.48%** |

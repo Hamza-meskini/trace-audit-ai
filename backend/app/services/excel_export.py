@@ -119,6 +119,8 @@ def _extract_req_details(req: Requirement) -> dict[str, Any]:
     human_event = latest_human_decision(history, req.review_state)
     human_verdict = human_event.get("human_verdict") if human_event else None
     reviewer = human_event.get("reviewer") if human_event else ""
+    if human_event and reviewer and not human_event.get("identity_verified"):
+        reviewer = f"{reviewer} (unverified)"
     comment = human_event.get("comment") if human_event else ""
     later = [f"{c.get('reviewer') or 'Reviewer'}: {c.get('comment') or ''}".strip()
              for c in comments_after(history, human_event)]
@@ -144,12 +146,16 @@ def _extract_req_details(req: Requirement) -> dict[str, Any]:
     # Compile key evidence quotes
     evidence_quotes: list[str] = []
     if req.evidence_links:
+        # TRU-05: export what the verdict cites (its span), never uncited context.
         for link in req.evidence_links:
+            if link.status == "Context (not cited)":
+                continue
             chunk = link.evidence_chunk
             if chunk and chunk.content:
                 doc_name = chunk.document.original_filename if chunk.document else "Document"
                 page = f"p. {chunk.page_number}" if chunk.page_number else "p. N/A"
-                snippet = chunk.content.strip().replace("\r\n", " ").replace("\n", " ")
+                source_text = link.highlight or chunk.content
+                snippet = f"{link.status}: " + source_text.strip().replace("\r\n", " ").replace("\n", " ")
                 if len(snippet) > 180:
                     snippet = snippet[:177] + "..."
                 evidence_quotes.append(f"• [{doc_name}, {page}] {snippet}")

@@ -144,3 +144,45 @@ def convert_value(
         return float(converted.magnitude)
     except (DimensionalityError, OffsetUnitCalculusError, PintError, ValueError, TypeError, AssertionError):
         return None
+
+
+_OFFSET_TO_DELTA = {
+    "degree_Celsius": "delta_degree_Celsius",
+    "degree_Fahrenheit": "delta_degree_Fahrenheit",
+    "degree_Rankine": "delta_degree_Rankine",
+    "degree_Reaumur": "delta_degree_Reaumur",
+}
+
+
+def convert_difference(
+    value: float,
+    from_unit: Optional[str],
+    to_unit: Optional[str],
+) -> Optional[float]:
+    """Convert a difference (tolerance, spread, deviation) between units (ACC-12).
+
+    A temperature difference has no offset: a 40 degF tolerance is 22.2 K
+    (or 22.2 degC), not the 4.4 degC that converting the absolute temperature
+    40 degF gives. Non-temperature units convert as usual.
+    """
+    canonical_from = _canonical_unit(_clean_unit_text(from_unit))
+    canonical_to = _canonical_unit(_clean_unit_text(to_unit))
+    if canonical_from is None or canonical_to is None:
+        return None
+    if unit_compatibility(from_unit, to_unit) != UnitCompatibility.COMPATIBLE:
+        return None
+    try:
+        source = _STRICT_REGISTRY.Quantity(float(value), _OFFSET_TO_DELTA.get(canonical_from, canonical_from))
+        converted = source.to(_OFFSET_TO_DELTA.get(canonical_to, canonical_to))
+        return float(converted.magnitude)
+    except (DimensionalityError, OffsetUnitCalculusError, PintError, ValueError, TypeError, AssertionError):
+        return None
+
+
+_DIFFERENCE_PARAMETER = ("tolerance", "deviation", "spread", "variation", "drift", "ripple", "delta", "difference")
+
+
+def is_difference_parameter(parameter: Optional[str]) -> bool:
+    """True when a condition bounds a difference rather than an absolute level."""
+    text = (parameter or "").lower()
+    return any(word in text for word in _DIFFERENCE_PARAMETER)

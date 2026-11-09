@@ -102,6 +102,51 @@ class ReviewWorkspaceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(data["review_history"]), 1)
         self.assertEqual(len(data["condition_results"]), 1)
 
+    async def test_sso_identity_wins_over_typed_reviewer_on_databricks_apps(self):
+        """SEC-03: on Databricks Apps the proxy identity is the reviewer of record."""
+        headers = {"X-Forwarded-User": "4242@ws", "X-Forwarded-Email": "alice@example.test"}
+        with patch.object(settings, "TRUST_FORWARDED_IDENTITY", "auto"), \
+                patch.dict("os.environ", {"DATABRICKS_APP_PORT": "8000"}):
+            response = await self.client.post("/api/projects/p1/requirements/r1/reviews", headers=headers, json={
+                "action": "Approved", "reviewer": "Mallory", "comment": "Signed off.",
+            })
+            self.assertEqual(response.status_code, 200)
+            event = response.json()
+            self.assertEqual(event["reviewer"], "alice@example.test")
+            self.assertEqual(event["reviewer_display"], "Mallory")
+            self.assertEqual(event["reviewer_identity"], "4242@ws")
+            self.assertEqual(event["identity_source"], "databricks_sso")
+            self.assertTrue(event["identity_verified"])
+            # The typed name may be omitted when SSO supplies the identity.
+            response = await self.client.post("/api/projects/p1/requirements/r1/reviews", headers=headers, json={
+                "action": "Comment", "comment": "No name typed.",
+            })
+            self.assertEqual(response.status_code, 200)
+        data = (await self.client.get("/api/projects/p1/requirements/r1")).json()
+        self.assertEqual(data["review_history"][0]["identity_verified"], True)
+
+    async def test_local_review_ignores_forged_header_and_is_marked_unverified(self):
+        with patch.object(settings, "TRUST_FORWARDED_IDENTITY", "auto"), \
+                patch.dict("os.environ", {}, clear=False) as env:
+            for name in ("DATABRICKS_APP_PORT", "DATABRICKS_APP_NAME", "DATABRICKS_APP_URL"):
+                env.pop(name, None)
+            response = await self.client.post(
+                "/api/projects/p1/requirements/r1/reviews",
+                headers={"X-Forwarded-User": "ceo@example.test"},
+                json={"action": "Approved", "reviewer": "Bob", "comment": "Local check."},
+            )
+            self.assertEqual(response.status_code, 200)
+            event = response.json()
+            self.assertEqual(event["reviewer"], "Bob")
+            self.assertEqual(event["identity_source"], "client_asserted")
+            self.assertFalse(event["identity_verified"])
+            self.assertIsNone(event["reviewer_identity"])
+            # Without SSO a name is still required.
+            response = await self.client.post("/api/projects/p1/requirements/r1/reviews", json={
+                "action": "Comment", "comment": "Anonymous.",
+            })
+            self.assertEqual(response.status_code, 422)
+
     async def test_human_verdict_is_versioned_separately_from_ai_verdict(self):
         response = await self.client.post("/api/projects/p1/requirements/r1/reviews", json={
             "action": "Reviewed", "reviewer": "Reviewer", "comment": "Test record is inconclusive.",

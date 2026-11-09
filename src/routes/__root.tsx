@@ -8,6 +8,7 @@ import {
   Scripts,
   ClientOnly,
   useRouterState,
+  retainSearchParams,
 } from "@tanstack/react-router";
 import { type ReactNode } from "react";
 
@@ -72,7 +73,18 @@ function ErrorComponent({ error, reset }: { error: unknown; reset: () => void })
   );
 }
 
+export interface RootSearch {
+  /** Active project, kept in the URL so any page link can be shared. */
+  project?: string | undefined;
+}
+
 export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()({
+  validateSearch: (search: Record<string, unknown>): RootSearch => ({
+    project:
+      typeof search["project"] === "string" && search["project"] ? search["project"] : undefined,
+  }),
+  // Every in-app link keeps the active project unless it sets another one.
+  search: { middlewares: [retainSearchParams(["project"])] },
   head: () => ({
     meta: [
       { charSet: "utf-8" },

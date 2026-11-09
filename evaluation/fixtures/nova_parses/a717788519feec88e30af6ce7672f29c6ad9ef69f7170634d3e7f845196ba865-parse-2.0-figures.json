@@ -1,0 +1,539 @@
+{
+ "source_sha256": "a717788519feec88e30af6ce7672f29c6ad9ef69f7170634d3e7f845196ba865",
+ "parse_version": "2.0",
+ "figure_descriptions": true,
+ "result": {
+  "document": {
+   "elements": [
+    {
+     "bbox": [
+      {
+       "coord": [
+        172,
+        461,
+        734,
+        515
+       ],
+       "page_id": 0
+      }
+     ],
+     "confidence": 1,
+     "content": "NOVA PROGRAM",
+     "description": null,
+     "id": 0,
+     "type": "title"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        172,
+        725,
+        1110,
+        896
+       ],
+       "page_id": 0
+      }
+     ],
+     "confidence": 1,
+     "content": "Nova Charging and Power\nConversion Requirements",
+     "description": null,
+     "id": 1,
+     "type": "title"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        172,
+        1878,
+        772,
+        1993
+       ],
+       "page_id": 0
+      }
+     ],
+     "confidence": 1,
+     "content": "Domain: Charging\nRevision A | Synthetic extraction benchmark",
+     "description": null,
+     "id": 2,
+     "type": "text"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        124,
+        89,
+        966,
+        129
+       ],
+       "page_id": 1
+      }
+     ],
+     "confidence": 1,
+     "content": "Nova Charging and Power Conversion Requirements",
+     "description": null,
+     "id": 3,
+     "type": "page_header"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        1239,
+        98,
+        1528,
+        124
+       ],
+       "page_id": 1
+      }
+     ],
+     "confidence": 1,
+     "content": "Controlled copy | Page 2 of 4",
+     "description": null,
+     "id": 4,
+     "type": "page_number"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        124,
+        271,
+        693,
+        316
+       ],
+       "page_id": 1
+      }
+     ],
+     "confidence": 1,
+     "content": "2. Functional requirements",
+     "description": null,
+     "id": 5,
+     "type": "section_header"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        164,
+        435,
+        645,
+        470
+       ],
+       "page_id": 1
+      }
+     ],
+     "confidence": 1,
+     "content": "REQ-NVA-CHG-001 | AC input range",
+     "description": null,
+     "id": 6,
+     "type": "section_header"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        164,
+        487,
+        1388,
+        519
+       ],
+       "page_id": 1
+      }
+     ],
+     "confidence": 1,
+     "content": "The onboard charger shall deliver rated power from 180 V AC through 264 V AC at 45 Hz through 65 Hz.",
+     "description": null,
+     "id": 7,
+     "type": "text"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        164,
+        795,
+        734,
+        828
+       ],
+       "page_id": 1
+      }
+     ],
+     "confidence": 1,
+     "content": "REQ-NVA-CHG-002 | Conversion efficiency",
+     "description": null,
+     "id": 8,
+     "type": "section_header"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        164,
+        847,
+        766,
+        917
+       ],
+       "page_id": 1
+      }
+     ],
+     "confidence": 1,
+     "content": "At 400 V battery voltage and 11 kW output, charger\nefficiency shall be at least 94 percent.",
+     "description": null,
+     "id": 9,
+     "type": "text"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        890,
+        795,
+        1338,
+        828
+       ],
+       "page_id": 1
+      }
+     ],
+     "confidence": 1,
+     "content": "REQ-NVA-CHG-003 | Power factor",
+     "description": null,
+     "id": 10,
+     "type": "section_header"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        888,
+        847,
+        1431,
+        917
+       ],
+       "page_id": 1
+      }
+     ],
+     "confidence": 1,
+     "content": "At loads from 50 percent to rated output, input\npower factor shall be at least 0.99.",
+     "description": null,
+     "id": 11,
+     "type": "text"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        124,
+        2248,
+        724,
+        2271
+       ],
+       "page_id": 1
+      }
+     ],
+     "confidence": 1,
+     "content": "Synthetic benchmark document - no real product or certification claim",
+     "description": null,
+     "id": 12,
+     "type": "page_footer"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        124,
+        89,
+        966,
+        129
+       ],
+       "page_id": 2
+      }
+     ],
+     "confidence": 1,
+     "content": "Nova Charging and Power Conversion Requirements",
+     "description": null,
+     "id": 13,
+     "type": "page_header"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        1239,
+        98,
+        1528,
+        126
+       ],
+       "page_id": 2
+      }
+     ],
+     "confidence": 1,
+     "content": "Controlled copy | Page 3 of 4",
+     "description": null,
+     "id": 14,
+     "type": "page_number"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        124,
+        271,
+        901,
+        316
+       ],
+       "page_id": 2
+      }
+     ],
+     "confidence": 1,
+     "content": "3. Verification-oriented requirements",
+     "description": null,
+     "id": 15,
+     "type": "section_header"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        124,
+        391,
+        1528,
+        688
+       ],
+       "page_id": 2
+      }
+     ],
+     "confidence": 0.9987,
+     "content": "<table><tr><th>Identifier</th><th>Requirement title</th><th>Normative requirement</th></tr><tr><td>REQ-NVA-CHG-004</td><td>Connector temperature</td><td>During a 200 A DC charging session, no connector terminal shall exceed 90 deg C, the left-to-right terminal spread shall remain within 8 deg C, and charging shall continue for 20 minutes.</td></tr><tr><td>REQ-NVA-CHG-005</td><td>Isolation-fault response</td><td>When charging isolation falls below 100 kohm, the charger shall stop transferring energy within 100 ms, open the input relays, and report diagnostic CHG-ISO-01.</td></tr></table>",
+     "description": null,
+     "id": 16,
+     "type": "table"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        124,
+        737,
+        399,
+        772
+       ],
+       "page_id": 2
+      }
+     ],
+     "confidence": 1,
+     "content": "Applicability notes",
+     "description": null,
+     "id": 17,
+     "type": "section_header"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        124,
+        854,
+        1528,
+        1041
+       ],
+       "page_id": 2
+      }
+     ],
+     "confidence": 0.9992,
+     "content": "<table><tr><th>Context</th><th>Interpretation</th></tr><tr><td>Unless a requirement states otherwise</td><td>Limits apply to the complete production-intent assembly.</td></tr><tr><td>Use of shall</td><td>The complete sentence is normative; table columns do not split obligations.</td></tr></table>",
+     "description": null,
+     "id": 18,
+     "type": "table"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        124,
+        2250,
+        723,
+        2271
+       ],
+       "page_id": 2
+      }
+     ],
+     "confidence": 1,
+     "content": "Synthetic benchmark document - no real product or certification claim",
+     "description": null,
+     "id": 19,
+     "type": "page_footer"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        124,
+        89,
+        966,
+        129
+       ],
+       "page_id": 3
+      }
+     ],
+     "confidence": 1,
+     "content": "Nova Charging and Power Conversion Requirements",
+     "description": null,
+     "id": 20,
+     "type": "page_header"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        1240,
+        98,
+        1528,
+        124
+       ],
+       "page_id": 3
+      }
+     ],
+     "confidence": 1,
+     "content": "Controlled copy | Page 4 of 4",
+     "description": null,
+     "id": 21,
+     "type": "page_number"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        124,
+        271,
+        777,
+        316
+       ],
+       "page_id": 3
+      }
+     ],
+     "confidence": 1,
+     "content": "4. Normative installation figure",
+     "description": null,
+     "id": 22,
+     "type": "section_header"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        207,
+        451,
+        1447,
+        1188
+       ],
+       "page_id": 3
+      }
+     ],
+     "confidence": 0.9899,
+     "content": "Installation control - REQ-NVA-CHG-006\nINPUT\nOUTPUT\nThe charge port shall close the proximity switch before energizing the pilot, energize the pilot before closing the power contactors, and display each completed step on the sequence diagram.",
+     "description": "A block diagram shows an \"INPUT\" block connected to an \"OUTPUT\" block via an arrow.",
+     "id": 23,
+     "type": "figure"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        124,
+        1240,
+        829,
+        1268
+       ],
+       "page_id": 3
+      }
+     ],
+     "confidence": 1,
+     "content": "Figure 4-1. Colored geometry and embedded annotation are normative.",
+     "description": null,
+     "id": 24,
+     "type": "caption"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        314,
+        1705,
+        729,
+        1740
+       ],
+       "page_id": 3
+      }
+     ],
+     "confidence": 0.9883,
+     "content": "Interface context (informative)",
+     "description": null,
+     "id": 25,
+     "type": "section_header"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        329,
+        1824,
+        1290,
+        2005
+       ],
+       "page_id": 3
+      }
+     ],
+     "confidence": 0.9022,
+     "content": "Sensor Controller Actuator",
+     "description": "Three labeled boxes—Sensor, Controller, and Actuator—are connected by arrows in a linear diagram.",
+     "id": 26,
+     "type": "figure"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        124,
+        2250,
+        723,
+        2271
+       ],
+       "page_id": 3
+      }
+     ],
+     "confidence": 1,
+     "content": "Synthetic benchmark document - no real product or certification claim",
+     "description": null,
+     "id": 27,
+     "type": "page_footer"
+    }
+   ],
+   "pages": [
+    {
+     "id": 0,
+     "image_uri": "fixture://a717788519fe/page-0.png"
+    },
+    {
+     "id": 1,
+     "image_uri": "fixture://a717788519fe/page-1.png"
+    },
+    {
+     "id": 2,
+     "image_uri": "fixture://a717788519fe/page-2.png"
+    },
+    {
+     "id": 3,
+     "image_uri": "fixture://a717788519fe/page-3.png"
+    }
+   ]
+  },
+  "error_status": null,
+  "metadata": {
+   "file_metadata": null,
+   "id": "fixture",
+   "version": "2.0"
+  }
+ }
+}

@@ -1,0 +1,503 @@
+{
+ "source_sha256": "0c22ea21576db1bb9a2e5f96f367d65909f98747b9ee1d04ecdd028ac2f97881",
+ "parse_version": "2.0",
+ "figure_descriptions": true,
+ "result": {
+  "document": {
+   "elements": [
+    {
+     "bbox": [
+      {
+       "coord": [
+        172,
+        461,
+        734,
+        515
+       ],
+       "page_id": 0
+      }
+     ],
+     "confidence": 1,
+     "content": "NOVA PROGRAM",
+     "description": null,
+     "id": 0,
+     "type": "title"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        172,
+        725,
+        1399,
+        800
+       ],
+       "page_id": 0
+      }
+     ],
+     "confidence": 1,
+     "content": "Nova Cybersecurity Requirements",
+     "description": null,
+     "id": 1,
+     "type": "title"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        172,
+        1878,
+        772,
+        1993
+       ],
+       "page_id": 0
+      }
+     ],
+     "confidence": 1,
+     "content": "Domain: Cybersecurity\nRevision A | Synthetic extraction benchmark",
+     "description": null,
+     "id": 2,
+     "type": "text"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        119,
+        98,
+        804,
+        145
+       ],
+       "page_id": 1
+      }
+     ],
+     "confidence": 0.9951,
+     "content": "Nova Cybersecurity Requirements",
+     "description": null,
+     "id": 3,
+     "type": "title"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        119,
+        164,
+        536,
+        194
+       ],
+       "page_id": 1
+      }
+     ],
+     "confidence": 0.9993,
+     "content": "Legacy controlled requirement sheet",
+     "description": null,
+     "id": 4,
+     "type": "text"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        137,
+        320,
+        617,
+        353
+       ],
+       "page_id": 1
+      }
+     ],
+     "confidence": 0.9976,
+     "content": "REQ-NVA-CYS-001 Secure boot",
+     "description": null,
+     "id": 5,
+     "type": "section_header"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        137,
+        391,
+        994,
+        472
+       ],
+       "page_id": 1
+      }
+     ],
+     "confidence": 0.9938,
+     "content": "At every startup, the controller shall verify the application signature before executing application code.",
+     "description": null,
+     "id": 6,
+     "type": "text"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        137,
+        842,
+        772,
+        875
+       ],
+       "page_id": 1
+      }
+     ],
+     "confidence": 0.9883,
+     "content": "REQ-NVA-CYS-002 Authentication lockout",
+     "description": null,
+     "id": 7,
+     "type": "section_header"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        137,
+        912,
+        1067,
+        992
+       ],
+       "page_id": 1
+      }
+     ],
+     "confidence": 0.9983,
+     "content": "After five consecutive invalid authentication attempts, diagnostic security access shall be locked for 15 minutes.",
+     "description": null,
+     "id": 8,
+     "type": "text"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        137,
+        1361,
+        693,
+        1394
+       ],
+       "page_id": 1
+      }
+     ],
+     "confidence": 0.9951,
+     "content": "REQ-NVA-CYS-003 Update freshness",
+     "description": null,
+     "id": 9,
+     "type": "section_header"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        137,
+        1431,
+        1034,
+        1511
+       ],
+       "page_id": 1
+      }
+     ],
+     "confidence": 0.9813,
+     "content": "The bootloader shall reject a correctly signed software image when its security version is lower than the installed version.",
+     "description": null,
+     "id": 10,
+     "type": "text"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        124,
+        89,
+        673,
+        129
+       ],
+       "page_id": 2
+      }
+     ],
+     "confidence": 1,
+     "content": "Nova Cybersecurity Requirements",
+     "description": null,
+     "id": 11,
+     "type": "page_header"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        1239,
+        98,
+        1528,
+        126
+       ],
+       "page_id": 2
+      }
+     ],
+     "confidence": 1,
+     "content": "Controlled copy | Page 3 of 4",
+     "description": null,
+     "id": 12,
+     "type": "page_number"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        124,
+        271,
+        901,
+        316
+       ],
+       "page_id": 2
+      }
+     ],
+     "confidence": 1,
+     "content": "3. Verification-oriented requirements",
+     "description": null,
+     "id": 13,
+     "type": "section_header"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        124,
+        391,
+        1528,
+        713
+       ],
+       "page_id": 2
+      }
+     ],
+     "confidence": 0.9988,
+     "content": "<table><tr><th>Identifier</th><th>Requirement title</th><th>Normative requirement</th></tr><tr><td>REQ-NVA-CYS-004</td><td>SecOC verification</td><td>For protected CAN messages, the receiver shall verify freshness and message authentication before releasing the payload, and shall increment the intrusion counter after a failed check.</td></tr><tr><td>REQ-NVA-CYS-005</td><td>Key handling</td><td>Production private keys shall be generated inside the hardware security module, shall never be exported in plaintext, and shall be erased when ownership transfer is authorized.</td></tr></table>",
+     "description": null,
+     "id": 14,
+     "type": "table"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        124,
+        765,
+        399,
+        800
+       ],
+       "page_id": 2
+      }
+     ],
+     "confidence": 1,
+     "content": "Applicability notes",
+     "description": null,
+     "id": 15,
+     "type": "section_header"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        124,
+        884,
+        1528,
+        1071
+       ],
+       "page_id": 2
+      }
+     ],
+     "confidence": 0.9992,
+     "content": "<table><tr><th>Context</th><th>Interpretation</th></tr><tr><td>Unless a requirement states otherwise</td><td>Limits apply to the complete production-intent assembly.</td></tr><tr><td>Use of shall</td><td>The complete sentence is normative; table columns do not split obligations.</td></tr></table>",
+     "description": null,
+     "id": 16,
+     "type": "table"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        124,
+        2250,
+        723,
+        2271
+       ],
+       "page_id": 2
+      }
+     ],
+     "confidence": 1,
+     "content": "Synthetic benchmark document - no real product or certification claim",
+     "description": null,
+     "id": 17,
+     "type": "page_footer"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        124,
+        89,
+        673,
+        129
+       ],
+       "page_id": 3
+      }
+     ],
+     "confidence": 1,
+     "content": "Nova Cybersecurity Requirements",
+     "description": null,
+     "id": 18,
+     "type": "page_header"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        1239,
+        98,
+        1528,
+        126
+       ],
+       "page_id": 3
+      }
+     ],
+     "confidence": 1,
+     "content": "Controlled copy | Page 4 of 4",
+     "description": null,
+     "id": 19,
+     "type": "page_number"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        124,
+        271,
+        777,
+        318
+       ],
+       "page_id": 3
+      }
+     ],
+     "confidence": 1,
+     "content": "4. Normative installation figure",
+     "description": null,
+     "id": 20,
+     "type": "section_header"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        207,
+        451,
+        1447,
+        1188
+       ],
+       "page_id": 3
+      }
+     ],
+     "confidence": 0.9879,
+     "content": "Installation control - REQ-NVA-CYS-006\nINPUT\nOUTPUT\nIn production mode the external debug connector shall be physically unpopulated, the debug fuse shall read disabled, and the secure-state indicator shall appear green as shown in the board view.",
+     "description": "A diagram illustrates a flow from a blue \"INPUT\" box to a red \"OUTPUT\" box, connected by an arrow.",
+     "id": 21,
+     "type": "figure"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        124,
+        1240,
+        829,
+        1268
+       ],
+       "page_id": 3
+      }
+     ],
+     "confidence": 1,
+     "content": "Figure 4-1. Colored geometry and embedded annotation are normative.",
+     "description": null,
+     "id": 22,
+     "type": "caption"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        172,
+        1813,
+        364,
+        1843
+       ],
+       "page_id": 3
+      }
+     ],
+     "confidence": 1,
+     "content": "Engineering note",
+     "description": null,
+     "id": 23,
+     "type": "section_header"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        172,
+        1892,
+        1102,
+        2000
+       ],
+       "page_id": 3
+      }
+     ],
+     "confidence": 1,
+     "content": "The figure annotation forms part of the controlled requirement baseline.\nColor, direction, sequence, and geometric relationships must be interpreted visually.",
+     "description": null,
+     "id": 24,
+     "type": "text"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        124,
+        2250,
+        723,
+        2271
+       ],
+       "page_id": 3
+      }
+     ],
+     "confidence": 1,
+     "content": "Synthetic benchmark document - no real product or certification claim",
+     "description": null,
+     "id": 25,
+     "type": "page_footer"
+    }
+   ],
+   "pages": [
+    {
+     "id": 0,
+     "image_uri": "fixture://0c22ea21576d/page-0.png"
+    },
+    {
+     "id": 1,
+     "image_uri": "fixture://0c22ea21576d/page-1.png"
+    },
+    {
+     "id": 2,
+     "image_uri": "fixture://0c22ea21576d/page-2.png"
+    },
+    {
+     "id": 3,
+     "image_uri": "fixture://0c22ea21576d/page-3.png"
+    }
+   ]
+  },
+  "error_status": null,
+  "metadata": {
+   "file_metadata": null,
+   "id": "fixture",
+   "version": "2.0"
+  }
+ }
+}

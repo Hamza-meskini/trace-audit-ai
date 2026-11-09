@@ -1,0 +1,831 @@
+{
+ "source_sha256": "2c9a9aa200c22876ba1301014e14a5a8f329e2b68b0c7d80ef40bdc0a025ead6",
+ "parse_version": "2.0",
+ "figure_descriptions": true,
+ "result": {
+  "document": {
+   "elements": [
+    {
+     "bbox": [
+      {
+       "coord": [
+        170,
+        374,
+        1158,
+        524
+       ],
+       "page_id": 0
+      }
+     ],
+     "confidence": 1,
+     "content": "Nova Safety and Cybersecurity\nAssurance Report",
+     "description": null,
+     "id": 0,
+     "type": "title"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        235,
+        842,
+        415,
+        875
+       ],
+       "page_id": 0
+      }
+     ],
+     "confidence": 1,
+     "content": "Report scope",
+     "description": null,
+     "id": 1,
+     "type": "section_header"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        235,
+        931,
+        997,
+        1146
+       ],
+       "page_id": 0
+      }
+     ],
+     "confidence": 1,
+     "content": "Requirements evaluated: 12\nDomains: Functional safety, Cybersecurity\nMethods: bench test, environmental exposure, inspection, log review\nResult vocabulary: PASS, FAIL, NOT TESTED, INCONCLUSIVE",
+     "description": null,
+     "id": 2,
+     "type": "text"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        170,
+        2161,
+        667,
+        2187
+       ],
+       "page_id": 0
+      }
+     ],
+     "confidence": 1,
+     "content": "NOVA-DV | Revision A | Synthetic controlled copy",
+     "description": null,
+     "id": 3,
+     "type": "page_footer"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        114,
+        89,
+        844,
+        129
+       ],
+       "page_id": 1
+      }
+     ],
+     "confidence": 1,
+     "content": "Nova Safety and Cybersecurity Assurance Report",
+     "description": null,
+     "id": 4,
+     "type": "page_header"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        1118,
+        98,
+        1538,
+        129
+       ],
+       "page_id": 1
+      }
+     ],
+     "confidence": 1,
+     "content": "Controlled verification record | Page 2 of 5",
+     "description": null,
+     "id": 5,
+     "type": "page_number"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        116,
+        264,
+        500,
+        304
+       ],
+       "page_id": 1
+      }
+     ],
+     "confidence": 1,
+     "content": "1. Executed results",
+     "description": null,
+     "id": 6,
+     "type": "section_header"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        116,
+        332,
+        814,
+        363
+       ],
+       "page_id": 1
+      }
+     ],
+     "confidence": 1,
+     "content": "Each disposition applies only to the criterion stated in the same record.",
+     "description": null,
+     "id": 7,
+     "type": "text"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        116,
+        407,
+        1537,
+        1162
+       ],
+       "page_id": 1
+      }
+     ],
+     "confidence": 0.9899,
+     "content": "<table><tr><th>REQ-NVA-FSA-001 Watchdog reaction</th><td>INCONCLUSIVE - Work was attempted for REQ-NVA-FSA-001, but incomplete scope or calibration prevents deciding: Control task misses two consecutive execution windows.<br>INCONCLUSIVE - Work was attempted for REQ-NVA-FSA-001, but incomplete scope or calibration prevents deciding: Independent watchdog resets the controller within 50 ms.</td><td>Bench / inspection record Reviewed by DV team</td></tr><tr><th>REQ-NVA-FSA-002 Sensor plausibility</th><td>PASS - Executed for REQ-NVA-FSA-002; the recorded result confirms: Redundant temperature-channel disagreement exceeds 8 deg C.<br>PASS - Executed for REQ-NVA-FSA-002; the recorded result confirms: Diagnostic fault is set within 200 ms.</td><td>Bench / inspection record Reviewed by DV team</td></tr><tr><th>REQ-NVA-FSA-003 Torque inhibition</th><td>PASS - Executed for REQ-NVA-FSA-003; the recorded result confirms: Charge connector is latched.<br>IN PROGRESS - Partial execution exists for REQ-NVA-FSA-003, but verification is not complete: Commanded propulsion torque remains zero.<br>NOT TESTED - No test or inspection was performed for REQ-NVA-FSA-003: Vehicle displacement does not exceed 150 mm.</td><td>Bench / inspection record Reviewed by DV team</td></tr><tr><th>REQ-NVA-FSA-004 Safe-state persistence</th><td>PASS - Executed for REQ-NVA-FSA-004; the recorded result confirms: Crash latch is set.<br>PASS - Executed for REQ-NVA-FSA-004; the recorded result confirms: Both contactors remain open.<br>PASS - Executed for REQ-NVA-FSA-004; the recorded result confirms: Automatic restart is suppressed.<br>FAIL - Executed for REQ-NVA-FSA-004; the observed result does not satisfy: Crash latch persists across a 12 V power cycle.</td><td>Bench / inspection record Reviewed by DV team</td></tr></table>",
+     "description": null,
+     "id": 8,
+     "type": "table"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        116,
+        2248,
+        718,
+        2274
+       ],
+       "page_id": 1
+      }
+     ],
+     "confidence": 1,
+     "content": "Synthetic benchmark evidence - not a certification or production claim",
+     "description": null,
+     "id": 9,
+     "type": "page_footer"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        114,
+        89,
+        844,
+        129
+       ],
+       "page_id": 2
+      }
+     ],
+     "confidence": 1,
+     "content": "Nova Safety and Cybersecurity Assurance Report",
+     "description": null,
+     "id": 10,
+     "type": "page_header"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        1118,
+        94,
+        1538,
+        129
+       ],
+       "page_id": 2
+      }
+     ],
+     "confidence": 1,
+     "content": "Controlled verification record | Page 3 of 5",
+     "description": null,
+     "id": 11,
+     "type": "page_number"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        114,
+        262,
+        500,
+        304
+       ],
+       "page_id": 2
+      }
+     ],
+     "confidence": 1,
+     "content": "2. Executed results",
+     "description": null,
+     "id": 12,
+     "type": "section_header"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        114,
+        332,
+        815,
+        363
+       ],
+       "page_id": 2
+      }
+     ],
+     "confidence": 1,
+     "content": "Each disposition applies only to the criterion stated in the same record.",
+     "description": null,
+     "id": 13,
+     "type": "text"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        116,
+        407,
+        1537,
+        1165
+       ],
+       "page_id": 2
+      }
+     ],
+     "confidence": 0.9887,
+     "content": "<table><tr><th>REQ-NVA-FSA-005 Fault logging</th><td>NOT TESTED - No test or inspection was performed for REQ-NVA-FSA-005: The reaction is an ASIL-D safety reaction.</td><td>Bench / inspection record Reviewed by DV team</td></tr><tr><td></td><td>NOT TESTED - No test or inspection was performed for REQ-NVA-FSA-005: Safety reaction stores its fault code.</td><td></td></tr><tr><td></td><td>NOT TESTED - No test or inspection was performed for REQ-NVA-FSA-005: First-failure timestamp resolution is 10 ms or better.</td><td></td></tr><tr><td></td><td>NOT TESTED - No test or inspection was performed for REQ-NVA-FSA-005: At least 2 seconds of pre-trigger sensor history is stored.</td><td></td></tr><tr><th>REQ-NVA-CYS-001 Secure boot</th><td>PASS - Executed for REQ-NVA-CYS-001; the recorded result confirms: Signature verification occurs at every startup.</td><td>Bench / inspection record Reviewed by DV team</td></tr><tr><td></td><td>PASS - Executed for REQ-NVA-CYS-001; the recorded result confirms: Application code executes only after successful verification.</td><td></td></tr><tr><th>REQ-NVA-CYS-002 Authentication lockout</th><td>PASS - Executed for REQ-NVA-CYS-002; the recorded result confirms: Five consecutive invalid authentication attempts occur.</td><td>Bench / inspection record Reviewed by DV team</td></tr><tr><td></td><td>IN PROGRESS - Partial execution exists for REQ-NVA-CYS-002, but verification is not complete: Security access is locked for at least 15 minutes.</td><td></td></tr><tr><th>REQ-NVA-CYS-003 Update freshness</th><td>PASS - Executed for REQ-NVA-CYS-003; the recorded result confirms: Candidate image has a valid signature but a lower security version.</td><td>Bench / inspection record Reviewed by DV team</td></tr><tr><td></td><td>FAIL - Executed for REQ-NVA-CYS-003; the observed result does not satisfy: Bootloader rejects the rollback image.</td><td></td></tr></table>",
+     "description": null,
+     "id": 14,
+     "type": "table"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        114,
+        2245,
+        718,
+        2274
+       ],
+       "page_id": 2
+      }
+     ],
+     "confidence": 1,
+     "content": "Synthetic benchmark evidence - not a certification or production claim",
+     "description": null,
+     "id": 15,
+     "type": "page_footer"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        114,
+        89,
+        844,
+        129
+       ],
+       "page_id": 3
+      }
+     ],
+     "confidence": 1,
+     "content": "Nova Safety and Cybersecurity Assurance Report",
+     "description": null,
+     "id": 16,
+     "type": "page_header"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        1118,
+        98,
+        1538,
+        129
+       ],
+       "page_id": 3
+      }
+     ],
+     "confidence": 1,
+     "content": "Controlled verification record | Page 4 of 5",
+     "description": null,
+     "id": 17,
+     "type": "page_number"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        114,
+        264,
+        500,
+        304
+       ],
+       "page_id": 3
+      }
+     ],
+     "confidence": 1,
+     "content": "3. Executed results",
+     "description": null,
+     "id": 18,
+     "type": "section_header"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        114,
+        332,
+        814,
+        363
+       ],
+       "page_id": 3
+      }
+     ],
+     "confidence": 1,
+     "content": "Each disposition applies only to the criterion stated in the same record.",
+     "description": null,
+     "id": 19,
+     "type": "text"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        116,
+        407,
+        1537,
+        1020
+       ],
+       "page_id": 3
+      }
+     ],
+     "confidence": 0.9866,
+     "content": "<table><tr><th>REQ-NVA-CYS-004 SecOC verification</th><td>NOT TESTED - No test or inspection was performed for REQ-NVA-CYS-004: The CAN message is protected.<br>NOT TESTED - No test or inspection was performed for REQ-NVA-CYS-004: Freshness value is verified.<br>NOT TESTED - No test or inspection was performed for REQ-NVA-CYS-004: Message authentication is verified before payload release.<br>NOT TESTED - No test or inspection was performed for REQ-NVA-CYS-004: Failed verification increments the intrusion counter.</td><td>Bench / inspection record Reviewed by DV team</td></tr><tr><th>REQ-NVA-CYS-005 Key handling</th><td>INCONCLUSIVE - Work was attempted for REQ-NVA-CYS-005, but incomplete scope or calibration prevents deciding: Keys are production private keys.<br>INCONCLUSIVE - Work was attempted for REQ-NVA-CYS-005, but incomplete scope or calibration prevents deciding: Production private keys are generated inside the HSM.<br>INCONCLUSIVE - Work was attempted for REQ-NVA-CYS-005, but incomplete scope or calibration prevents deciding: Private keys are never exported in plaintext.<br>INCONCLUSIVE - Work was attempted for REQ-NVA-CYS-005, but incomplete scope or calibration prevents deciding: Keys are erased after authorized ownership transfer.</td><td>Bench / inspection record Reviewed by DV team</td></tr></table>",
+     "description": null,
+     "id": 20,
+     "type": "table"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        114,
+        2245,
+        718,
+        2274
+       ],
+       "page_id": 3
+      }
+     ],
+     "confidence": 1,
+     "content": "Synthetic benchmark evidence - not a certification or production claim",
+     "description": null,
+     "id": 21,
+     "type": "page_footer"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        111,
+        89,
+        847,
+        129
+       ],
+       "page_id": 4
+      }
+     ],
+     "confidence": 1,
+     "content": "Nova Safety and Cybersecurity Assurance Report",
+     "description": null,
+     "id": 22,
+     "type": "page_header"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        1116,
+        94,
+        1409,
+        129
+       ],
+       "page_id": 4
+      }
+     ],
+     "confidence": 1,
+     "content": "Controlled verification record",
+     "description": null,
+     "id": 23,
+     "type": "page_header"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        1419,
+        94,
+        1540,
+        129
+       ],
+       "page_id": 4
+      }
+     ],
+     "confidence": 1,
+     "content": "Page 5 of 5",
+     "description": null,
+     "id": 24,
+     "type": "page_number"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        111,
+        260,
+        771,
+        316
+       ],
+       "page_id": 4
+      }
+     ],
+     "confidence": 1,
+     "content": "4. Image-based inspection result",
+     "description": null,
+     "id": 25,
+     "type": "section_header"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        177,
+        496,
+        622,
+        531
+       ],
+       "page_id": 4
+      }
+     ],
+     "confidence": 0.9988,
+     "content": "VISUAL INSPECTION RECORD",
+     "description": null,
+     "id": 26,
+     "type": "section_header"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        177,
+        559,
+        713,
+        592
+       ],
+       "page_id": 4
+      }
+     ],
+     "confidence": 0.9965,
+     "content": "REQ-NVA-FSA-006 | Redundant shutdown path",
+     "description": null,
+     "id": 27,
+     "type": "section_header"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        194,
+        617,
+        342,
+        639
+       ],
+       "page_id": 4
+      }
+     ],
+     "confidence": 0.9848,
+     "content": "INCONCLUSIVE",
+     "description": null,
+     "id": 28,
+     "type": "section_header"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        194,
+        648,
+        1088,
+        695
+       ],
+       "page_id": 4
+      }
+     ],
+     "confidence": 0.9967,
+     "content": "INCONCLUSIVE - Work was attempted for REQ-NVA-FSA-006, but incomplete scope or calibration prevents deciding: Primary safety MCU de-energizes the coils within 25 ms.",
+     "description": null,
+     "id": 29,
+     "type": "text"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        194,
+        727,
+        342,
+        748
+       ],
+       "page_id": 4
+      }
+     ],
+     "confidence": 0.9825,
+     "content": "INCONCLUSIVE",
+     "description": null,
+     "id": 30,
+     "type": "section_header"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        194,
+        758,
+        1027,
+        805
+       ],
+       "page_id": 4
+      }
+     ],
+     "confidence": 0.9762,
+     "content": "INCONCLUSIVE - Work was attempted for REQ-NVA-FSA-006, but incomplete scope or calibration prevents deciding:\nIndependent comparator de-energizes the coils within 25 ms.",
+     "description": null,
+     "id": 31,
+     "type": "text"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        177,
+        844,
+        607,
+        877
+       ],
+       "page_id": 4
+      }
+     ],
+     "confidence": 0.9967,
+     "content": "REQ-NVA-CYS-006 | Debug-port state",
+     "description": null,
+     "id": 32,
+     "type": "section_header"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        194,
+        901,
+        251,
+        924
+       ],
+       "page_id": 4
+      }
+     ],
+     "confidence": 0.9973,
+     "content": "PASS",
+     "description": null,
+     "id": 33,
+     "type": "section_header"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        194,
+        931,
+        632,
+        954
+       ],
+       "page_id": 4
+      }
+     ],
+     "confidence": 0.9814,
+     "content": "the recorded result confirms: Controller is in production mode.",
+     "description": null,
+     "id": 34,
+     "type": "text"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        194,
+        1010,
+        251,
+        1031
+       ],
+       "page_id": 4
+      }
+     ],
+     "confidence": 0.9958,
+     "content": "PASS",
+     "description": null,
+     "id": 35,
+     "type": "section_header"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        194,
+        1041,
+        767,
+        1064
+       ],
+       "page_id": 4
+      }
+     ],
+     "confidence": 0.9911,
+     "content": "the recorded result confirms: External debug connector is physically unpopulated.",
+     "description": null,
+     "id": 36,
+     "type": "text"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        194,
+        1120,
+        251,
+        1141
+       ],
+       "page_id": 4
+      }
+     ],
+     "confidence": 0.9961,
+     "content": "PASS",
+     "description": null,
+     "id": 37,
+     "type": "section_header"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        194,
+        1151,
+        607,
+        1177
+       ],
+       "page_id": 4
+      }
+     ],
+     "confidence": 0.9915,
+     "content": "the recorded result confirms: Debug fuse reports disabled.",
+     "description": null,
+     "id": 38,
+     "type": "text"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        194,
+        1230,
+        251,
+        1251
+       ],
+       "page_id": 4
+      }
+     ],
+     "confidence": 0.9946,
+     "content": "PASS",
+     "description": null,
+     "id": 39,
+     "type": "section_header"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        194,
+        1261,
+        672,
+        1284
+       ],
+       "page_id": 4
+      }
+     ],
+     "confidence": 0.9884,
+     "content": "the recorded result confirms: Secure-state indicator appears green.",
+     "description": null,
+     "id": 40,
+     "type": "text"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        177,
+        1948,
+        640,
+        1974
+       ],
+       "page_id": 4
+      }
+     ],
+     "confidence": 0.9944,
+     "content": "Image record NOVA-DV-VIS | Reviewer: QA-17 | Controlled copy",
+     "description": null,
+     "id": 41,
+     "type": "text"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        111,
+        2140,
+        1310,
+        2175
+       ],
+       "page_id": 4
+      }
+     ],
+     "confidence": 1,
+     "content": "Figure 4-1. Recorded inspections for REQ-NVA-FSA-006, REQ-NVA-CYS-006; interpretation requires the raster content.",
+     "description": null,
+     "id": 42,
+     "type": "caption"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        111,
+        2245,
+        721,
+        2276
+       ],
+       "page_id": 4
+      }
+     ],
+     "confidence": 1,
+     "content": "Synthetic benchmark evidence - not a certification or production claim",
+     "description": null,
+     "id": 43,
+     "type": "page_footer"
+    }
+   ],
+   "pages": [
+    {
+     "id": 0,
+     "image_uri": "fixture://2c9a9aa200c2/page-0.png"
+    },
+    {
+     "id": 1,
+     "image_uri": "fixture://2c9a9aa200c2/page-1.png"
+    },
+    {
+     "id": 2,
+     "image_uri": "fixture://2c9a9aa200c2/page-2.png"
+    },
+    {
+     "id": 3,
+     "image_uri": "fixture://2c9a9aa200c2/page-3.png"
+    },
+    {
+     "id": 4,
+     "image_uri": "fixture://2c9a9aa200c2/page-4.png"
+    }
+   ]
+  },
+  "error_status": null,
+  "metadata": {
+   "file_metadata": null,
+   "id": "fixture",
+   "version": "2.0"
+  }
+ }
+}

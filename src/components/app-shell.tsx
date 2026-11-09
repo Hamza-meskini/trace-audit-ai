@@ -62,7 +62,7 @@ const labels: Record<string, string> = {
   findings: "Findings",
   traceability: "Traceability",
   reports: "Reports",
-  frameworks: "Requirement Frameworks",
+  frameworks: "Standards reference",
   settings: "Settings",
   "new-audit": "New Audit",
 };
@@ -84,6 +84,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     activeProjectId,
     projects: apiProjects,
     selectProject,
+    urlProjectId,
+    urlProjectMissing,
   } = useActiveProject();
   // These only feed the Cmd+K palette: load them when it opens instead of
   // fetching the evidence-heavy lists on every page of the app.
@@ -92,6 +94,19 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const findings = useFindings(activeProjectId, undefined, { enabled: openSearch });
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const navigate = useNavigate();
+
+  // Put the active project in the address bar so the current page can be
+  // copied and shared as-is. A link naming an unknown project is left alone so
+  // the warning below stays visible.
+  useEffect(() => {
+    if (activeProjectId && !urlProjectId) {
+      navigate({
+        to: ".",
+        search: (prev) => ({ ...prev, project: activeProjectId }),
+        replace: true,
+      });
+    }
+  }, [activeProjectId, urlProjectId, navigate]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -327,6 +342,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </header>
 
         <main className="min-w-0 flex-1 px-4 py-6 md:px-8 md:py-8">
+          {urlProjectMissing && (
+            <div
+              role="alert"
+              className="mb-4 rounded-xl border border-warning/30 bg-warning-soft p-4 text-sm"
+            >
+              This link points to a project that does not exist or is not available to you. Showing{" "}
+              {activeProject.name || "another project"} instead.
+            </div>
+          )}
           <AuditProgressPanel key={activeProjectId} projectId={activeProjectId} />
           {children}
         </main>

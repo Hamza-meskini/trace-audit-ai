@@ -4,6 +4,8 @@ import {
   ArrowLeft,
   ArrowUpRight,
   CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
   FileText,
   ListChecks,
   Loader2,
@@ -19,21 +21,33 @@ import { DocumentInspector, ExtractedBlock, StructuredText } from "@/components/
 import { useActiveProject } from "@/hooks/use-active-project";
 import { useRequirement, useRequirements, useSaveReview } from "@/hooks/use-requirements";
 import { isAuditActive, useAuditProgress } from "@/hooks/use-audit";
-import type {
-  AtomicCondition,
-  CoverageStatus,
-  ReviewRequest,
-  ReviewResolutionType,
+import {
+  getErrorMessage,
+  type AtomicCondition,
+  type CoverageStatus,
+  type ReviewRequest,
+  type ReviewResolutionType,
 } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
 import {
   normalizeRequirementQueueSearch,
   parseRequirementQueueSearch,
   type NormalizedRequirementQueueSearch,
+  type RequirementQueueSearch,
 } from "@/lib/requirement-search";
 
+const VIEWS = ["conditions", "source", "review"] as const;
+type ReviewView = (typeof VIEWS)[number];
+
 export const Route = createFileRoute("/requirements/$id")({
-  validateSearch: parseRequirementQueueSearch,
+  // Queue filters (for "next"/"back") plus the open section, so a link can
+  // point straight at a requirement's source or review history.
+  validateSearch: (
+    search: Record<string, unknown>,
+  ): RequirementQueueSearch & { view?: ReviewView | undefined } => ({
+    ...parseRequirementQueueSearch(search),
+    view: VIEWS.find((view) => view === search["view"] && view !== "conditions"),
+  }),
   head: () => ({ meta: [{ title: "Requirement Review — TraceAudit" }] }),
   component: RequirementDetail,
 });
@@ -76,7 +90,8 @@ function requiredTarget(condition: AtomicCondition) {
 }
 function RequirementDetail() {
   const { id } = useParams({ from: "/requirements/$id" });
-  const search = normalizeRequirementQueueSearch(Route.useSearch());
+  const rawSearch = Route.useSearch();
+  const search = normalizeRequirementQueueSearch(rawSearch);
   const { activeProjectId } = useActiveProject();
   return (
     <ReviewWorkspace
@@ -84,6 +99,7 @@ function RequirementDetail() {
       projectId={activeProjectId}
       id={id}
       search={search}
+      tab={rawSearch.view ?? "conditions"}
     />
   );
 }
@@ -92,10 +108,12 @@ function ReviewWorkspace({
   projectId,
   id,
   search,
+  tab,
 }: {
   projectId: string;
   id: string;
   search: NormalizedRequirementQueueSearch;
+  tab: ReviewView;
 }) {
   const navigate = useNavigate();
   const query = useRequirement(projectId, id);
@@ -103,11 +121,19 @@ function ReviewWorkspace({
   const saveReview = useSaveReview(projectId, id);
   const { data: auditJob } = useAuditProgress(projectId);
   const auditActive = isAuditActive(auditJob);
-  const [tab, setTab] = useState<"conditions" | "source" | "review">("conditions");
+  const setTab = (view: ReviewView) =>
+    navigate({
+      to: "/requirements/$id",
+      params: { id },
+      search: { ...search, view: view === "conditions" ? undefined : view },
+      replace: true,
+    });
   const [selection, setSelection] = useState<{
     documentId: string;
     page: number;
     context: string;
+    highlight?: string | null | undefined;
+    chunkId?: string | null | undefined;
   } | null>(null);
   const draftKey = `traceaudit-review-draft:${projectId}:${id}`;
   const parsedDraft = reviewDraft(draftKey);
@@ -155,6 +181,7 @@ function ReviewWorkspace({
   }, [queueQuery.data, search]);
   const queueIndex = queue.findIndex((item) => item.id === id);
   const nextRequirement = queueIndex >= 0 ? queue[queueIndex + 1] : undefined;
+  const previousRequirement = queueIndex > 0 ? queue[queueIndex - 1] : undefined;
   if (query.isPending)
     return (
       <div role="status" className="flex justify-center gap-2 p-20">
@@ -167,7 +194,7 @@ function ReviewWorkspace({
       <div role="alert" className="rounded-xl border bg-card p-8">
         <h1 className="text-lg font-semibold">Requirement unavailable</h1>
         <p className="my-3 text-sm text-muted-foreground">
-          Check your connection and active project.
+          {query.error ? getErrorMessage(query.error) : "Check your connection and active project."}
         </p>
         <Button onClick={() => query.refetch()}>Retry</Button>
       </div>
@@ -197,8 +224,19 @@ function ReviewWorkspace({
   const history = req.review_history || [];
   const provenCount = results.filter((item) => item.status === "PROVEN").length;
   const logic = req.contract?.logic?.operator;
-  const inspect = (documentId: string, page: number | null | undefined, context: string) =>
-    setSelection({ documentId, page: page || 1, context });
+  const inspect = (
+    documentId: string,
+    page: number | null | undefined,
+    context: string,
+    citation?: { highlight?: string | null | undefined; chunkId?: string | null | undefined },
+  ) =>
+    setSelection({
+      documentId,
+      page: page || 1,
+      context,
+      highlight: citation?.highlight,
+      chunkId: citation?.chunkId,
+    });
   const submitReview = async (advance = false) => {
     if (
       action !== "Comment" &&
@@ -231,8 +269,10 @@ function ReviewWorkspace({
           search,
         });
       }
-    } catch {
-      toast.error("Review was not saved. Your text is preserved; please retry.");
+    } catch (error) {
+      toast.error("Review was not saved. Your text is preserved; please retry.", {
+        description: getErrorMessage(error),
+      });
     }
   };
   return (
@@ -257,10 +297,44 @@ function ReviewWorkspace({
             </div>
             <h1 className="text-xl font-semibold tracking-tight">{req.title}</h1>
           </div>
-          <Button variant="outline" onClick={() => setTab("review")}>
-            <MessageSquare className="size-4" />
-            Review decision
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            <nav aria-label="Review queue" className="flex items-center gap-1">
+              {(
+                [
+                  ["Previous", previousRequirement, ChevronLeft],
+                  ["Next", nextRequirement, ChevronRight],
+                ] as const
+              ).map(([label, target, Icon]) =>
+                target ? (
+                  <Link
+                    key={label}
+                    to="/requirements/$id"
+                    params={{ id: target.id }}
+                    search={search}
+                    className="inline-flex h-9 items-center gap-1 rounded-md border px-3 text-sm hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    aria-label={`${label} in queue: ${target.req_code}`}
+                    title={`${target.req_code} · ${target.title}`}
+                  >
+                    {label === "Previous" && <Icon className="size-4" />}
+                    {label}
+                    {label === "Next" && <Icon className="size-4" />}
+                  </Link>
+                ) : (
+                  <span
+                    key={label}
+                    aria-disabled="true"
+                    className="inline-flex h-9 items-center gap-1 rounded-md border px-3 text-sm text-muted-foreground opacity-50"
+                  >
+                    {label}
+                  </span>
+                ),
+              )}
+            </nav>
+            <Button variant="outline" onClick={() => setTab("review")}>
+              <MessageSquare className="size-4" />
+              Review decision
+            </Button>
+          </div>
         </div>
         <div className="mt-5 flex flex-wrap gap-x-8 gap-y-3 border-t pt-4 text-xs">
           <div>
@@ -504,6 +578,9 @@ function ReviewWorkspace({
                       <div className="flex flex-wrap gap-2">
                         {result?.evidence_ids?.map((evidenceId) => {
                           const ref = catalog.find((item) => item.evidence_id === evidenceId);
+                          const span = result.evidence_spans?.find(
+                            (item) => item.evidence_id === evidenceId,
+                          );
                           return ref ? (
                             <Button
                               key={evidenceId}
@@ -513,8 +590,16 @@ function ReviewWorkspace({
                               onClick={() =>
                                 inspect(
                                   ref.document_id,
-                                  ref.page_number,
+                                  span?.page_number ?? ref.page_number,
                                   `${condition.condition_id} · ${evidenceId}`,
+                                  {
+                                    // Only a recorded span or a single-source quote is
+                                    // known to come from this evidence item.
+                                    highlight:
+                                      span?.exact_quote ??
+                                      (result.evidence_ids.length === 1 ? result.quote : null),
+                                    chunkId: ref.chunk_id,
+                                  },
                                 )
                               }
                             >
@@ -554,7 +639,9 @@ function ReviewWorkspace({
                           {result.evidence_spans?.map((span, i) => (
                             <p className="mt-2 text-muted-foreground" key={i}>
                               {span.evidence_id}: characters {span.start_offset}–{span.end_offset}{" "}
-                              in the reasoning excerpt (not PDF coordinates).
+                              in the evidence excerpt given to the model (not PDF coordinates).
+                              Opening the citation marks the quoted text, matched by content, in the
+                              page’s extracted text.
                             </p>
                           ))}
                         </details>
@@ -566,30 +653,56 @@ function ReviewWorkspace({
               {!!req.evidence.length && (
                 <details className="rounded-xl border bg-card p-5">
                   <summary className="cursor-pointer text-sm font-medium">
-                    All linked evidence ({req.evidence.length})
+                    Linked evidence:{" "}
+                    {req.evidence.filter((item) => item.status !== "Context (not cited)").length}{" "}
+                    cited,{" "}
+                    {req.evidence.filter((item) => item.status === "Context (not cited)").length}{" "}
+                    retrieved as context only
                   </summary>
                   <div className="mt-4 space-y-4">
-                    {req.evidence.map((item) => (
-                      <div key={item.id} className="border-t pt-3">
-                        <p className="mb-2 text-xs font-medium">
-                          {item.document_name} · {item.status}
-                        </p>
-                        <StructuredText text={item.quote} />
-                        {item.document_id && (
-                          <Button
-                            className="mt-3"
-                            variant="outline"
-                            size="sm"
-                            onClick={() =>
-                              inspect(item.document_id!, item.page_number, "Linked evidence")
-                            }
-                          >
-                            Inspect original source
-                            <ArrowUpRight className="size-3.5" />
-                          </Button>
-                        )}
-                      </div>
-                    ))}
+                    {req.evidence.map((item) => {
+                      const contextOnly = item.status === "Context (not cited)";
+                      return (
+                        <div
+                          key={item.id}
+                          className={cn("border-t pt-3", contextOnly && "opacity-70")}
+                        >
+                          <p className="mb-2 text-xs font-medium">
+                            {item.document_name}
+                            {item.page_number ? ` · p.${item.page_number}` : ""} · {item.status}
+                          </p>
+                          {contextOnly && (
+                            <p className="mb-2 text-xs text-muted-foreground">
+                              Retrieved for context; the assessment did not cite this passage.
+                            </p>
+                          )}
+                          <StructuredText
+                            text={item.quote}
+                            highlight={contextOnly ? null : item.highlight}
+                          />
+                          {item.document_id && (
+                            <Button
+                              className="mt-3"
+                              variant="outline"
+                              size="sm"
+                              onClick={() =>
+                                inspect(
+                                  item.document_id!,
+                                  item.page_number,
+                                  contextOnly ? "Context evidence (not cited)" : "Linked evidence",
+                                  contextOnly
+                                    ? undefined
+                                    : { highlight: item.highlight, chunkId: item.chunk_id },
+                                )
+                              }
+                            >
+                              Inspect original source
+                              <ArrowUpRight className="size-3.5" />
+                            </Button>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 </details>
               )}
@@ -652,8 +765,9 @@ function ReviewWorkspace({
               <section className="rounded-xl border bg-card p-5">
                 <h2 className="text-sm font-semibold">Record a human review</h2>
                 <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
-                  A review changes workflow state, not the AI verdict. Names are self-reported in
-                  this local workspace; authenticated sign-off is not implemented.
+                  A review changes workflow state, not the AI verdict. On Databricks Apps the
+                  signed-in SSO identity is recorded as the reviewer; elsewhere the typed name is
+                  self-reported and the review is marked unverified.
                 </p>
                 <div className="mt-5 space-y-4">
                   <label className="block text-xs font-medium">
@@ -776,7 +890,8 @@ function ReviewWorkspace({
                       <li key={event.id} className="border-l-2 border-primary/25 pl-4">
                         <div className="flex flex-wrap justify-between gap-2 text-xs">
                           <strong>
-                            {event.reviewer} · {event.action}
+                            {event.reviewer}
+                            {event.identity_verified ? "" : " (unverified)"} · {event.action}
                           </strong>
                           <time className="text-muted-foreground">
                             {new Date(event.created_at).toLocaleString()}
@@ -821,10 +936,12 @@ function ReviewWorkspace({
           </div>
           {shownDocument ? (
             <DocumentInspector
-              key={`${shownDocument.documentId}-${shownDocument.page}`}
+              key={`${shownDocument.documentId}-${shownDocument.page}-${shownDocument.chunkId ?? ""}-${shownDocument.highlight ?? ""}`}
               projectId={projectId}
               documentId={shownDocument.documentId}
               initialPage={shownDocument.page}
+              highlight={shownDocument.highlight}
+              chunkId={shownDocument.chunkId}
             />
           ) : (
             <div className="rounded-xl border border-dashed p-10 text-center">

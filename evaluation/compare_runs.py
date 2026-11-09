@@ -24,6 +24,11 @@ import statistics
 from collections import Counter, defaultdict
 from pathlib import Path
 
+try:
+    from evaluation.scoring import auto_close_safety, macro_f1 as _shared_macro_f1
+except ImportError:  # run as a script from evaluation/
+    from scoring import auto_close_safety, macro_f1 as _shared_macro_f1
+
 CLASSES = ["SUPPORTED", "PARTIAL", "CONFLICT", "MISSING", "UNKNOWN", "NOT_APPLICABLE"]
 
 
@@ -37,23 +42,15 @@ def _load(path: str) -> dict:
 
 
 def _macro_f1(pairs: list[tuple[str, str]]) -> float:
-    scores = []
-    for label in CLASSES:
-        support = sum(1 for gold, _ in pairs if gold == label)
-        if not support:
-            continue
-        tp = sum(1 for gold, pred in pairs if gold == label and pred == label)
-        fp = sum(1 for gold, pred in pairs if gold != label and pred == label)
-        precision = tp / (tp + fp) if tp + fp else 0.0
-        recall = tp / support
-        scores.append(2 * precision * recall / (precision + recall) if precision + recall else 0.0)
-    return round(100.0 * sum(scores) / len(scores), 2) if scores else 0.0
+    return _shared_macro_f1(pairs, CLASSES)
 
 
 def run_metrics(run: dict) -> dict:
     rows = run["requirements"]
     pairs = [(row["expected_status"], row["predicted_status"]) for row in rows]
-    auto = [row for row in rows if row.get("predicted_review_state") == "Reviewed"]
+    safety = auto_close_safety(
+        (row["expected_status"], row["predicted_status"], row.get("predicted_review_state")) for row in rows
+    )
     conflict = [row for row in rows if row["expected_status"] == "CONFLICT"]
     environment = (run.get("generation_config") or {}).get("environment") or {}
     return {
@@ -68,11 +65,53 @@ def run_metrics(run: dict) -> dict:
         "accuracy": round(100.0 * sum(gold == pred for gold, pred in pairs) / len(rows), 2) if rows else 0.0,
         "macro_f1": _macro_f1(pairs),
         "conflict_recall": f"{sum(r['predicted_status'] == 'CONFLICT' for r in conflict)}/{len(conflict)}",
-        "auto_closed": len(auto),
-        "unsafe_supported": sum(1 for r in auto if r["predicted_status"] == "SUPPORTED" and r["expected_status"] != "SUPPORTED"),
-        "unsafe_conflict": sum(1 for r in auto if r["predicted_status"] == "CONFLICT" and r["expected_status"] != "CONFLICT"),
+        "auto_closed": safety["auto_closed"],
+        "unsafe_supported": safety["unsafe_supported"],
+        "unsafe_conflict": safety["unsafe_conflict"],
+        "unsafe_auto_closes": safety["unsafe_auto_closes"],
         "not_extracted": sum(1 for r in rows if r["predicted_status"] == "NOT_EXTRACTED"),
     }
+
+
+# EVA-08: settings that must match for two arms to be comparable. The code
+# (git commit) is what an arm comparison is for, so it is not listed here.
+SETTING_FIELDS = (
+    "benchmark_version", "mode", "model", "atomic_model", "verification_model",
+    "atomic_thinking_level", "verification_thinking_level", "verification_path",
+)
+GENERATION_FIELDS = ("provider", "temperature", "batch_size", "retrieval_backend")
+
+
+def run_settings(run: dict) -> dict:
+    generation = run.get("generation_config") or {}
+    environment = generation.get("environment") or {}
+    settings = {name: run.get(name) for name in SETTING_FIELDS}
+    settings.update({name: generation.get(name) for name in GENERATION_FIELDS})
+    settings["document_parser"] = environment.get("document_parser")
+    return settings
+
+
+def settings_mismatches(arms: dict[str, list[dict]], allowed: set[str]) -> list[str]:
+    """Differences in recorded settings within an arm, or between arms outside ``allowed``."""
+    problems = []
+    reference = None
+    for name, runs in arms.items():
+        per_run = [run_settings(run) for run in runs]
+        for index, current in enumerate(per_run[1:], start=2):
+            diff = sorted(key for key in current if current[key] != per_run[0][key])
+            if diff:
+                problems.append(f"arm {name!r}: run {index} differs from run 1 in {', '.join(diff)}")
+        if reference is None:
+            reference = (name, per_run[0])
+            continue
+        diff = sorted(
+            key for key in per_run[0]
+            if per_run[0][key] != reference[1][key] and key not in allowed
+        )
+        if diff:
+            details = "; ".join(f"{key}: {reference[1][key]!r} vs {per_run[0][key]!r}" for key in diff)
+            problems.append(f"arms {reference[0]!r} and {name!r} differ in {details}")
+    return problems
 
 
 def _sign_test(fixed: int, broken: int) -> float:
@@ -126,7 +165,7 @@ def summarize_arm(name: str, runs: list[dict], tags: dict[str, list[str]]) -> di
         "accuracy_sd": round(statistics.stdev(accuracies), 2) if len(accuracies) > 1 else None,
         "accuracy_range": [min(accuracies), max(accuracies)] if accuracies else None,
         "macro_f1_mean": round(statistics.mean(f1s), 2) if f1s else None,
-        "unsafe_total": sum(item["unsafe_supported"] + item["unsafe_conflict"] for item in per_run),
+        "unsafe_total": sum(item["unsafe_auto_closes"] for item in per_run),
         "auto_closed_mean": round(statistics.mean(item["auto_closed"] for item in per_run), 2) if per_run else None,
     }
     if tags:
@@ -171,6 +210,9 @@ def main(argv=None) -> int:
                         help="arm name followed by its run folders or results.json files")
     parser.add_argument("--truth", help="ground_truth.json with per-requirement tags (optional)")
     parser.add_argument("--out", help="write the full comparison as JSON")
+    parser.add_argument("--vary", action="append", default=[], metavar="SETTING",
+                        help="a setting the arms are meant to differ in (e.g. verification_model); "
+                             "any other difference makes the arms incomparable")
     args = parser.parse_args(argv)
 
     tags = _tags(args.truth)
@@ -182,6 +224,10 @@ def main(argv=None) -> int:
     benchmark_ids = {run.get("benchmark_id") for runs in arms.values() for run in runs}
     if len(benchmark_ids) > 1:
         parser.error(f"runs come from different benchmarks: {sorted(map(str, benchmark_ids))}")
+    mismatches = settings_mismatches(arms, set(args.vary))
+    if mismatches:
+        parser.error("incomparable arms (pass --vary SETTING for an intended difference):\n  "
+                     + "\n  ".join(mismatches))
 
     report = {"benchmark_id": benchmark_ids.pop(), "arms": {}, "comparisons": {}}
     names = list(arms)

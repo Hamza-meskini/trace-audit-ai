@@ -1,0 +1,831 @@
+{
+ "source_sha256": "d0db72965b49f62e081c1c604a8da9b3e2a9aa786490aba90d9af945a56b90c5",
+ "parse_version": "2.0",
+ "figure_descriptions": true,
+ "result": {
+  "document": {
+   "elements": [
+    {
+     "bbox": [
+      {
+       "coord": [
+        170,
+        374,
+        1262,
+        524
+       ],
+       "page_id": 0
+      }
+     ],
+     "confidence": 1,
+     "content": "Nova Charging and Manufacturing\nAcceptance Report",
+     "description": null,
+     "id": 0,
+     "type": "title"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        235,
+        842,
+        415,
+        875
+       ],
+       "page_id": 0
+      }
+     ],
+     "confidence": 1,
+     "content": "Report scope",
+     "description": null,
+     "id": 1,
+     "type": "section_header"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        235,
+        929,
+        997,
+        1146
+       ],
+       "page_id": 0
+      }
+     ],
+     "confidence": 1,
+     "content": "Requirements evaluated: 12\nDomains: Charging, Manufacturing quality\nMethods: bench test, environmental exposure, inspection, log review\nResult vocabulary: PASS, FAIL, NOT TESTED, INCONCLUSIVE",
+     "description": null,
+     "id": 2,
+     "type": "text"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        170,
+        2161,
+        667,
+        2187
+       ],
+       "page_id": 0
+      }
+     ],
+     "confidence": 1,
+     "content": "NOVA-DV | Revision A | Synthetic controlled copy",
+     "description": null,
+     "id": 3,
+     "type": "page_footer"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        114,
+        89,
+        910,
+        129
+       ],
+       "page_id": 1
+      }
+     ],
+     "confidence": 1,
+     "content": "Nova Charging and Manufacturing Acceptance Report",
+     "description": null,
+     "id": 4,
+     "type": "page_header"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        1116,
+        94,
+        1538,
+        129
+       ],
+       "page_id": 1
+      }
+     ],
+     "confidence": 1,
+     "content": "Controlled verification record | Page 2 of 5",
+     "description": null,
+     "id": 5,
+     "type": "page_number"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        116,
+        262,
+        501,
+        304
+       ],
+       "page_id": 1
+      }
+     ],
+     "confidence": 1,
+     "content": "1. Executed results",
+     "description": null,
+     "id": 6,
+     "type": "section_header"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        114,
+        332,
+        815,
+        363
+       ],
+       "page_id": 1
+      }
+     ],
+     "confidence": 1,
+     "content": "Each disposition applies only to the criterion stated in the same record.",
+     "description": null,
+     "id": 7,
+     "type": "text"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        116,
+        407,
+        1538,
+        1415
+       ],
+       "page_id": 1
+      }
+     ],
+     "confidence": 0.9925,
+     "content": "<table><tr><th>REQ-NVA-CHG-001 AC input range</th><td>PASS - Executed for REQ-NVA-CHG-001; the recorded result confirms: Rated power is delivered at 180 V AC.<br>NOT TESTED - No test or inspection was performed for REQ-NVA-CHG-001: Rated power is delivered at 264 V AC.<br>NOT TESTED - No test or inspection was performed for REQ-NVA-CHG-001: Rated power is delivered at 45 Hz.<br>NOT TESTED - No test or inspection was performed for REQ-NVA-CHG-001: Rated power is delivered at 65 Hz.</td><td>Bench / inspection record Reviewed by DV team</td></tr><tr><th>REQ-NVA-CHG-002 Conversion efficiency</th><td>PASS - Executed for REQ-NVA-CHG-002; the recorded result confirms: Battery voltage is 400 V.<br>PASS - Executed for REQ-NVA-CHG-002; the recorded result confirms: Charger output power is 11 kW.<br>FAIL - Executed for REQ-NVA-CHG-002; the observed result does not satisfy: Charger efficiency is at least 94 percent.</td><td>Bench / inspection record Reviewed by DV team</td></tr><tr><th>REQ-NVA-CHG-003 Power factor</th><td>NOT TESTED - No test or inspection was performed for REQ-NVA-CHG-003: Charger load is at least 50 percent.<br>NOT TESTED - No test or inspection was performed for REQ-NVA-CHG-003: Charger load does not exceed rated output.<br>NOT TESTED - No test or inspection was performed for REQ-NVA-CHG-003: Input power factor is at least 0.99.</td><td>Bench / inspection record Reviewed by DV team</td></tr><tr><th>REQ-NVA-CHG-004 Connector temperature</th><td>INCONCLUSIVE - Work was attempted for REQ-NVA-CHG-004, but incomplete scope or calibration prevents deciding: DC charging current is 200 A.<br>INCONCLUSIVE - Work was attempted for REQ-NVA-CHG-004, but incomplete scope or calibration prevents deciding: Maximum connector terminal temperature is 90 deg C or less.<br>INCONCLUSIVE - Work was attempted for REQ-NVA-CHG-004, but incomplete scope or calibration prevents deciding: Terminal temperature spread is 8 deg C or less.<br>INCONCLUSIVE - Work was attempted for REQ-NVA-CHG-004, but incomplete scope or calibration prevents deciding: Charging continues for 20 minutes.</td><td>Bench / inspection record Reviewed by DV team</td></tr></table>",
+     "description": null,
+     "id": 8,
+     "type": "table"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        114,
+        2245,
+        719,
+        2274
+       ],
+       "page_id": 1
+      }
+     ],
+     "confidence": 1,
+     "content": "Synthetic benchmark evidence - not a certification or production claim",
+     "description": null,
+     "id": 9,
+     "type": "page_footer"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        114,
+        89,
+        910,
+        129
+       ],
+       "page_id": 2
+      }
+     ],
+     "confidence": 1,
+     "content": "Nova Charging and Manufacturing Acceptance Report",
+     "description": null,
+     "id": 10,
+     "type": "page_header"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        1116,
+        94,
+        1540,
+        129
+       ],
+       "page_id": 2
+      }
+     ],
+     "confidence": 1,
+     "content": "Controlled verification record | Page 3 of 5",
+     "description": null,
+     "id": 11,
+     "type": "page_number"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        114,
+        262,
+        501,
+        304
+       ],
+       "page_id": 2
+      }
+     ],
+     "confidence": 1,
+     "content": "2. Executed results",
+     "description": null,
+     "id": 12,
+     "type": "section_header"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        114,
+        332,
+        815,
+        363
+       ],
+       "page_id": 2
+      }
+     ],
+     "confidence": 1,
+     "content": "Each disposition applies only to the criterion stated in the same record.",
+     "description": null,
+     "id": 13,
+     "type": "text"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        116,
+        407,
+        1538,
+        1212
+       ],
+       "page_id": 2
+      }
+     ],
+     "confidence": 0.9904,
+     "content": "<table><tr><th>REQ-NVA-CHG-005 Isolation-fault response</th><td>PASS - Executed for REQ-NVA-CHG-005; the recorded result confirms: Charging isolation falls below 100 kohm.<br>PASS - Executed for REQ-NVA-CHG-005; the recorded result confirms: Energy transfer stops within 100 ms.<br>PASS - Executed for REQ-NVA-CHG-005; the recorded result confirms: Input relays open.<br>PASS - Executed for REQ-NVA-CHG-005; the recorded result confirms: Diagnostic CHG-ISO-01 is reported.</td><td>Bench / inspection record Reviewed by DV team</td></tr><tr><th>REQ-NVA-QLT-001 Instrument calibration</th><td>PASS - Executed for REQ-NVA-QLT-001; the recorded result confirms: Every acceptance instrument is identified by serial number.<br>FAIL - Executed for REQ-NVA-QLT-001; the observed result does not satisfy: Calibration expiry is later than the test date.</td><td>Bench / inspection record Reviewed by DV team</td></tr><tr><th>REQ-NVA-QLT-002 Software traceability</th><td>NOT TESTED - No test or inspection was performed for REQ-NVA-QLT-002: Released controller records a software part number.<br>NOT TESTED - No test or inspection was performed for REQ-NVA-QLT-002: Recorded build hash matches the approved manifest.</td><td>Bench / inspection record Reviewed by DV team</td></tr><tr><th>REQ-NVA-QLT-003 Sampling records</th><td>INCONCLUSIVE - Work was attempted for REQ-NVA-QLT-003, but incomplete scope or calibration prevents deciding: Inspection record identifies the production lot.<br>INCONCLUSIVE - Work was attempted for REQ-NVA-QLT-003, but incomplete scope or calibration prevents deciding: Inspection record states the sample size.<br>INCONCLUSIVE - Work was attempted for REQ-NVA-QLT-003, but incomplete scope or calibration prevents deciding: Inspection record names the sampling plan.</td><td>Bench / inspection record Reviewed by DV team</td></tr></table>",
+     "description": null,
+     "id": 14,
+     "type": "table"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        114,
+        2245,
+        719,
+        2274
+       ],
+       "page_id": 2
+      }
+     ],
+     "confidence": 1,
+     "content": "Synthetic benchmark evidence - not a certification or production claim",
+     "description": null,
+     "id": 15,
+     "type": "page_footer"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        114,
+        89,
+        910,
+        129
+       ],
+       "page_id": 3
+      }
+     ],
+     "confidence": 1,
+     "content": "Nova Charging and Manufacturing Acceptance Report",
+     "description": null,
+     "id": 16,
+     "type": "page_header"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        1116,
+        94,
+        1540,
+        129
+       ],
+       "page_id": 3
+      }
+     ],
+     "confidence": 1,
+     "content": "Controlled verification record | Page 4 of 5",
+     "description": null,
+     "id": 17,
+     "type": "page_number"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        114,
+        262,
+        501,
+        304
+       ],
+       "page_id": 3
+      }
+     ],
+     "confidence": 1,
+     "content": "3. Executed results",
+     "description": null,
+     "id": 18,
+     "type": "section_header"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        114,
+        332,
+        817,
+        363
+       ],
+       "page_id": 3
+      }
+     ],
+     "confidence": 1,
+     "content": "Each disposition applies only to the criterion stated in the same record.",
+     "description": null,
+     "id": 19,
+     "type": "text"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        116,
+        407,
+        1538,
+        1020
+       ],
+       "page_id": 3
+      }
+     ],
+     "confidence": 0.9862,
+     "content": "<table><tr><th>REQ-NVA-QLT-004<br>Weld acceptance</th><td>PASS - Executed for REQ-NVA-QLT-004; the recorded result confirms: Every inspected busbar weld is evaluated.<br>PASS - Executed for REQ-NVA-QLT-004; the recorded result confirms: Effective weld diameter is at least 4.5 mm.<br>PASS - Executed for REQ-NVA-QLT-004; the recorded result confirms: Weld porosity is below 8 percent.<br>PASS - Executed for REQ-NVA-QLT-004; the recorded result confirms: No crack is visible at 10x magnification.</td><td>Bench / inspection record<br>Reviewed by DV team</td></tr><tr><th>REQ-NVA-QLT-005<br>Label content</th><td>PASS - Executed for REQ-NVA-QLT-005; the recorded result confirms: Product label includes hardware revision.<br>NOT TESTED - No test or inspection was performed for REQ-NVA-QLT-005: Product label includes software revision.<br>NOT TESTED - No test or inspection was performed for REQ-NVA-QLT-005: Product label includes a machine-readable serial number.<br>NOT TESTED - No test or inspection was performed for REQ-NVA-QLT-005: Machine-readable and human-readable serial numbers match.</td><td>Bench / inspection record<br>Reviewed by DV team</td></tr></table>",
+     "description": null,
+     "id": 20,
+     "type": "table"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        114,
+        2245,
+        719,
+        2274
+       ],
+       "page_id": 3
+      }
+     ],
+     "confidence": 1,
+     "content": "Synthetic benchmark evidence - not a certification or production claim",
+     "description": null,
+     "id": 21,
+     "type": "page_footer"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        111,
+        84,
+        911,
+        131
+       ],
+       "page_id": 4
+      }
+     ],
+     "confidence": 1,
+     "content": "Nova Charging and Manufacturing Acceptance Report",
+     "description": null,
+     "id": 22,
+     "type": "page_header"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        1115,
+        94,
+        1409,
+        129
+       ],
+       "page_id": 4
+      }
+     ],
+     "confidence": 1,
+     "content": "Controlled verification record",
+     "description": null,
+     "id": 23,
+     "type": "page_header"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        1419,
+        94,
+        1540,
+        129
+       ],
+       "page_id": 4
+      }
+     ],
+     "confidence": 1,
+     "content": "Page 5 of 5",
+     "description": null,
+     "id": 24,
+     "type": "page_number"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        111,
+        260,
+        771,
+        316
+       ],
+       "page_id": 4
+      }
+     ],
+     "confidence": 1,
+     "content": "4. Image-based inspection result",
+     "description": null,
+     "id": 25,
+     "type": "section_header"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        174,
+        496,
+        624,
+        533
+       ],
+       "page_id": 4
+      }
+     ],
+     "confidence": 0.9989,
+     "content": "VISUAL INSPECTION RECORD",
+     "description": null,
+     "id": 26,
+     "type": "section_header"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        174,
+        557,
+        637,
+        596
+       ],
+       "page_id": 4
+      }
+     ],
+     "confidence": 0.9976,
+     "content": "REQ-NVA-CHG-006 | Interlock sequence",
+     "description": null,
+     "id": 27,
+     "type": "section_header"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        192,
+        615,
+        253,
+        639
+       ],
+       "page_id": 4
+      }
+     ],
+     "confidence": 0.9968,
+     "content": "PASS",
+     "description": null,
+     "id": 28,
+     "type": "section_header"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        192,
+        646,
+        744,
+        674
+       ],
+       "page_id": 4
+      }
+     ],
+     "confidence": 0.9901,
+     "content": "the recorded result confirms: Proximity switch closes before pilot energization.",
+     "description": null,
+     "id": 29,
+     "type": "text"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        192,
+        725,
+        303,
+        751
+       ],
+       "page_id": 4
+      }
+     ],
+     "confidence": 0.9977,
+     "content": "UNTESTED",
+     "description": null,
+     "id": 30,
+     "type": "section_header"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        192,
+        758,
+        1070,
+        784
+       ],
+       "page_id": 4
+      }
+     ],
+     "confidence": 0.9947,
+     "content": "NOT TESTED - No test or inspection was performed for REQ-NVA-CHG-006: Pilot energizes before power contactors close.",
+     "description": null,
+     "id": 31,
+     "type": "text"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        192,
+        835,
+        303,
+        861
+       ],
+       "page_id": 4
+      }
+     ],
+     "confidence": 0.9969,
+     "content": "UNTESTED",
+     "description": null,
+     "id": 32,
+     "type": "section_header"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        192,
+        865,
+        991,
+        896
+       ],
+       "page_id": 4
+      }
+     ],
+     "confidence": 0.9952,
+     "content": "NOT TESTED - No test or inspection was performed for REQ-NVA-CHG-006: Every completed step is displayed.",
+     "description": null,
+     "id": 33,
+     "type": "text"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        174,
+        954,
+        627,
+        989
+       ],
+       "page_id": 4
+      }
+     ],
+     "confidence": 0.9875,
+     "content": "REQ-NVA-QLT-006 | Sealant inspection",
+     "description": null,
+     "id": 34,
+     "type": "section_header"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        192,
+        1010,
+        253,
+        1034
+       ],
+       "page_id": 4
+      }
+     ],
+     "confidence": 0.9961,
+     "content": "PASS",
+     "description": null,
+     "id": 35,
+     "type": "section_header"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        192,
+        1041,
+        758,
+        1067
+       ],
+       "page_id": 4
+      }
+     ],
+     "confidence": 0.9965,
+     "content": "the recorded result confirms: Blue sealant bead forms a continuous closed loop.",
+     "description": null,
+     "id": 36,
+     "type": "text"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        192,
+        1118,
+        253,
+        1144
+       ],
+       "page_id": 4
+      }
+     ],
+     "confidence": 0.9961,
+     "content": "PASS",
+     "description": null,
+     "id": 37,
+     "type": "section_header"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        192,
+        1151,
+        802,
+        1177
+       ],
+       "page_id": 4
+      }
+     ],
+     "confidence": 0.984,
+     "content": "the recorded result confirms: Sealant remains between both red tolerance boundaries.",
+     "description": null,
+     "id": 38,
+     "type": "text"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        192,
+        1228,
+        270,
+        1254
+       ],
+       "page_id": 4
+      }
+     ],
+     "confidence": 0.9957,
+     "content": "FAILED",
+     "description": null,
+     "id": 39,
+     "type": "section_header"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        192,
+        1261,
+        691,
+        1289
+       ],
+       "page_id": 4
+      }
+     ],
+     "confidence": 0.9936,
+     "content": "the observed result does not satisfy: No sealant gap exceeds 0.5 mm.",
+     "description": null,
+     "id": 40,
+     "type": "text"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        174,
+        1948,
+        643,
+        1979
+       ],
+       "page_id": 4
+      }
+     ],
+     "confidence": 0.9961,
+     "content": "Image record NOVA-DV-VIS | Reviewer: QA-17 | Controlled copy",
+     "description": null,
+     "id": 41,
+     "type": "text"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        111,
+        2140,
+        1315,
+        2175
+       ],
+       "page_id": 4
+      }
+     ],
+     "confidence": 1,
+     "content": "Figure 4-1. Recorded inspections for REQ-NVA-CHG-006, REQ-NVA-QLT-006; interpretation requires the raster content.",
+     "description": null,
+     "id": 42,
+     "type": "caption"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        111,
+        2243,
+        721,
+        2276
+       ],
+       "page_id": 4
+      }
+     ],
+     "confidence": 1,
+     "content": "Synthetic benchmark evidence - not a certification or production claim",
+     "description": null,
+     "id": 43,
+     "type": "page_footer"
+    }
+   ],
+   "pages": [
+    {
+     "id": 0,
+     "image_uri": "fixture://d0db72965b49/page-0.png"
+    },
+    {
+     "id": 1,
+     "image_uri": "fixture://d0db72965b49/page-1.png"
+    },
+    {
+     "id": 2,
+     "image_uri": "fixture://d0db72965b49/page-2.png"
+    },
+    {
+     "id": 3,
+     "image_uri": "fixture://d0db72965b49/page-3.png"
+    },
+    {
+     "id": 4,
+     "image_uri": "fixture://d0db72965b49/page-4.png"
+    }
+   ]
+  },
+  "error_status": null,
+  "metadata": {
+   "file_metadata": null,
+   "id": "fixture",
+   "version": "2.0"
+  }
+ }
+}

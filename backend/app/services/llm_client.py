@@ -20,6 +20,9 @@ import httpx
 from pydantic import BaseModel
 
 from app.config import settings
+from app.services import call_ledger, request_limits
+from app.services.log_redaction import body_summary, exception_summary
+from app.services.egress import async_client as egress_client
 from app.services.observability import (
     new_correlation_id,
     set_span_attribute,
@@ -129,7 +132,7 @@ class _ModelBreaker:
         if kind == "auth" or entry["failures"] >= int(settings.LLM_BREAKER_THRESHOLD):
             if entry.get("opened_at") is None:
                 entry["opened_at"] = time.monotonic()
-                logger.error("LLM breaker opened for %s (%s): %s", model, kind, detail[:300])
+                logger.error("LLM breaker opened for %s (%s): %s", model, kind, body_summary(detail))
             return LLMUnavailableError(kind, model, detail)
         return None
 
@@ -371,14 +374,14 @@ async def call_gemini_generate_content(
 
     for attempt in range(MAX_ATTEMPTS):
         try:
-            async with httpx.AsyncClient(timeout=timeout) as client:
+            async with egress_client(timeout=timeout) as client:
                 resp = await client.post(url, json=payload, headers=headers)
                 if resp.status_code in RETRYABLE_STATUS_CODES:
                     logger.warning(f"Gemini API rate/capacity [{resp.status_code}]. Retrying (attempt {attempt+1}/{MAX_ATTEMPTS})...")
                     await asyncio.sleep(1.5 * (attempt + 1))
                     continue
                 if resp.status_code != 200:
-                    logger.error(f"Gemini API error [{resp.status_code}]: {resp.text}")
+                    logger.error("Gemini API error [%s]: %s", resp.status_code, body_summary(resp.text))
                     return None
 
                 data = resp.json()
@@ -475,7 +478,7 @@ async def _call_openai_compatible_vision(
                     f"({len(image_bytes)} bytes)...",
                     flush=True,
                 )
-            async with httpx.AsyncClient(timeout=timeout) as client:
+            async with egress_client(timeout=timeout) as client:
                 response = await client.post(url, json=payload, headers=headers)
             if response.status_code in RETRYABLE_STATUS_CODES:
                 retry_after = response.headers.get("retry-after", "")
@@ -500,7 +503,7 @@ async def _call_openai_compatible_vision(
                     provider,
                     response.status_code,
                     model,
-                    response.text[:500],
+                    body_summary(response.text),
                 )
                 return None
             response_data = response.json()
@@ -814,6 +817,8 @@ async def _call_databricks_chat_completions_untraced(
         "Content-Type": "application/json",
     }
 
+    limit_key = request_limits.provider_key("databricks", model)
+    backed_off = False
     if diagnostics is not None:
         diagnostics.update({
             "client_request_id": client_request_id,
@@ -826,9 +831,16 @@ async def _call_databricks_chat_completions_untraced(
         try:
             if diagnostics is not None:
                 diagnostics["attempt_count"] = attempt + 1
+            # The caller that was refused already slept the announced delay.
+            limit_waited = 0.0 if backed_off else await request_limits.wait_for_provider(limit_key)
+            backed_off = False
+            if diagnostics is not None and limit_waited:
+                diagnostics["rate_limit_wait_seconds"] = round(
+                    float(diagnostics.get("rate_limit_wait_seconds", 0.0)) + limit_waited, 3
+                )
             t0 = time.time()
             print(f"  [LLM Request -> Databricks] Sending prompt to {model} ({len(prompt)} chars, reasoning={payload.get('reasoning_effort', 'default')}, timeout={timeout}s)...", flush=True)
-            async with httpx.AsyncClient(timeout=timeout) as client:
+            async with egress_client(timeout=timeout) as client:
                 resp = await client.post(url, json=payload, headers=headers)
                 elapsed = time.time() - t0
                 if resp.status_code in RETRYABLE_STATUS_CODES:
@@ -843,8 +855,13 @@ async def _call_databricks_chat_completions_untraced(
                         f"Databricks API rate/capacity [{resp.status_code}] for model {model}. "
                         f"Retrying (attempt {attempt+1}/{DATABRICKS_MAX_ATTEMPTS})..."
                     )
+                    retry_delay = _databricks_retry_delay(resp, attempt)
+                    if resp.status_code == 429:
+                        # Other callers of this model wait out the same delay.
+                        request_limits.note_rate_limited(limit_key, retry_delay)
                     if attempt < DATABRICKS_MAX_ATTEMPTS - 1:
-                        await asyncio.sleep(_databricks_retry_delay(resp, attempt))
+                        await asyncio.sleep(retry_delay)
+                        backed_off = True
                     continue
                 if resp.status_code != 200:
                     if diagnostics is not None:
@@ -864,8 +881,8 @@ async def _call_databricks_chat_completions_untraced(
                             "JSON Schema mode" if model in _DATABRICKS_JSON_SCHEMA_UNSUPPORTED_MODELS else "JSON response mode",
                         )
                         continue
-                    print(f"  [LLM Error] Databricks returned HTTP {resp.status_code}: {resp.text[:200]}", flush=True)
-                    logger.error(f"Databricks API error [{resp.status_code}] for model {model}: {resp.text}")
+                    print(f"  [LLM Error] Databricks returned HTTP {resp.status_code}: {body_summary(resp.text)}", flush=True)
+                    logger.error("Databricks API error [%s] for model %s: %s", resp.status_code, model, body_summary(resp.text))
                     provider_failure(resp.status_code, resp.text)
                     return None
 
@@ -928,13 +945,13 @@ async def _call_databricks_chat_completions_untraced(
             raise
         except Exception as ex:
             if attempt == DATABRICKS_MAX_ATTEMPTS - 1:
-                print(f"  [LLM Error] Databricks call failed: {type(ex).__name__}: {ex!r}", flush=True)
-                logger.error(f"Exception calling Databricks Model Serving ({model}): {ex}")
+                print(f"  [LLM Error] Databricks call failed: {exception_summary(ex)}", flush=True)
+                logger.error("Exception calling Databricks Model Serving (%s): %s", model, exception_summary(ex))
                 provider_failure(None, f"{type(ex).__name__}: {ex}")
                 return None
             print(
                 f"  [LLM Warning] Databricks {model} attempt {attempt + 1}/{DATABRICKS_MAX_ATTEMPTS} "
-                f"failed after {time.time() - t0:.2f}s: {type(ex).__name__}: {ex!r}. Retrying...",
+                f"failed after {time.time() - t0:.2f}s: {exception_summary(ex)}. Retrying...",
                 flush=True,
             )
             await asyncio.sleep(_databricks_retry_delay(None, attempt))
@@ -986,22 +1003,46 @@ async def call_databricks_chat_completions(
             "thinking_level": thinking_level or "default",
         },
     ) as span:
-        result = await _call_databricks_chat_completions_untraced(
-            prompt=prompt,
-            model=model,
-            system_instruction=system_instruction,
-            json_mode=json_mode,
-            response_schema=response_schema,
-            schema_name=schema_name,
-            max_output_tokens=max_output_tokens,
-            timeout=timeout,
-            thinking_level=thinking_level,
-            image_bytes=image_bytes,
-            image_mime_type=image_mime_type,
-            diagnostics=call_diagnostics,
-            temperature=temperature,
-            client_request_id=request_id,
-        )
+        started = time.perf_counter()
+        result = None
+        status = "error"
+        try:
+            result = await _call_databricks_chat_completions_untraced(
+                prompt=prompt,
+                model=model,
+                system_instruction=system_instruction,
+                json_mode=json_mode,
+                response_schema=response_schema,
+                schema_name=schema_name,
+                max_output_tokens=max_output_tokens,
+                timeout=timeout,
+                thinking_level=thinking_level,
+                image_bytes=image_bytes,
+                image_mime_type=image_mime_type,
+                diagnostics=call_diagnostics,
+                temperature=temperature,
+                client_request_id=request_id,
+            )
+            status = "ok" if result else "empty"
+        except LLMUnavailableError:
+            status = "unavailable"
+            raise
+        finally:
+            # REL-05: metadata only; prompt and response text stay out of the ledger.
+            call_ledger.record({
+                "kind": "call",
+                "provider": "databricks",
+                "client_request_id": request_id,
+                "schema": schema_name,
+                "model": model,
+                "served_model": call_diagnostics.get("served_model"),
+                "status": status,
+                "http_status": call_diagnostics.get("last_http_status"),
+                "attempts": call_diagnostics.get("attempt_count", 0),
+                "rate_limit_retries": call_diagnostics.get("rate_limit_retries", 0),
+                "latency_seconds": round(time.perf_counter() - started, 3),
+                "image": image_bytes is not None,
+            })
         set_span_attribute(span, "attempt_count", call_diagnostics.get("attempt_count", 0))
         set_span_attribute(span, "rate_limit_retries", call_diagnostics.get("rate_limit_retries", 0))
         set_span_attribute(span, "served_model", call_diagnostics.get("served_model", model))
@@ -1081,7 +1122,7 @@ async def call_groq_chat_completions(
                 f"  [LLM Request -> Groq] Sending prompt to {active_model} ({len(prompt)} chars)...",
                 flush=True,
             )
-            async with httpx.AsyncClient(timeout=timeout) as client:
+            async with egress_client(timeout=timeout) as client:
                 response = await client.post(url, json=payload, headers=headers)
             elapsed = time.time() - started
             if response.status_code in RETRYABLE_STATUS_CODES:
@@ -1114,7 +1155,7 @@ async def call_groq_chat_completions(
                     "Groq text API error [%s] for %s: %s",
                     response.status_code,
                     active_model,
-                    response.text[:500],
+                    body_summary(response.text),
                 )
                 return None
 
@@ -1127,7 +1168,7 @@ async def call_groq_chat_completions(
             return result_text or None
         except Exception as exc:
             if attempt == MAX_ATTEMPTS - 1:
-                logger.error("Groq text call failed for %s: %s", active_model, exc)
+                logger.error("Groq text call failed for %s: %s", active_model, exception_summary(exc))
                 return None
             await asyncio.sleep(1.0 * (attempt + 1))
     return None
@@ -1194,7 +1235,7 @@ async def call_tokenrouter_chat_completions(
             reasoning_characters = 0
             finish_reasons: list[str] = []
             usage: dict[str, Any] = {}
-            async with httpx.AsyncClient(timeout=request_timeout) as client:
+            async with egress_client(timeout=request_timeout) as client:
                 if stream:
                     async with client.stream("POST", url, json=payload, headers=headers) as resp:
                         elapsed = time.time() - t0
@@ -1204,7 +1245,7 @@ async def call_tokenrouter_chat_completions(
                             )
                             print(
                                 f"  [LLM Warning] TokenRouter rate/capacity [{resp.status_code}] "
-                                f"for {model}: {error_body[:160]}. Retrying...",
+                                f"for {model}: {body_summary(error_body)}. Retrying...",
                                 flush=True,
                             )
                             await asyncio.sleep(2.0 * (attempt + 1))
@@ -1215,14 +1256,14 @@ async def call_tokenrouter_chat_completions(
                             )
                             print(
                                 f"  [LLM Error] TokenRouter returned HTTP {resp.status_code}: "
-                                f"{error_body[:300]}",
+                                f"{body_summary(error_body)}",
                                 flush=True,
                             )
                             logger.error(
                                 "TokenRouter API error [%s] for model %s: %s",
                                 resp.status_code,
                                 model,
-                                error_body,
+                                body_summary(error_body),
                             )
                             return None
 
@@ -1301,7 +1342,7 @@ async def call_tokenrouter_chat_completions(
                     if resp.status_code != 200:
                         error_body = _console_safe_text(resp.text)
                         print(
-                            f"  [LLM Error] TokenRouter returned HTTP {resp.status_code}: {error_body[:300]}",
+                            f"  [LLM Error] TokenRouter returned HTTP {resp.status_code}: {body_summary(error_body)}",
                             flush=True,
                         )
                         return None
@@ -1329,14 +1370,14 @@ async def call_tokenrouter_chat_completions(
                 return None
         except Exception as exc:
             if attempt == MAX_ATTEMPTS - 1:
-                logger.error(f"TokenRouter API call failed for {model}: {exc}")
+                logger.error("TokenRouter API call failed for %s: %s", model, exception_summary(exc))
                 print(
-                    f"  [LLM Error] TokenRouter call failed for {model}: {exc}",
+                    f"  [LLM Error] TokenRouter call failed for {model}: {exception_summary(exc)}",
                     flush=True,
                 )
                 return None
             print(
-                f"  [LLM Warning] TokenRouter call failed for {model}: {exc}. Retrying...",
+                f"  [LLM Warning] TokenRouter call failed for {model}: {exception_summary(exc)}. Retrying...",
                 flush=True,
             )
             await asyncio.sleep(2.0 * (attempt + 1))
@@ -1411,7 +1452,7 @@ async def call_dashscope_responses(
                 flush=True,
             )
             request_timeout = httpx.Timeout(timeout, connect=min(timeout, 20.0))
-            async with httpx.AsyncClient(timeout=request_timeout) as client:
+            async with egress_client(timeout=request_timeout) as client:
                 response = await client.post(url, json=payload, headers=headers)
             if response.status_code in RETRYABLE_STATUS_CODES:
                 print(
@@ -1423,7 +1464,7 @@ async def call_dashscope_responses(
             if response.status_code != 200:
                 error_body = _console_safe_text(response.text)
                 print(
-                    f"  [LLM Error] DashScope returned HTTP {response.status_code}: {error_body[:300]}",
+                    f"  [LLM Error] DashScope returned HTTP {response.status_code}: {body_summary(error_body)}",
                     flush=True,
                 )
                 return None
@@ -1450,11 +1491,11 @@ async def call_dashscope_responses(
             return None
         except Exception as exc:
             if attempt == MAX_ATTEMPTS - 1:
-                logger.error("DashScope call failed for %s: %s", model, exc)
-                print(f"  [LLM Error] DashScope call failed for {model}: {exc}", flush=True)
+                logger.error("DashScope call failed for %s: %s", model, exception_summary(exc))
+                print(f"  [LLM Error] DashScope call failed for {model}: {exception_summary(exc)}", flush=True)
                 return None
             print(
-                f"  [LLM Warning] DashScope call failed for {model}: {exc}. Retrying...",
+                f"  [LLM Warning] DashScope call failed for {model}: {exception_summary(exc)}. Retrying...",
                 flush=True,
             )
             await asyncio.sleep(2.0 * (attempt + 1))
@@ -1495,10 +1536,10 @@ async def call_openai_chat_completions(
 
     try:
         headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
-        async with httpx.AsyncClient(timeout=timeout) as client:
+        async with egress_client(timeout=timeout) as client:
             resp = await client.post(url, json=payload, headers=headers)
             if resp.status_code != 200:
-                logger.error(f"OpenAI API error [{resp.status_code}]: {resp.text}")
+                logger.error("OpenAI API error [%s]: %s", resp.status_code, body_summary(resp.text))
                 return None
             data = resp.json()
             return data["choices"][0]["message"]["content"]
@@ -1643,18 +1684,19 @@ async def _generate_structured_unlimited(
             models_to_try.extend(
                 m for m in settings.DATABRICKS_FALLBACK_MODELS if m != active_model
             )
-        for db_model in models_to_try:
-            raw_response = await call_databricks_chat_completions(
-                prompt=prompt_with_schema,
-                model=db_model,
-                system_instruction=system_instruction,
-                json_mode=True,
-                response_schema=schema,
-                schema_name=response_model.__name__,
-                max_output_tokens=max_output_tokens or 4096,
-                thinking_level=thinking_level,
-                **({"diagnostics": diagnostics} if diagnostics is not None else {}),
-            )
+        for model_index, db_model in enumerate(models_to_try):
+            with call_ledger.fallback_from(models_to_try[0] if model_index else None):
+                raw_response = await call_databricks_chat_completions(
+                    prompt=prompt_with_schema,
+                    model=db_model,
+                    system_instruction=system_instruction,
+                    json_mode=True,
+                    response_schema=schema,
+                    schema_name=response_model.__name__,
+                    max_output_tokens=max_output_tokens or 4096,
+                    thinking_level=thinking_level,
+                    **({"diagnostics": diagnostics} if diagnostics is not None else {}),
+                )
             if raw_response:
                 break
 
@@ -1727,8 +1769,8 @@ async def _generate_structured_unlimited(
     except Exception as ex:
         if diagnostics is not None:
             diagnostics["error"] = str(ex)
-        print(f"  [LLM Schema Error] Failed to parse JSON response: {ex}", flush=True)
-        logger.error(f"Failed to validate model schema: {ex}. Raw: {raw_response[:300]}")
+        print(f"  [LLM Schema Error] Failed to parse JSON response: {type(ex).__name__} {body_summary(str(ex))}", flush=True)
+        logger.error("Failed to validate model schema: %s %s. Raw: %s", type(ex).__name__, body_summary(str(ex)), body_summary(raw_response))
         return None
 
 
@@ -1748,7 +1790,7 @@ async def generate_structured(
     async with outbound_slot("llm") as queue_seconds:
         if diagnostics is not None:
             diagnostics["capacity_queue_seconds"] = round(queue_seconds, 4)
-        return await _generate_structured_unlimited(
+        result = await _generate_structured_unlimited(
             prompt=prompt,
             response_model=response_model,
             model=model,
@@ -1758,6 +1800,18 @@ async def generate_structured(
             allow_model_fallback=allow_model_fallback,
             diagnostics=diagnostics,
         )
+    # EVA-03: opt-in (LLM_RECORD_DIR); a no-op by default.
+    from app.services import llm_recording
+
+    llm_recording.record(
+        prompt=prompt, response_model=response_model, model=model,
+        system_instruction=system_instruction, thinking_level=thinking_level,
+        max_output_tokens=max_output_tokens, temperature=DEFAULT_DATABRICKS_TEMPERATURE,
+        result=result,
+        raw_response=(diagnostics or {}).get("raw_response"),
+        served_model=(diagnostics or {}).get("served_model"),
+    )
+    return result
 
 
 async def generate_text(

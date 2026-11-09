@@ -28,6 +28,7 @@ from app.services.ingestion import (
     parse_document_with_metadata,
 )
 from app.services.extraction import extract_requirements_from_text
+from app.services import call_ledger
 from app.services.contract_transport import extraction_contract_payload
 from app.services.retrieval import (
     build_requirement_search_queries,
@@ -36,6 +37,7 @@ from app.services.retrieval import (
 )
 from app.services.databricks_ai_search import retrieve_with_fallback, sync_project_chunks
 from app.services.classification import (
+    CONTEXT_LINK_STATUS,
     EvidenceLinkAssessment,
     RequirementAssessment,
     assess_requirement_coverage_async,
@@ -43,9 +45,11 @@ from app.services.classification import (
 )
 from app.schemas.verification_result import ConditionVerificationResult
 from app.services.audit_progress import AuditCancelled
+from app.services.document_health import apply_document_review
 from app.services.pipeline_cache import stable_key
 from app.services.llm_client import LLMUnavailableError, raise_if_llm_unavailable
 from app.services.review_status import latest_human_decision
+from app.services.effective_config import effective_config
 from app.services.taxonomy import finding_type_for, normalize_severity, finding_severity_for
 from app.config import settings
 from app.services.document_classifier import (
@@ -63,6 +67,42 @@ from app.services.observability import (
 )
 
 logger = logging.getLogger("traceaudit.pipeline")
+
+
+GENERATED_TEXT_MARKER = "\nVISUAL DESCRIPTION:"
+
+
+def source_content(content: Optional[str]) -> str:
+    """Chunk text as parsed from the document, without generated figure descriptions."""
+    text = content or ""
+    if text.startswith(GENERATED_TEXT_MARKER.lstrip("\n")):
+        return ""
+    return text.split(GENERATED_TEXT_MARKER, 1)[0]
+
+
+def corpus_source_fingerprint(chunks: list[dict]) -> str:
+    """REL-07: hash the corpus as parsed, not the model-generated text added to it.
+
+    A vision change used to alter every chunk's hash and so re-verify every
+    requirement. Requirements whose own candidates carry a changed description
+    still miss the cache, because _verification_fingerprint hashes candidate
+    content in full.
+    """
+    return stable_key({
+        "version": settings.AUDIT_CACHE_VERSION,
+        "chunks": [
+            {
+                "id": chunk.get("id"),
+                "document_id": chunk.get("document_id"),
+                "content": source_content(chunk.get("content")),
+                "metadata": {
+                    key: value for key, value in (chunk.get("metadata") or {}).items()
+                    if key != "visual_analysis"
+                },
+            }
+            for chunk in chunks
+        ],
+    })
 
 
 def _verification_fingerprint(
@@ -141,6 +181,7 @@ def _assessment_cache_payload(assessment: RequirementAssessment) -> dict:
                 "status": item.status,
                 "label": item.label,
                 "highlight": item.highlight,
+                "cited_conditions": list(item.cited_conditions),
             }
             for item in assessment.evidence_links
         ],
@@ -247,6 +288,11 @@ async def _persist_cache_reuse(session, requirement_id: str, run_id: Optional[st
 LLM_FAILURE_SOURCES = frozenset({"llm_error", "operational_failure"})
 
 
+async def _commit(db: AsyncSession) -> None:
+    """Commit without letting a cancel interrupt the save halfway (REL-08)."""
+    await asyncio.shield(db.commit())
+
+
 def _is_llm_failure(assessment: RequirementAssessment) -> bool:
     """An assessment that records a failed model call rather than a decision."""
     return (assessment.pipeline_diagnostics or {}).get("decision_source") in LLM_FAILURE_SOURCES
@@ -339,7 +385,8 @@ async def _persist_requirement_assessment(
     req.review_state = review_state
     req.ai_analysis = assessment.ai_analysis
     req.ai_recommendation = assessment.ai_recommendation
-    req.sources_count = len(assessment.evidence_links)
+    # TRU-05: count the evidence the verdict cites, not every retrieved chunk.
+    req.sources_count = sum(1 for link in assessment.evidence_links if link.status != CONTEXT_LINK_STATUS)
     data = dict(req.extracted_parameters or {})
     candidates = item.get("candidate_chunks", [])
     diagnostics = dict(assessment.pipeline_diagnostics or {})
@@ -390,7 +437,7 @@ async def _persist_requirement_assessment(
             severity=finding_severity_for(req.severity, assessment.coverage_status),
             review_state=review_state,
             category=req.category,
-            sources_count=len(assessment.evidence_links),
+            sources_count=req.sources_count,
             description=assessment.ai_analysis,
         ))
 
@@ -419,7 +466,7 @@ async def _run_audit_pipeline_impl(
     project.status = "Analyzing evidence"
     # Commit between stages: on SQLite an open write transaction blocks every
     # other writer (API requests included) for the whole parse/LLM stage.
-    await db.commit()
+    await _commit(db)
 
     # 2. Ingest unparsed documents
     doc_result = await db.execute(
@@ -500,7 +547,7 @@ async def _run_audit_pipeline_impl(
 
         # One transaction per document keeps its stale-row replacement atomic
         # without holding the write lock while the next document is parsed.
-        await db.commit()
+        await _commit(db)
         report_progress("ingestion", doc_index + 1, len(documents), f"Processed {doc.original_filename}: {doc.processing_status}")
 
     stage_timings["ingestion_seconds"] = round(time.perf_counter() - ingestion_started, 3)
@@ -534,10 +581,25 @@ async def _run_audit_pipeline_impl(
                 metadata["document_profile"] = profile_data
                 model_chunk.metadata_json = metadata
 
-    await db.commit()
+    await _commit(db)
     stage_timings["document_profiling_seconds"] = round(
         time.perf_counter() - profiling_started, 3
     )
+
+    # Documents that are likely revisions of one another, or whose parse came
+    # from a fallback parser, carry a review reason on every chunk; evidence
+    # from them cannot auto-close a requirement (document_health).
+    document_review = apply_document_review(
+        all_chunks_for_retrieval,
+        [{"id": doc.id, "name": doc.original_filename} for doc in documents],
+        {
+            doc_id: profile.document_status
+            for doc_id, profile in document_profiles.items()
+        },
+    )
+    for entry in ingestion_diagnostics:
+        if document_review.get(entry.get("document_id")):
+            entry["document_review"] = document_review[entry["document_id"]]
 
     # Discover specification documents from the same persisted profiles.
     spec_docs, spec_doc_names = await discover_specification_documents(
@@ -699,7 +761,7 @@ async def _run_audit_pipeline_impl(
         )
 
         # Release the lock before search sync and embedding calls below.
-        await db.commit()
+        await _commit(db)
         req_result = await db.execute(
             select(Requirement).where(Requirement.project_id == project_id)
         )
@@ -759,7 +821,7 @@ async def _run_audit_pipeline_impl(
         }
         for ordinal, req in enumerate(requirements, 1)
     ]
-    await db.commit()
+    await _commit(db)
 
     documents_by_id = {document.id: document for document in documents}
     # Figure descriptions are cached on plain copies. The live ORM rows are
@@ -772,18 +834,7 @@ async def _run_audit_pipeline_impl(
         )
         for chunk_id, chunk in evidence_chunk_models.items()
     }
-    corpus_fingerprint = stable_key({
-        "version": settings.AUDIT_CACHE_VERSION,
-        "chunks": [
-            {
-                "id": chunk.get("id"),
-                "document_id": chunk.get("document_id"),
-                "content": chunk.get("content"),
-                "metadata": chunk.get("metadata"),
-            }
-            for chunk in all_chunks_for_retrieval
-        ],
-    })
+    corpus_fingerprint = corpus_source_fingerprint(all_chunks_for_retrieval)
     worker_slots = asyncio.Semaphore(max(1, int(settings.AUDIT_REQUIREMENT_CONCURRENCY)))
     persist_lock = asyncio.Lock()
     progress_lock = asyncio.Lock()
@@ -802,6 +853,10 @@ async def _run_audit_pipeline_impl(
             if cache_hit:
                 await _persist_cache_reuse(db, snapshot["id"], run_id)
             else:
+                # REL-05: which models answered this requirement, and any fallback.
+                diagnostics = dict(assessment.pipeline_diagnostics or {})
+                diagnostics["llm_calls"] = call_ledger.summarize(call_ledger.current())
+                assessment.pipeline_diagnostics = diagnostics
                 await _persist_requirement_assessment(
                     db,
                     requirement_id=snapshot["id"],
@@ -814,7 +869,7 @@ async def _run_audit_pipeline_impl(
                     model=active_model,
                     thinking_level=active_thinking,
                 )
-            await db.commit()
+            await _commit(db)
 
     # Set by the first progress callback that reports a cancellation. Work that
     # is already saving finishes; queued requirements stop before any model call.
@@ -834,6 +889,10 @@ async def _run_audit_pipeline_impl(
         }
 
     async def run_requirement(snapshot: dict) -> dict:
+        with call_ledger.recording():
+            return await run_requirement_recorded(snapshot)
+
+    async def run_requirement_recorded(snapshot: dict) -> dict:
         nonlocal retrieved_count, vision_count, reasoned_count
         code = snapshot["req_code"]
         try:
@@ -1135,7 +1194,7 @@ async def _run_audit_pipeline_impl(
     project.status = (
         "Analysis complete" if not failed_requirement_codes else "Analysis incomplete"
     )
-    await db.commit()
+    await _commit(db)
 
     stage_timings["total_seconds"] = round(time.perf_counter() - pipeline_started, 3)
     logger.info(
@@ -1153,6 +1212,9 @@ async def _run_audit_pipeline_impl(
         "project_id": project_id,
         "model_used": active_model,
         "thinking_level": active_thinking,
+        # ARC-02: the hash of every setting this audit ran with.
+        "effective_config_sha256": effective_config()["sha256"],
+        "verdict_logic_version": settings.VERDICT_LOGIC_VERSION,
         "requirements_analyzed": len(requirements),
         "documents_indexed": len(documents),
         "findings_generated": sum(
@@ -1196,15 +1258,19 @@ async def run_audit_pipeline(
                 "thinking_level": thinking_level or settings.GEMINI_THINKING_LEVEL,
             },
         ) as span:
-            result = await _run_audit_pipeline_impl(
-                project_id=project_id,
-                db=db,
-                model=model,
-                thinking_level=thinking_level,
-                progress=progress,
-                run_id=correlation_id,
-            )
+            with call_ledger.recording() as run_calls:
+                result = await _run_audit_pipeline_impl(
+                    project_id=project_id,
+                    db=db,
+                    model=model,
+                    thinking_level=thinking_level,
+                    progress=progress,
+                    run_id=correlation_id,
+                )
             result["audit_run_id"] = correlation_id
+            # REL-05: the run's call ledger (metadata only).
+            result["llm_call_ledger"] = call_ledger.summarize(run_calls)
+            logger.info("Audit %s model calls: %s", correlation_id, result["llm_call_ledger"])
             set_span_outputs(span, {
                 "status": result.get("status"),
                 "requirements_analyzed": result.get("requirements_analyzed"),

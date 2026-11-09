@@ -17,6 +17,12 @@ from app.services.llm_client import LLMUnavailableError, generate_structured
 from app.schemas.contract_logic import ConditionValue, flat_projection
 from app.schemas.predicate import ComparisonOperator, normalize_comparison, predicate_issues
 from app.services.taxonomy import normalize_severity
+from app.services.requirement_ids import (
+    LEADING_ID_PATTERN,
+    REQ_CODE_RE,
+    REQUIREMENT_ID_PATTERN,
+    normalize_requirement_code as _shared_normalize_requirement_code,
+)
 
 
 CONTRACT_SCHEMA_VERSION = "2.0"
@@ -462,11 +468,18 @@ def fallback_extract_requirements(text_content: str, doc_name: str = "") -> list
     """Parse text lines and identify requirements using heuristic rules."""
     reqs: list[ExtractedRequirement] = []
     lines = text_content.splitlines()
+    # A requirement-table row (``| REQ-001 | Title | Text |``) reads as
+    # ``REQ-001: Title Text`` so the rules below see its ID.
+    for index, line in enumerate(lines):
+        row = _TABLE_ROW_CODE_RE.match(line)
+        if row:
+            cells = _table_row_cells(line) or []
+            lines[index] = f"{row.group(1)}: {' '.join(cells)}".strip()
     req_counter = 1
 
     # First pass: check if document has explicit requirement codes (e.g. REQ-BCU-001, REQ-001)
     has_explicit_codes = any(
-        re.match(r"^(REQ[-_]?[A-Za-z0-9_-]*\d+|R[-_]?[A-Za-z0-9_-]*\d+)\s*[:\-–]?\s*", l.strip(), re.IGNORECASE)
+        re.match(rf"^({LEADING_ID_PATTERN})\s*[:\-–]?\s*", l.strip(), re.IGNORECASE)
         for l in lines if len(l.strip()) >= 10
     )
 
@@ -476,7 +489,7 @@ def fallback_extract_requirements(text_content: str, doc_name: str = "") -> list
             continue
 
         # Check for explicit code e.g. "REQ-001: ...", "REQ-BCU-001: ...", "REQ_ELE_001: ..."
-        req_match = re.match(r"^(REQ[-_]?[A-Za-z0-9_-]*\d+|R[-_]?[A-Za-z0-9_-]*\d+)\s*[:\-–]?\s*(.*)", cleaned, re.IGNORECASE)
+        req_match = re.match(rf"^({LEADING_ID_PATTERN})\s*[:\-–]?\s*(.*)", cleaned, re.IGNORECASE)
         if req_match:
             code = req_match.group(1).upper().replace("_", "-")
             title = req_match.group(2).strip() or cleaned
@@ -562,8 +575,53 @@ EXTRACTION_REPAIR_ATTEMPTS = 1
 EXTRACTION_SCHEMA_RETRY_ATTEMPTS = 1
 
 _REQUIREMENT_START_RE = re.compile(
-    r"(?mi)^(?=[ \t]*(?:REQ[-_]?[A-Za-z0-9_-]*\d+|R[-_]?[A-Za-z0-9_-]*\d+)[ \t]*[:\-–—]?[ \t]*)"
+    rf"(?mi)^(?=[ \t]*{LEADING_ID_PATTERN}[ \t]*[:\-–—]?[ \t]*)"
 )
+
+# Requirement tables put the ID in the first cell of a Markdown row
+# (``| REQ-NVA-ELE-004 | Contactor opening | ... |``). Only the first cell
+# counts: an ID in a later column is a trace or cross-reference.
+_TABLE_ROW_START_RE = re.compile(
+    rf"(?mi)^(?=[ \t]*\|[ \t]*{REQUIREMENT_ID_PATTERN}[ \t]*\|)"
+)
+_TABLE_ROW_CODE_RE = re.compile(
+    rf"^[ \t]*\|[ \t]*({REQUIREMENT_ID_PATTERN})[ \t]*\|", re.IGNORECASE
+)
+# Normative figures label themselves with their ID (``Installation control -
+# REQ-NVA-ELE-006``). Accepted only on short label lines inside a FIGURE
+# chunk, never on generated description text or cross-references.
+_FIGURE_LABEL_LINE_RE = re.compile(
+    rf"^(?P<label>[^\n|]{{1,80}}?)[ \t]*[-–—:][ \t]*(?P<code>{REQUIREMENT_ID_PATTERN})[ \t]*$",
+    re.IGNORECASE,
+)
+_CROSS_REFERENCE_RE = re.compile(
+    r"\b(?:see|per|ref(?:erence)?|according|derived|parent|traces?|satisf(?:y|ies)|"
+    r"verif(?:y|ies)|refines?|supersed(?:es|ed)|replaces?|cf)\b",
+    re.IGNORECASE,
+)
+
+
+def _figure_label_code(line: str) -> Optional[str]:
+    if line.lstrip().upper().startswith(("VISUAL DESCRIPTION:", "SECTION:", "FIGURE:", "TABLE")):
+        return None
+    match = _FIGURE_LABEL_LINE_RE.match(line.strip())
+    if not match or _CROSS_REFERENCE_RE.search(match.group("label") or ""):
+        return None
+    return match.group("code")
+
+
+def _figure_label_starts(text: str) -> list[int]:
+    """Offsets of ID label lines inside FIGURE chunks of pipeline text."""
+    starts: list[int] = []
+    for figure in re.finditer(r"(?m)^FIGURE:[^\n]*$", text):
+        boundary = text.find("\n\n", figure.end())
+        end = len(text) if boundary < 0 else boundary
+        offset = figure.end() + 1
+        for line in text[figure.end() + 1:end].split("\n"):
+            if _figure_label_code(line):
+                starts.append(offset)
+            offset += len(line) + 1
+    return starts
 
 # Regulatory standards use hierarchical clause identifiers rather than
 # project-style REQ IDs. Match only heading-shaped lines: wrapped prose such as
@@ -589,13 +647,39 @@ _REGULATORY_SECTION_CODE_RE = re.compile(
 )
 
 
+def _requirement_starts(text: str) -> list[tuple[int, str]]:
+    """Offsets where an explicit requirement opens, with how it was recognised.
+
+    Kinds: ``leading`` (a line that starts with the ID), ``row`` (the first
+    cell of a Markdown table row), ``figure`` (an ID label line inside a
+    FIGURE chunk) and ``regulatory`` (a hierarchical clause heading).
+    """
+    kinds: dict[int, str] = {}
+    for pattern in (_REGULATORY_START_RE, _REGULATORY_SECTION_START_RE):
+        for match in pattern.finditer(text):
+            kinds.setdefault(match.start(), "regulatory")
+    for match in _REQUIREMENT_START_RE.finditer(text):
+        kinds[match.start()] = "leading"
+    for match in _TABLE_ROW_START_RE.finditer(text):
+        kinds[match.start()] = "row"
+    for start in _figure_label_starts(text):
+        kinds.setdefault(start, "figure")
+    # An extraction section or source block can begin at a figure label whose
+    # FIGURE header stayed with the preceding text.
+    if 0 not in kinds and _figure_label_code(text.split("\n", 1)[0]):
+        kinds[0] = "figure"
+    return sorted(kinds.items())
+
+
 def _requirement_blocks(text: str) -> list[str]:
-    """Return complete requirement blocks when explicit IDs are available."""
-    starts = sorted({
-        *[match.start() for match in _REQUIREMENT_START_RE.finditer(text)],
-        *[match.start() for match in _REGULATORY_START_RE.finditer(text)],
-        *[match.start() for match in _REGULATORY_SECTION_START_RE.finditer(text)],
-    })
+    """Partition text into requirement blocks when explicit IDs are available.
+
+    The blocks cover the text (the first one carries any preamble) because
+    ``_split_text_into_chunks`` groups them into extraction sections. The
+    tighter per-requirement source used for association comes from
+    ``_source_blocks_by_code``.
+    """
+    starts = [start for start, _kind in _requirement_starts(text)]
     if not starts:
         return []
 
@@ -615,23 +699,25 @@ def _requirement_blocks(text: str) -> list[str]:
 def _requirement_code_from_block(block: str) -> Optional[str]:
     # The splitter preserves document context before the first heading. Locate
     # that heading instead of losing its identity and falling back to a section.
-    starts = sorted({
-        *[m.start() for m in _REQUIREMENT_START_RE.finditer(block)],
-        *[m.start() for m in _REGULATORY_START_RE.finditer(block)],
-        *[m.start() for m in _REGULATORY_SECTION_START_RE.finditer(block)],
-    })
+    starts = _requirement_starts(block)
+    if not starts:
+        # A figure label loses its FIGURE context once the block is cut out of
+        # the page text; recognise it from the block's own first line.
+        label = _figure_label_code(block.lstrip().split("\n", 1)[0])
+        if label:
+            return _normalize_requirement_code(label)
     if starts:
-        block = block[starts[0]:]
-    match = re.match(
-        r"^[ \t]*(REQ[-_]?[A-Za-z0-9_-]*\d+|R[-_]?[A-Za-z0-9_-]*\d+)",
-        block,
-        re.IGNORECASE,
-    )
+        block = block[starts[0][0]:]
+    match = re.match(rf"^[ \t]*({LEADING_ID_PATTERN})", block, re.IGNORECASE)
     if match:
         return match.group(1).upper().replace("_", "-")
+    row = _TABLE_ROW_CODE_RE.match(block)
+    if row:
+        return _normalize_requirement_code(row.group(1))
     regulatory = _REGULATORY_CODE_RE.match(block) or _REGULATORY_SECTION_CODE_RE.match(block)
     if not regulatory:
-        return None
+        label = _figure_label_code(block.lstrip().split("\n", 1)[0])
+        return _normalize_requirement_code(label) if label else None
     code = regulatory.group(1).upper()
     # Preserve lower-case CFR subparagraph notation for readable, stable IDs.
     return re.sub(r"\(([A-Z0-9]+)\)", lambda item: f"({item.group(1).lower()})", code)
@@ -641,6 +727,151 @@ _OBLIGATION_TEXT_RE = re.compile(
     r"\b(?:shall|must|required\s+to|is\s+required|are\s+required)\b",
     re.IGNORECASE,
 )
+
+
+def _source_blocks_by_code(
+    text: str,
+    duplicates: Optional[dict[str, list[str]]] = None,
+) -> dict[str, str]:
+    """Map each explicit requirement ID in ``text`` to its source block.
+
+    This is the requirement-to-source association used by staged extraction.
+    A discovered requirement without an entry here is flagged as unresolved.
+
+    Each block starts at its own ID and ends at the next requirement, and,
+    in pipeline text (chunks joined by blank lines and headed ``SECTION:``),
+    no later than the end of its own section: a heading, table or figure that
+    follows a requirement is not part of it. A table row's block is that row
+    with the table's header line; a figure label's block ends with the figure.
+
+    When one project ID opens two blocks with different text, ``duplicates``
+    (if given) receives every candidate so the caller can report it.
+    """
+    entries = _source_block_entries(text)
+    blocks: dict[str, str] = {}
+    by_code: dict[str, list[str]] = {}
+    for code, block in entries:
+        by_code.setdefault(code, []).append(block)
+    for code, candidates in by_code.items():
+        distinct = list(dict.fromkeys(" ".join(item.split()) for item in candidates))
+        normative = [item for item in candidates if _OBLIGATION_TEXT_RE.search(item)]
+        # Only a normative block defines a requirement; otherwise the last
+        # occurrence wins as before.
+        blocks[code] = normative[0] if len(normative) == 1 else candidates[-1]
+        if (
+            duplicates is not None
+            and len(distinct) > 1
+            and REQ_CODE_RE.fullmatch(code)
+        ):
+            # Project IDs must be unique. Regulatory clause IDs legitimately
+            # recur (section paths repeat their parent clause).
+            duplicates[code] = candidates
+    return blocks
+
+
+def _source_block_entries(text: str) -> list[tuple[str, str]]:
+    """Every (requirement ID, source block) in document order, duplicates included."""
+    starts = _requirement_starts(text)
+    entries: list[tuple[str, str]] = []
+    previous_row: Optional[tuple[str, int]] = None  # (code, end offset)
+    for index, (start, kind) in enumerate(starts):
+        end = starts[index + 1][0] if index + 1 < len(starts) else len(text)
+        if kind == "row":
+            line_end = text.find("\n", start)
+            row_end = end if line_end < 0 else min(end, line_end)
+            row = text[start:row_end].strip()
+            row_code = _TABLE_ROW_CODE_RE.match(row)
+            code_here = _normalize_requirement_code(row_code.group(1)) if row_code else None
+            if (
+                previous_row is not None
+                and code_here == previous_row[0]
+                and entries and entries[-1][0] == code_here
+                and text[previous_row[1]:start].strip() == ""
+            ):
+                # A requirement cell merged down over several rows (rowspan)
+                # repeats its ID on each row: one requirement, one block.
+                code, block = entries[-1]
+                entries[-1] = (code, f"{block}\n{row}")
+                previous_row = (code_here, row_end)
+                continue
+            header = _table_header_line(text, start)
+            block = f"{header}\n{row}" if header else row
+            previous_row = (code_here, row_end) if code_here else None
+        else:
+            previous_row = None
+            if kind in {"leading", "figure"}:
+                end = min(end, _structural_end(text, start, kind))
+            block = text[start:end].strip()
+            if kind == "figure":
+                # A generated figure description is not source text and must
+                # not become a requirement's source span.
+                block = "\n".join(
+                    line for line in block.split("\n")
+                    if not line.lstrip().startswith("VISUAL DESCRIPTION:")
+                ).strip()
+        code = _requirement_code_from_block(block)
+        if code is not None:
+            entries.append((_normalize_requirement_code(code), block))
+    return entries
+
+
+def _table_row_cells(block: str) -> Optional[list[str]]:
+    """The cells after the ID cell of the requirement row in ``block``, if it is one.
+
+    A requirement merged down over several rows returns one cell per row
+    (that row's cells joined), so the description keeps every row.
+    """
+    rows: list[list[str]] = []
+    for line in block.split("\n"):
+        if _TABLE_ROW_CODE_RE.match(line):
+            cells = [cell.strip() for cell in re.split(r"(?<!\\)\|", line.strip().strip("|"))]
+            rows.append([cell.replace("\\|", "|") for cell in cells[1:] if cell])
+    if not rows:
+        return None
+    if len(rows) == 1:
+        return rows[0]
+    return [" ".join(dict.fromkeys(row)) for row in rows if row]
+
+
+def _chunk_start(text: str, position: int) -> int:
+    boundary = text.rfind("\n\n", 0, position)
+    return 0 if boundary < 0 else boundary + 2
+
+
+def _table_header_line(text: str, row_start: int) -> str:
+    """The header row of the Markdown table that contains ``row_start``."""
+    for line in text[_chunk_start(text, row_start):row_start].split("\n"):
+        stripped = line.strip()
+        if stripped.startswith("|") and not _TABLE_ROW_CODE_RE.match(stripped):
+            if re.fullmatch(r"\|(?:\s*:?-{3,}:?\s*\|)+", stripped):
+                continue
+            return stripped
+    return ""
+
+
+def _structural_end(text: str, start: int, kind: str) -> int:
+    """Where a requirement's own section (or figure) ends in pipeline text."""
+    if kind == "figure":
+        boundary = text.find("\n\n", start)
+        return len(text) if boundary < 0 else boundary
+    def first_line(position: int) -> str:
+        line_end = text.find("\n", position)
+        return text[position:len(text) if line_end < 0 else line_end]
+
+    own_line = first_line(_chunk_start(text, start))
+    if not own_line.startswith("SECTION:"):
+        own_line = ""
+    boundary = text.find("\n\n", start)
+    while boundary >= 0:
+        next_line = first_line(boundary + 2)
+        # A chunk of the same section continues the requirement (a page
+        # break or a long clause); a chunk of any other section ends it.
+        # Blank lines inside a chunk, and text with no SECTION headers at
+        # all, are never cut here.
+        if next_line.startswith("SECTION:") and next_line != own_line:
+            return boundary
+        boundary = text.find("\n\n", boundary + 2)
+    return len(text)
 
 
 def _source_requirement_description(block: str, fallback: str) -> str:
@@ -710,8 +941,7 @@ def _is_source_heading(code: str, block: str) -> bool:
 
 
 def _normalize_requirement_code(value: str) -> str:
-    code = (value or "").strip().upper().replace("_", "-")
-    return re.sub(r"\(([A-Z0-9]+)\)", lambda item: f"({item.group(1).lower()})", code)
+    return _shared_normalize_requirement_code(value)
 
 
 def _targeted_discovery_from_source(
@@ -731,16 +961,33 @@ def _targeted_discovery_from_source(
         code = _normalize_requirement_code(raw_code)
         if code not in target_req_codes:
             continue
-        body = re.sub(
-            r"^\s*" + re.escape(raw_code) + r"\s*[:.\-–—]?\s*",
-            "",
-            block,
-            count=1,
-            flags=re.IGNORECASE,
-        ).strip()
+        row_cells = _table_row_cells(block)
+        merged_rows = sum(bool(_TABLE_ROW_CODE_RE.match(line)) for line in block.split("\n")) > 1
+        if row_cells is not None and merged_rows:
+            # One requirement merged over several rows: keep every row.
+            body = "; ".join(row_cells)
+            row_cells = None
+        elif row_cells is not None:
+            # A table row: the cells after the ID are its title and text.
+            body = " ".join(row_cells[1:] if len(row_cells) > 1 else row_cells)
+        else:
+            first_line, _, rest = block.strip().partition("\n")
+            label = _figure_label_code(first_line)
+            if label and _normalize_requirement_code(label) == code and rest.strip():
+                body = rest
+            else:
+                body = re.sub(
+                    r"^\s*" + re.escape(raw_code) + r"\s*[:.\-–—]?\s*",
+                    "",
+                    block,
+                    count=1,
+                    flags=re.IGNORECASE,
+                ).strip()
         description = " ".join(body.split()) or code
         first_sentence = re.split(r"(?<=[.!?])\s+", description, maxsplit=1)[0]
         title = first_sentence[:160].strip() or code
+        if row_cells is not None and len(row_cells) > 1 and len(row_cells[0].split()) <= 12:
+            title = row_cells[0]
         category = infer_category(description)
         discovered.append(DiscoveredRequirement(
             req_code=code,
@@ -2111,11 +2358,16 @@ def _discovered_source_block(
     if requirement.req_code in source_by_code:
         block = source_by_code[requirement.req_code]
         # Keep headers available during discovery, but do not let their words
-        # become obligations of the first numbered requirement.
-        starts = sorted({*[m.start() for m in _REQUIREMENT_START_RE.finditer(block)],
-                         *[m.start() for m in _REGULATORY_START_RE.finditer(block)],
-                         *[m.start() for m in _REGULATORY_SECTION_START_RE.finditer(block)]})
-        return block[starts[0]:] if starts else block
+        # become obligations of the first numbered requirement. A table row
+        # keeps only its table's header line, which names its columns.
+        starts = _requirement_starts(block)
+        if not starts:
+            return block
+        start, kind = starts[0]
+        if kind == "row":
+            header = _table_header_line(block, start)
+            return f"{header}\n{block[start:]}" if header else block[start:]
+        return block[start:]
     # Resolve subparagraphs to their nearest known parent instead of exposing
     # all unrelated clauses in the chunk to construction/provenance checks.
     parents = [code for code in source_by_code
@@ -2783,16 +3035,25 @@ async def _extract_chunk_staged(
     target_req_codes: Optional[set[str]] = None,
     construction_mode: Optional[str] = None,
     contract_semaphore: Optional[asyncio.Semaphore] = None,
+    document_source_by_code: Optional[dict[str, str]] = None,
+    duplicate_source_codes: Optional[set[str]] = None,
 ) -> list[ExtractedRequirement]:
-    """Discover, then construct each requirement from its local source."""
+    """Discover, then construct each requirement from its local source.
+
+    ``document_source_by_code`` holds source blocks cut from the whole
+    document. A section of it can start mid-chunk and lose the SECTION line
+    that bounds the first requirement, so the whole-document block is used
+    for every ID the section contains.
+    """
     mode = construction_mode or settings.ATOMIC_CONSTRUCTION_MODE
     if mode not in {"direct", "planned"}:
         raise ValueError("ATOMIC_CONSTRUCTION_MODE must be direct or planned")
-    source_by_code = {
-        _normalize_requirement_code(code): block
-        for block in _requirement_blocks(chunk_text)
-        if (code := _requirement_code_from_block(block)) is not None
-    }
+    section_duplicates: dict[str, list[str]] = {}
+    source_by_code = _source_blocks_by_code(chunk_text, duplicates=section_duplicates)
+    duplicated_codes = set(section_duplicates) | set(duplicate_source_codes or ())
+    for code in source_by_code:
+        if document_source_by_code and code in document_source_by_code:
+            source_by_code[code] = document_source_by_code[code]
     if target_req_codes is not None:
         discovered = _targeted_discovery_from_source(source_by_code, target_req_codes)
     else:
@@ -2853,6 +3114,12 @@ async def _extract_chunk_staged(
             if association_missing:
                 result.contract_complete = False
                 result.validation_issues.append("Requirement source association is unresolved; the discovered description needs source review.")
+            if item.req_code in duplicated_codes:
+                result.contract_complete = False
+                result.validation_issues.append(
+                    f"Requirement ID {item.req_code} is defined by more than one source block with "
+                    "different text; confirm which clause is authoritative."
+                )
             return result
 
     # asyncio.gather preserves discovery order while independent requirements
@@ -2926,6 +3193,8 @@ async def extract_requirements_from_text(
             )
 
     text_chunks = _split_text_into_chunks(text)
+    document_duplicates: dict[str, list[str]] = {}
+    document_source_by_code = _source_blocks_by_code(text, duplicates=document_duplicates)
     print(f"  • Extracting requirements across {len(text_chunks)} document sections...", flush=True)
 
     semaphore = asyncio.Semaphore(EXTRACTION_MAX_CONCURRENCY)
@@ -2953,6 +3222,8 @@ async def extract_requirements_from_text(
                 allow_model_fallback=allow_model_fallback,
                 target_req_codes=normalized_targets,
                 contract_semaphore=contract_semaphore,
+                document_source_by_code=document_source_by_code,
+                duplicate_source_codes=set(document_duplicates),
             )
         return chunk_idx, requirements
 

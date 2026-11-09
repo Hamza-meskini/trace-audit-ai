@@ -49,6 +49,41 @@ def _completion_message(result: dict) -> str:
     )
 
 
+CANCEL_POLL_SECONDS = 1.0
+
+
+async def _run_cancellable(project_id: str, work) -> dict:
+    """REL-08: run the pipeline so a cancel stops spending within about a second.
+
+    Progress callbacks only notice a cancel between stages; extraction and
+    in-flight model calls never see it. A watcher cancels the task instead,
+    which aborts in-flight HTTP calls. Database commits are shielded in the
+    pipeline, so a cancel never interrupts a save halfway.
+    """
+    task = asyncio.create_task(work())
+    cancelled_by_user = False
+    try:
+        while True:
+            done, _ = await asyncio.wait({task}, timeout=CANCEL_POLL_SECONDS)
+            if done:
+                break
+            if await asyncio.to_thread(audit_progress.is_cancel_requested, project_id):
+                cancelled_by_user = True
+                task.cancel()
+                try:
+                    await task
+                except BaseException:
+                    pass
+                raise AuditCancelled()
+    except asyncio.CancelledError:
+        if not task.done():
+            task.cancel()
+        raise
+    if task.cancelled() and cancelled_by_user:
+        raise AuditCancelled()
+    return task.result()
+
+
 async def _execute(job: dict) -> None:
     project_id = job["project_id"]
     run_id = job["run_id"]
@@ -58,9 +93,9 @@ async def _execute(job: dict) -> None:
             raise AuditCancelled()
         audit_progress.update(project_id, stage, completed, total, message)
 
-    try:
+    async def pipeline() -> dict:
         async with get_db_context() as db:
-            result = await run_audit_pipeline(
+            return await run_audit_pipeline(
                 project_id,
                 db,
                 model=job.get("model"),
@@ -68,6 +103,9 @@ async def _execute(job: dict) -> None:
                 progress=progress,
                 run_id=run_id,
             )
+
+    try:
+        result = await _run_cancellable(project_id, pipeline)
         audit_progress.update(
             project_id,
             "complete",

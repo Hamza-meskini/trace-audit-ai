@@ -19,6 +19,11 @@ from typing import Any
 
 from app.config import settings
 from app.services.document_ir import BoundingBox, DocumentElement, ParsedChunk, ParsedDocument
+from app.services.requirement_ids import (
+    REQ_CODE_RE,
+    mentioned_requirement_codes,
+    normalize_requirement_code,
+)
 
 
 logger = logging.getLogger("traceaudit.ingestion")
@@ -121,14 +126,30 @@ def _markdown_table(rows: list[list[str]]) -> str:
     ])
 
 
-def _serialize_table_parts(
-    element: DocumentElement,
-    max_chars: int,
-) -> list[tuple[str, dict[str, Any]]]:
+def _table_body_rows(element: DocumentElement) -> list[list[str]]:
+    """Table rows with stacked header rows folded into one header-path row.
+
+    A table whose header spans several rows (``Limits`` over ``Min | Max``)
+    is rendered with one header row of full paths (``Limits > Min``), so every
+    column, and every row repeated after a part split, keeps the label that
+    names its requirement or unit.
+    """
     rows = [
         [_normalize_cell(cell) for cell in row]
         for row in (element.metadata.get("rows") or [])
     ]
+    header_rows = int(element.metadata.get("header_rows") or 0)
+    header_path = element.metadata.get("header_path")
+    if header_rows > 1 and isinstance(header_path, list) and len(rows) >= header_rows:
+        return [[_normalize_cell(cell) for cell in header_path], *rows[header_rows:]]
+    return rows
+
+
+def _serialize_table_parts(
+    element: DocumentElement,
+    max_chars: int,
+) -> list[tuple[str, dict[str, Any]]]:
+    rows = _table_body_rows(element)
     caption = _normalize_cell(element.metadata.get("caption"))
     context = " > ".join(element.section_path)
     prefix = "\n".join(part for part in (
@@ -160,6 +181,22 @@ def _serialize_table_parts(
             {"row_start": row_start, "row_end": max(len(rows) - 1, row_start)},
         ))
     return parts
+
+
+def _chunk_requirement_ids(content: str) -> list[str]:
+    """Requirement IDs the chunk's own text names (not its section path or generated text)."""
+    own_lines = [
+        line for line in content.splitlines()
+        if not line.startswith(("SECTION:", "VISUAL DESCRIPTION:"))
+    ]
+    return mentioned_requirement_codes("\n".join(own_lines))
+
+
+def _row_requirement_id(row: list[str]) -> str | None:
+    """The requirement a table row defines: an ID alone in its first non-empty cell."""
+    first = next((cell for cell in row if cell), "")
+    match = REQ_CODE_RE.fullmatch(first.strip())
+    return normalize_requirement_code(match.group(1)) if match else None
 
 
 def build_structure_aware_chunks(
@@ -196,6 +233,8 @@ def build_structure_aware_chunks(
             return
         section = " > ".join(text_elements[-1].section_path)
         body = "\n".join(item.text for item in text_elements if item.text.strip())
+        metadata = metadata_for(text_elements, "text_section")
+        metadata["requirement_ids"] = _chunk_requirement_ids(body)
         chunks.append(ParsedChunk(
             content="\n".join(part for part in (
                 f"SECTION: {section}" if section else "",
@@ -203,7 +242,7 @@ def build_structure_aware_chunks(
             ) if part),
             page_number=text_elements[0].page_number,
             chunk_index=len(chunks),
-            metadata=metadata_for(text_elements, "text_section"),
+            metadata=metadata,
         ))
         text_elements = []
 
@@ -213,16 +252,29 @@ def build_structure_aware_chunks(
             parts = _serialize_table_parts(element, max_chars)
             for part_index, (content, row_range) in enumerate(parts):
                 metadata = metadata_for([element], "table")
-                rows = element.metadata.get("rows") or []
+                rows = _table_body_rows(element)
+                part_rows = (
+                    rows[row_range["row_start"]:row_range["row_end"] + 1]
+                    if row_range else rows[1:]
+                )
                 metadata.update({
                     "table": {
                         "caption": element.metadata.get("caption", ""),
                         "headers": rows[0] if rows else [],
                         "row_count": len(rows),
+                        "header_rows": int(element.metadata.get("header_rows") or (1 if rows else 0)),
+                        "merged_cells": int(element.metadata.get("merged_cells") or 0),
                         **row_range,
+                        # Aligned with the part's body rows: the requirement
+                        # each row defines (its first cell), else None.
+                        "row_requirement_ids": [
+                            _row_requirement_id([_normalize_cell(cell) for cell in row])
+                            for row in part_rows
+                        ],
                     },
                     "table_part": part_index + 1,
                     "table_parts": len(parts),
+                    "requirement_ids": _chunk_requirement_ids(content),
                 })
                 chunks.append(ParsedChunk(
                     content=content,
@@ -244,13 +296,15 @@ def build_structure_aware_chunks(
                 "caption": caption,
                 "source": "databricks-ai-parse" if parsed_description else "",
             }
+            content = "\n".join(part for part in (
+                f"SECTION: {section}" if section else "",
+                f"FIGURE: {caption}" if caption else "FIGURE: visual content",
+                element.text,
+                f"VISUAL DESCRIPTION: {parsed_description}" if parsed_description else "",
+            ) if part)
+            metadata["requirement_ids"] = _chunk_requirement_ids(content)
             chunks.append(ParsedChunk(
-                content="\n".join(part for part in (
-                    f"SECTION: {section}" if section else "",
-                    f"FIGURE: {caption}" if caption else "FIGURE: visual content",
-                    element.text,
-                    f"VISUAL DESCRIPTION: {parsed_description}" if parsed_description else "",
-                ) if part),
+                content=content,
                 page_number=element.page_number,
                 chunk_index=len(chunks),
                 metadata=metadata,
@@ -617,18 +671,25 @@ def _docling_elements(file_path: str) -> tuple[list[DocumentElement], int, dict[
 
 def parse_pdf_document(file_path: str, backend: str | None = None) -> ParsedDocument:
     requested = (backend or settings.TRACEAUDIT_DOCUMENT_PARSER).strip().lower()
+    parser_fallback: dict[str, Any] | None = None
     if requested in {"databricks", "databricks-auto"}:
         try:
             from app.services.databricks_document_ai import parse_document as parse_with_databricks
 
             return parse_with_databricks(file_path)
-        except Exception:
+        except Exception as exc:
             if requested == "databricks":
                 raise
             logger.exception(
                 "Databricks document parsing failed for %s; falling back to local layout parsing",
                 file_path,
             )
+            # Recorded on every chunk and in the run diagnostics so the
+            # degraded parse is visible and cannot auto-close (UND-09).
+            parser_fallback = {
+                "requested": "databricks",
+                "error": f"{type(exc).__name__}: {str(exc)[:200]}",
+            }
             requested = "auto"
     sha256 = file_sha256(file_path)
     converter_class = _docling_converter_class() if requested in {"auto", "docling"} else None
@@ -645,13 +706,19 @@ def parse_pdf_document(file_path: str, backend: str | None = None) -> ParsedDocu
             elements, page_count, diagnostics = _docling_elements(file_path)
         else:
             elements, page_count, diagnostics = _pymupdf_elements(file_path)
-    except Exception:
+    except Exception as exc:
         if requested != "auto" or not use_docling:
             raise
         logger.exception("Docling failed for %s; falling back to PyMuPDF", file_path)
         parser_backend = "pymupdf-layout"
         elements, page_count, diagnostics = _pymupdf_elements(file_path)
         diagnostics["fallback_from"] = "docling"
+        parser_fallback = parser_fallback or {
+            "requested": "docling",
+            "error": f"{type(exc).__name__}: {str(exc)[:200]}",
+        }
+    if parser_fallback:
+        diagnostics["parser_fallback"] = parser_fallback
 
     chunks = build_structure_aware_chunks(
         elements,

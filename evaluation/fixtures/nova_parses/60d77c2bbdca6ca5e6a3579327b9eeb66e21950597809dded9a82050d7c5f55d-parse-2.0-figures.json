@@ -1,0 +1,669 @@
+{
+ "source_sha256": "60d77c2bbdca6ca5e6a3579327b9eeb66e21950597809dded9a82050d7c5f55d",
+ "parse_version": "2.0",
+ "figure_descriptions": true,
+ "result": {
+  "document": {
+   "elements": [
+    {
+     "bbox": [
+      {
+       "coord": [
+        170,
+        374,
+        1239,
+        529
+       ],
+       "page_id": 0
+      }
+     ],
+     "confidence": 1,
+     "content": "Nova Network and Environmental\nQualification Report",
+     "description": null,
+     "id": 0,
+     "type": "title"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        235,
+        840,
+        417,
+        877
+       ],
+       "page_id": 0
+      }
+     ],
+     "confidence": 1,
+     "content": "Report scope",
+     "description": null,
+     "id": 1,
+     "type": "section_header"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        235,
+        929,
+        999,
+        1151
+       ],
+       "page_id": 0
+      }
+     ],
+     "confidence": 1,
+     "content": "Requirements evaluated: 12\nDomains: Communications, Environmental qualification\nMethods: bench test, environmental exposure, inspection, log review\nResult vocabulary: PASS, FAIL, NOT TESTED, INCONCLUSIVE",
+     "description": null,
+     "id": 2,
+     "type": "text"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        170,
+        2161,
+        667,
+        2187
+       ],
+       "page_id": 0
+      }
+     ],
+     "confidence": 1,
+     "content": "NOVA-DV | Revision A | Synthetic controlled copy",
+     "description": null,
+     "id": 3,
+     "type": "page_footer"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        114,
+        89,
+        910,
+        129
+       ],
+       "page_id": 1
+      }
+     ],
+     "confidence": 1,
+     "content": "Nova Network and Environmental Qualification Report",
+     "description": null,
+     "id": 4,
+     "type": "page_header"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        1116,
+        94,
+        1538,
+        129
+       ],
+       "page_id": 1
+      }
+     ],
+     "confidence": 1,
+     "content": "Controlled verification record | Page 2 of 5",
+     "description": null,
+     "id": 5,
+     "type": "page_number"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        116,
+        262,
+        501,
+        304
+       ],
+       "page_id": 1
+      }
+     ],
+     "confidence": 1,
+     "content": "1. Executed results",
+     "description": null,
+     "id": 6,
+     "type": "section_header"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        114,
+        332,
+        815,
+        363
+       ],
+       "page_id": 1
+      }
+     ],
+     "confidence": 1,
+     "content": "Each disposition applies only to the criterion stated in the same record.",
+     "description": null,
+     "id": 7,
+     "type": "text"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        116,
+        407,
+        1537,
+        1347
+       ],
+       "page_id": 1
+      }
+     ],
+     "confidence": 0.9922,
+     "content": "<table><tr><th>REQ-NVA-NET-001 CAN heartbeat</th><td>PASS - Executed for REQ-NVA-NET-001; the recorded result confirms: CAN FD heartbeat interval does not exceed 100 ms.<br>FAIL - Executed for REQ-NVA-NET-001; the observed result does not satisfy: Heartbeat behavior is maintained for at least 30 minutes.</td><td>Bench / inspection record Reviewed by DV team</td></tr><tr><th>REQ-NVA-NET-002 Packet loss</th><td>NOT TESTED - No test or inspection was performed for REQ-NVA-NET-002: Heartbeat test duration is 30 minutes.<br>NOT TESTED - No test or inspection was performed for REQ-NVA-NET-002: CAN bus load is 70 percent.<br>NOT TESTED - No test or inspection was performed for REQ-NVA-NET-002: Lost heartbeat frame count is zero.</td><td>Bench / inspection record Reviewed by DV team</td></tr><tr><th>REQ-NVA-NET-003 Ethernet latency</th><td>INCONCLUSIVE - Work was attempted for REQ-NVA-NET-003, but incomplete scope or calibration prevents deciding: Diagnostic traffic is authenticated.<br>INCONCLUSIVE - Work was attempted for REQ-NVA-NET-003, but incomplete scope or calibration prevents deciding: Transport uses 100BASE-T1.<br>INCONCLUSIVE - Work was attempted for REQ-NVA-NET-003, but incomplete scope or calibration prevents deciding: Network utilization is 95 percent.<br>INCONCLUSIVE - Work was attempted for REQ-NVA-NET-003, but incomplete scope or calibration prevents deciding: Diagnostic round-trip latency remains below 12 ms.</td><td>Bench / inspection record Reviewed by DV team</td></tr><tr><th>REQ-NVA-NET-004 Diagnostic session timeout</th><td>PASS - Executed for REQ-NVA-NET-004; the recorded result confirms: Extended diagnostic session is inactive.<br>PASS - Executed for REQ-NVA-NET-004; the recorded result confirms: Session returns to default after 5 seconds.<br>PASS - Executed for REQ-NVA-NET-004; the recorded result confirms: Temporary unlock state is cleared.<br>PASS - Executed for REQ-NVA-NET-004; the recorded result confirms: Timeout event is recorded.</td><td>Bench / inspection record Reviewed by DV team</td></tr></table>",
+     "description": null,
+     "id": 8,
+     "type": "table"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        114,
+        2245,
+        719,
+        2274
+       ],
+       "page_id": 1
+      }
+     ],
+     "confidence": 1,
+     "content": "Synthetic benchmark evidence - not a certification or production claim",
+     "description": null,
+     "id": 9,
+     "type": "page_footer"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        114,
+        89,
+        910,
+        129
+       ],
+       "page_id": 2
+      }
+     ],
+     "confidence": 1,
+     "content": "Nova Network and Environmental Qualification Report",
+     "description": null,
+     "id": 10,
+     "type": "page_header"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        1118,
+        94,
+        1538,
+        129
+       ],
+       "page_id": 2
+      }
+     ],
+     "confidence": 1,
+     "content": "Controlled verification record | Page 3 of 5",
+     "description": null,
+     "id": 11,
+     "type": "page_number"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        114,
+        262,
+        501,
+        304
+       ],
+       "page_id": 2
+      }
+     ],
+     "confidence": 1,
+     "content": "2. Executed results",
+     "description": null,
+     "id": 12,
+     "type": "section_header"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        114,
+        332,
+        815,
+        363
+       ],
+       "page_id": 2
+      }
+     ],
+     "confidence": 1,
+     "content": "Each disposition applies only to the criterion stated in the same record.",
+     "description": null,
+     "id": 13,
+     "type": "text"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        116,
+        407,
+        1538,
+        1326
+       ],
+       "page_id": 2
+      }
+     ],
+     "confidence": 0.9924,
+     "content": "<table><tr><th>REQ-NVA-NET-005 Bus-off recovery</th><td>PASS - Executed for REQ-NVA-NET-005; the recorded result confirms: Bus-off is detected.<br>IN PROGRESS - Partial execution exists for REQ-NVA-NET-005, but verification is not complete: Transmission is inhibited for at least 1.0 second.<br>NOT TESTED - No test or inspection was performed for REQ-NVA-NET-005: Node recovers without an ignition cycle.<br>NOT TESTED - No test or inspection was performed for REQ-NVA-NET-005: Persistent bus-off counter is incremented.</td><td>Bench / inspection record Reviewed by DV team</td></tr><tr><th>REQ-NVA-ENV-001 Ingress protection</th><td>NOT TESTED - No test or inspection was performed for REQ-NVA-ENV-001: Connector J17 is immersed to a depth of 1 m.<br>NOT TESTED - No test or inspection was performed for REQ-NVA-ENV-001: Immersion duration is 30 minutes.<br>NOT TESTED - No test or inspection was performed for REQ-NVA-ENV-001: Connector J17 retains IP67 protection.</td><td>Bench / inspection record Reviewed by DV team</td></tr><tr><th>REQ-NVA-ENV-002 Vibration endurance</th><td>INCONCLUSIVE - Work was attempted for REQ-NVA-ENV-002, but incomplete scope or calibration prevents deciding: Random vibration level is 30 g RMS.<br>INCONCLUSIVE - Work was attempted for REQ-NVA-ENV-002, but incomplete scope or calibration prevents deciding: Exposure lasts 8 hours per axis.<br>INCONCLUSIVE - Work was attempted for REQ-NVA-ENV-002, but incomplete scope or calibration prevents deciding: Electrical continuity is not lost.</td><td>Bench / inspection record Reviewed by DV team</td></tr><tr><th>REQ-NVA-ENV-003 Mechanical shock</th><td>PASS - Executed for REQ-NVA-ENV-003; the recorded result confirms: Three 50 g half-sine shocks are applied on each axis.<br>PASS - Executed for REQ-NVA-ENV-003; the recorded result confirms: No fastener loosens.<br>PASS - Executed for REQ-NVA-ENV-003; the recorded result confirms: No enclosure crack is longer than 2 mm.</td><td>Bench / inspection record Reviewed by DV team</td></tr></table>",
+     "description": null,
+     "id": 14,
+     "type": "table"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        114,
+        2245,
+        719,
+        2274
+       ],
+       "page_id": 2
+      }
+     ],
+     "confidence": 1,
+     "content": "Synthetic benchmark evidence - not a certification or production claim",
+     "description": null,
+     "id": 15,
+     "type": "page_footer"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        114,
+        89,
+        910,
+        129
+       ],
+       "page_id": 3
+      }
+     ],
+     "confidence": 1,
+     "content": "Nova Network and Environmental Qualification Report",
+     "description": null,
+     "id": 16,
+     "type": "page_header"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        1116,
+        94,
+        1540,
+        129
+       ],
+       "page_id": 3
+      }
+     ],
+     "confidence": 1,
+     "content": "Controlled verification record | Page 4 of 5",
+     "description": null,
+     "id": 17,
+     "type": "page_number"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        114,
+        262,
+        501,
+        304
+       ],
+       "page_id": 3
+      }
+     ],
+     "confidence": 1,
+     "content": "3. Executed results",
+     "description": null,
+     "id": 18,
+     "type": "section_header"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        114,
+        332,
+        815,
+        363
+       ],
+       "page_id": 3
+      }
+     ],
+     "confidence": 1,
+     "content": "Each disposition applies only to the criterion stated in the same record.",
+     "description": null,
+     "id": 19,
+     "type": "text"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        116,
+        407,
+        1538,
+        996
+       ],
+       "page_id": 3
+      }
+     ],
+     "confidence": 0.987,
+     "content": "<table><tr><th>REQ-NVA-ENV-004 Salt-mist resistance</th><td>PASS - Executed for REQ-NVA-ENV-004; the recorded result confirms: Salt-mist exposure lasts 96 hours.<br><br>IN PROGRESS - Partial execution exists for REQ-NVA-ENV-004, but verification is not complete: Contact resistance remains below 15 mOhm.<br><br>NOT TESTED - No test or inspection was performed for REQ-NVA-ENV-004: Sealing surfaces show no red corrosion.<br><br>NOT TESTED - No test or inspection was performed for REQ-NVA-ENV-004: Labels remain legible.</td><td>Bench / inspection record Reviewed by DV team</td></tr><tr><th>REQ-NVA-ENV-005 Mounting integrity</th><td>PASS - Executed for REQ-NVA-ENV-005; the recorded result confirms: All four mounting bolts are included.<br><br>PASS - Executed for REQ-NVA-ENV-005; the recorded result confirms: Initial mounting-bolt torque is 22 Nm.<br><br>PASS - Executed for REQ-NVA-ENV-005; the recorded result confirms: Every mounting bolt has torque witness paint.<br><br>FAIL - Executed for REQ-NVA-ENV-005; the observed result does not satisfy: Post-vibration residual torque is at least 18 Nm.</td><td>Bench / inspection record Reviewed by DV team</td></tr></table>",
+     "description": null,
+     "id": 20,
+     "type": "table"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        114,
+        2245,
+        719,
+        2274
+       ],
+       "page_id": 3
+      }
+     ],
+     "confidence": 1,
+     "content": "Synthetic benchmark evidence - not a certification or production claim",
+     "description": null,
+     "id": 21,
+     "type": "page_footer"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        111,
+        84,
+        913,
+        131
+       ],
+       "page_id": 4
+      }
+     ],
+     "confidence": 1,
+     "content": "Nova Network and Environmental Qualification Report",
+     "description": null,
+     "id": 22,
+     "type": "page_header"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        1115,
+        94,
+        1409,
+        129
+       ],
+       "page_id": 4
+      }
+     ],
+     "confidence": 1,
+     "content": "Controlled verification record",
+     "description": null,
+     "id": 23,
+     "type": "page_header"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        1419,
+        94,
+        1540,
+        129
+       ],
+       "page_id": 4
+      }
+     ],
+     "confidence": 1,
+     "content": "Page 5 of 5",
+     "description": null,
+     "id": 24,
+     "type": "page_number"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        111,
+        260,
+        772,
+        316
+       ],
+       "page_id": 4
+      }
+     ],
+     "confidence": 1,
+     "content": "4. Image-based inspection result",
+     "description": null,
+     "id": 25,
+     "type": "section_header"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        174,
+        496,
+        624,
+        536
+       ],
+       "page_id": 4
+      }
+     ],
+     "confidence": 0.9988,
+     "content": "VISUAL INSPECTION RECORD",
+     "description": null,
+     "id": 26,
+     "type": "section_header"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        174,
+        557,
+        605,
+        596
+       ],
+       "page_id": 4
+      }
+     ],
+     "confidence": 0.9974,
+     "content": "REQ-NVA-NET-006 | Gateway routing",
+     "description": null,
+     "id": 27,
+     "type": "section_header"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        192,
+        615,
+        777,
+        1006
+       ],
+       "page_id": 4
+      }
+     ],
+     "confidence": 0.9903,
+     "content": "PASS\nthe recorded result confirms: A message with identifier 0x18FF50E5 enters port A.\n\nPASS\nthe recorded result confirms: Message leaves through port C.\n\nPASS\nthe recorded result confirms: Routing latency does not exceed 4 ms.\n\nPASS\nthe recorded result confirms: Message payload is retained.",
+     "description": null,
+     "id": 28,
+     "type": "text"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        192,
+        1055,
+        632,
+        1116
+       ],
+       "page_id": 4
+      }
+     ],
+     "confidence": 0.9696,
+     "content": "FAILED\nthe observed result does not satisfy: Alive counter is updated.",
+     "description": null,
+     "id": 29,
+     "type": "text"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        174,
+        1172,
+        609,
+        1209
+       ],
+       "page_id": 4
+      }
+     ],
+     "confidence": 0.9974,
+     "content": "REQ-NVA-ENV-006 | Drain orientation",
+     "description": null,
+     "id": 30,
+     "type": "section_header"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        192,
+        1228,
+        1078,
+        1621
+       ],
+       "page_id": 4
+      }
+     ],
+     "confidence": 0.9942,
+     "content": "UNTESTED\nNOT TESTED - No test or inspection was performed for REQ-NVA-ENV-006: Enclosure is mounted in vehicle orientation.\n\nUNTESTED\nNOT TESTED - No test or inspection was performed for REQ-NVA-ENV-006: Drain slot faces downward.\n\nUNTESTED\nNOT TESTED - No test or inspection was performed for REQ-NVA-ENV-006: Drain slot remains outside the gasket boundary.\n\nUNTESTED\nNOT TESTED - No test or inspection was performed for REQ-NVA-ENV-006: Unobstructed drain opening is at least 18 mm2.",
+     "description": null,
+     "id": 31,
+     "type": "text"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        174,
+        1948,
+        643,
+        1979
+       ],
+       "page_id": 4
+      }
+     ],
+     "confidence": 0.9963,
+     "content": "Image record NOVA-DV-VIS | Reviewer: QA-17 | Controlled copy",
+     "description": null,
+     "id": 32,
+     "type": "text"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        111,
+        2140,
+        1312,
+        2175
+       ],
+       "page_id": 4
+      }
+     ],
+     "confidence": 1,
+     "content": "Figure 4-1. Recorded inspections for REQ-NVA-NET-006, REQ-NVA-ENV-006; interpretation requires the raster content.",
+     "description": null,
+     "id": 33,
+     "type": "caption"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        111,
+        2241,
+        723,
+        2278
+       ],
+       "page_id": 4
+      }
+     ],
+     "confidence": 1,
+     "content": "Synthetic benchmark evidence - not a certification or production claim",
+     "description": null,
+     "id": 34,
+     "type": "page_footer"
+    }
+   ],
+   "pages": [
+    {
+     "id": 0,
+     "image_uri": "fixture://60d77c2bbdca/page-0.png"
+    },
+    {
+     "id": 1,
+     "image_uri": "fixture://60d77c2bbdca/page-1.png"
+    },
+    {
+     "id": 2,
+     "image_uri": "fixture://60d77c2bbdca/page-2.png"
+    },
+    {
+     "id": 3,
+     "image_uri": "fixture://60d77c2bbdca/page-3.png"
+    },
+    {
+     "id": 4,
+     "image_uri": "fixture://60d77c2bbdca/page-4.png"
+    }
+   ]
+  },
+  "error_status": null,
+  "metadata": {
+   "file_metadata": null,
+   "id": "fixture",
+   "version": "2.0"
+  }
+ }
+}

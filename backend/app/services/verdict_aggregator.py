@@ -56,7 +56,7 @@ from app.schemas.evidence_qualification import (
 )
 from app.services.evidence_qualification import condition_evidence_compatible
 from app.services.observability import set_span_outputs, trace_span
-from app.services.units import convert_value, are_units_compatible
+from app.services.units import are_units_compatible, convert_difference, convert_value
 
 logger = logging.getLogger("traceaudit.aggregator")
 
@@ -242,7 +242,27 @@ def _normalized_quote_text(value: str) -> str:
     return " ".join(re.findall(r"[a-z0-9µ%]+", normalized))
 
 
-def _quote_is_traceable(quote: str, contents: list[str]) -> bool:
+# Lines a model generated about a figure (Databricks parse descriptions and
+# vision-model descriptions) sit in chunk text so retrieval and the verifier
+# can see them, but they are not document text: a quote that exists only in
+# them is not traceable to the source (and would be an injection path). The
+# one exception is a condition that requires visual evidence, whose designed
+# proof channel is the figure description (and which is separately checked
+# for every required visual attribute).
+GENERATED_TEXT_PREFIXES = ("VISUAL DESCRIPTION:",)
+
+
+def quotable_text(content: str, allow_generated: bool = False) -> str:
+    """The part of an evidence item that came from the document itself."""
+    if allow_generated or not content or "VISUAL DESCRIPTION:" not in content:
+        return content or ""
+    return "\n".join(
+        line for line in content.split("\n")
+        if not line.lstrip().startswith(GENERATED_TEXT_PREFIXES)
+    )
+
+
+def _quote_is_traceable(quote: str, contents: list[str], allow_generated: bool = False) -> bool:
     """True when the leading factual clause appears in a cited evidence item."""
     quote_tokens = _normalized_quote_text(quote).split()
     if not quote_tokens:
@@ -250,10 +270,13 @@ def _quote_is_traceable(quote: str, contents: list[str]) -> bool:
     # Twelve normalized tokens are long enough to reject invented citations
     # while tolerating a PDF line truncated after the factual clause.
     needle = " ".join(quote_tokens[:12])
-    return any(needle in _normalized_quote_text(content) for content in contents if content)
+    return any(
+        needle in _normalized_quote_text(quotable_text(content, allow_generated))
+        for content in contents if content
+    )
 
 
-def _quote_is_exactly_traceable(quote: str, content: str) -> bool:
+def _quote_is_exactly_traceable(quote: str, content: str, allow_generated: bool = False) -> bool:
     """Use the complete normalized quote when repairing a citation ID.
 
     The looser leading-clause check remains useful for validating a citation
@@ -261,7 +284,9 @@ def _quote_is_exactly_traceable(quote: str, content: str) -> bool:
     so it requires the full normalized quotation to occur in the target item.
     """
     normalized_quote = _normalized_quote_text(quote)
-    return bool(normalized_quote) and normalized_quote in _normalized_quote_text(content)
+    return bool(normalized_quote) and normalized_quote in _normalized_quote_text(
+        quotable_text(content, allow_generated)
+    )
 
 
 def locate_exact_quote_span(quote: str, content: str) -> Optional[tuple[int, int]]:
@@ -280,9 +305,19 @@ def locate_exact_quote_span(quote: str, content: str) -> Optional[tuple[int, int
     return start, start + len(candidate)
 
 
+def _span_in_generated_text(content: str, start: int, end: int) -> bool:
+    """True when ``content[start:end]`` touches a generated-description line."""
+    line_start = content.rfind("\n", 0, start) + 1
+    return any(
+        line.lstrip().startswith(GENERATED_TEXT_PREFIXES)
+        for line in content[line_start:end].split("\n")
+    )
+
+
 def _validated_span_refs(
     result: ConditionVerificationResult,
     evidence_contents: dict[str, str],
+    allow_generated: bool = True,
 ) -> set[str]:
     """Return evidence IDs whose stored offsets reproduce their exact quote."""
     valid: set[str] = set()
@@ -291,8 +326,11 @@ def _validated_span_refs(
         content = evidence_contents.get(evidence_id)
         if not content or span.end_offset > len(content):
             continue
-        if content[span.start_offset:span.end_offset] == span.exact_quote:
-            valid.add(evidence_id)
+        if content[span.start_offset:span.end_offset] != span.exact_quote:
+            continue
+        if not allow_generated and _span_in_generated_text(content, span.start_offset, span.end_offset):
+            continue
+        valid.add(evidence_id)
     return valid
 
 
@@ -307,7 +345,7 @@ def condition_attribution_is_traceable(
     if not refs or not result.quote:
         return False
     cited_contents = [evidence_contents[ref] for ref in refs if ref in evidence_contents]
-    return bool(cited_contents) and _quote_is_traceable(result.quote, cited_contents)
+    return bool(cited_contents) and _quote_is_traceable(result.quote, cited_contents, allow_generated=True)
 
 
 def _is_contradiction_relevant(q: EvidenceQualification) -> bool:
@@ -330,10 +368,9 @@ def _add_validation_note(
     note: str,
 ) -> None:
     """Record validator output without silently replacing semantic meaning."""
-    # A confirmed citation failure is stronger than an unresolved heuristic;
-    # otherwise the latest qualification result may refine an earlier VALID.
-    if result.validation_state != "CONTRADICTED" or state == "CONTRADICTED":
-        result.validation_state = state  # type: ignore[assignment]
+    # TRU-03: markers are monotone (VALID < UNRESOLVED < CONTRADICTED); a
+    # later VALID refines only the unconfirmed default, never a raised marker.
+    result.mark_validation(state)
     if note not in result.validation_notes:
         result.validation_notes.append(note)
 
@@ -395,12 +432,11 @@ def _missing_visual_attributes(
     return [token for token in dict.fromkeys(required) if token not in observed]
 
 
-_REQ_CODE_RE = re.compile(r"\b(REQ[-_]?[A-Za-z0-9_-]*\d+)\b", re.IGNORECASE)
+from app.services.requirement_ids import (  # noqa: E402  (one shared ID grammar)
+    REQ_CODE_RE as _REQ_CODE_RE,
+    comparable_code as _norm_code,
+)
 _QUOTE_NUMBER_RE = re.compile(r"(?<![\w.])[-+]?\d[\d,]*(?:\.\d+)?")
-
-
-def _norm_code(code: str) -> str:
-    return re.sub(r"[-_\s]+", "-", (code or "").strip().upper())
 
 
 def _quote_rows(quote: str, cited_contents: dict[str, str]) -> list[str]:
@@ -544,8 +580,17 @@ def audit_condition_evidence(
         if cr.status not in ("PROVEN", "FAILED", "PENDING"):
             continue
 
+        visual = bool(cond is not None and cond.requires_visual_evidence)
         if cr.evidence_spans:
-            exact_span_refs = _validated_span_refs(cr, qualified_contents)
+            exact_span_refs = _validated_span_refs(cr, qualified_contents, allow_generated=visual)
+            if not exact_span_refs and _validated_span_refs(cr, qualified_contents):
+                _add_validation_note(
+                    cr,
+                    "CONTRADICTED",
+                    "The cited span is generated figure-description text, not document text; "
+                    "only a visual condition may rest on it. The LLM status was preserved.",
+                )
+                continue
             if not exact_span_refs:
                 _add_validation_note(
                     cr,
@@ -574,13 +619,24 @@ def audit_condition_evidence(
             matching_refs = {
                 ref
                 for ref, content in cited_contents.items()
-                if _quote_is_traceable(cr.quote, [content])
+                if _quote_is_traceable(cr.quote, [content], allow_generated=visual)
             }
+            if not matching_refs and not visual and any(
+                _quote_is_traceable(cr.quote, [content], allow_generated=True)
+                for content in cited_contents.values()
+            ):
+                _add_validation_note(
+                    cr,
+                    "CONTRADICTED",
+                    "The quote occurs only in generated figure-description text, not document text; "
+                    "only a visual condition may rest on it. The LLM status was preserved.",
+                )
+                continue
             if not matching_refs:
                 reconciled_refs = {
                     evidence_id
                     for evidence_id, content in qualified_contents.items()
-                    if _quote_is_exactly_traceable(cr.quote, content)
+                    if _quote_is_exactly_traceable(cr.quote, content, allow_generated=visual)
                 }
                 if reconciled_refs:
                     # ACC-03: the quote exists only in evidence the model did
@@ -609,7 +665,7 @@ def audit_condition_evidence(
             matching_ids = {
                 evidence_id
                 for evidence_id, content in qualified_contents.items()
-                if _quote_is_traceable(cr.quote, [content])
+                if _quote_is_traceable(cr.quote, [content], allow_generated=visual)
             }
             backing = [qual_by_id[evidence_id] for evidence_id in matching_ids if evidence_id in qual_by_id]
 
@@ -1063,6 +1119,43 @@ def abstention_is_admissibility_only(
     return True
 
 
+_SENSITIVITY_STATUSES = ("PROVEN", "FAILED", "PENDING", "UNTESTED", "INCONCLUSIVE")
+
+
+def atomic_status_is_insensitive(
+    contract: RequirementContract,
+    condition_results: list[ConditionVerificationResult],
+    blocking_issues: list[Any],
+    atomic_status: str,
+    **aggregate_kwargs: Any,
+) -> bool:
+    """True when no status of the unresolved conditions could change the aggregate.
+
+    Used only after ``abstention_is_admissibility_only``: if the conditions
+    whose citations could not be qualified cannot move the Boolean result,
+    abstaining to the whole-clause label discards a sound atomic decision.
+    """
+    flagged = sorted({
+        str(getattr(issue, "path", "")) for issue in blocking_issues
+        if getattr(issue, "code", None) == "EVIDENCE_VALIDATION"
+    })
+    by_id = {result.condition_id: result for result in condition_results}
+    if not flagged or len(flagged) > 3 or any(cid not in by_id for cid in flagged):
+        return False
+    from itertools import product
+    for combo in product(_SENSITIVITY_STATUSES, repeat=len(flagged)):
+        changed = dict(zip(flagged, combo))
+        trial = [
+            result.model_copy(update={"status": changed[result.condition_id]})
+            if result.condition_id in changed else result
+            for result in condition_results
+        ]
+        status, _, _ = aggregate_condition_statuses(contract, trial, **aggregate_kwargs)
+        if status != atomic_status:
+            return False
+    return True
+
+
 def _aggregate_status_group(operator: str, statuses: list[str]) -> Optional[str]:
     """Mechanically combine already-interpreted child statuses."""
     active = [status for status in statuses if status != "NOT_APPLICABLE"]
@@ -1124,6 +1217,12 @@ def _aggregate_logic_tree_node(
             return None
         if antecedent_status == "NOT_APPLICABLE":
             return "NOT_APPLICABLE"
+        if antecedent_status == "MISSING":
+            # ACC-04 (L3a): same rule as the flat IF_THEN path. An untested
+            # antecedent with inconclusive consequent evidence is UNKNOWN,
+            # not proof that nothing was tested.
+            consequent_status = _aggregate_logic_tree_node(consequent, by_id)
+            return "UNKNOWN" if consequent_status == "UNKNOWN" else "MISSING"
         if antecedent_status != "SUPPORTED":
             return antecedent_status
         return _aggregate_logic_tree_node(consequent, by_id)
@@ -1331,6 +1430,38 @@ def aggregate_condition_statuses(
 
 # ── Finalization for LLM-produced analyses ───────────────────────────────────
 
+def observation_status(result: ConditionVerificationResult) -> Optional[str]:
+    """ACC-08: the status the model's own observation fields imply, or None.
+
+    Corrected trigger table: only an explicit relationship decides. Partial
+    execution alone does not imply PENDING (82 of 146 INCONCLUSIVE results
+    carry PARTIALLY_EXECUTED), and UNCLEAR relationships derive nothing.
+    Diagnostics only; the model's status still drives aggregation.
+    """
+    execution = result.execution_state
+    relationship = result.relationship
+    role = result.evidence_value_role
+    if execution == "NOT_EXECUTED" or relationship == "NOT_ADDRESSED":
+        return "UNTESTED"
+    if relationship == "SATISFIES" and execution == "EXECUTED" and role in ("OBSERVED", "STATUS_ONLY"):
+        return "PROVEN"
+    if relationship == "VIOLATES" and execution == "EXECUTED" and role == "OBSERVED":
+        return "FAILED"
+    if relationship == "PARTIAL_COVERAGE" and execution in ("PARTIALLY_EXECUTED", "EXECUTED"):
+        return "PENDING"
+    return None
+
+
+def observation_disputes(results: list[ConditionVerificationResult]) -> list[dict[str, str]]:
+    """Conditions whose status disagrees with what their observation fields imply."""
+    disputes = []
+    for result in results:
+        derived = observation_status(result)
+        if derived is not None and result.status not in (derived, "NOT_APPLICABLE"):
+            disputes.append({"condition_id": result.condition_id, "status": result.status, "observed": derived})
+    return disputes
+
+
 def _finalize_verdict_impl(
     contract: RequirementContract,
     analysis: VerificationAnalysisResult,
@@ -1398,9 +1529,24 @@ def _finalize_verdict_impl(
     # With malformed symbolic input there is no sound deterministic override.
     # Keep the holistic decision as an explicitly review-only result. An empty
     # model response remains on the conservative atomic fallback.
+    # TRU-03 companion: an unresolved (not contradicted) citation on a
+    # condition that cannot move the Boolean result is no reason to discard
+    # the atomic decision for the whole-clause label.
+    atomic_insensitive_retained = bool(
+        not aggregation_eligible
+        and not atomic_conflict_retained
+        and abstention_is_admissibility_only(contract, crs, blocking_reasons)
+        and atomic_status_is_insensitive(
+            contract, crs, blocking_reasons, atomic_status,
+            evidence_qualification=qualifications,
+            has_relevant_evidence=has_relevant_evidence,
+            evidence_absent=evidence_absent,
+        )
+    )
     advisory_fallback = bool(
         not aggregation_eligible
         and not atomic_conflict_retained
+        and not atomic_insensitive_retained
         and analysis.condition_results
         and provisional in {
             "SUPPORTED", "PARTIAL", "MISSING", "UNKNOWN", "CONFLICT",
@@ -1414,6 +1560,14 @@ def _finalize_verdict_impl(
             "Whole-clause provisional status retained because deterministic aggregation abstained: "
             + "; ".join(blocking_reasons)
             + f". The atomic aggregate was {atomic_status}. Mandatory review is required."
+        )
+    elif atomic_insensitive_retained:
+        confidence = min(float(confidence), 80.0)
+        reason = (
+            f"Atomic {atomic_status} retained: the conditions whose evidence admissibility is "
+            "unresolved cannot change the aggregate under any status ("
+            + "; ".join(str(issue) for issue in blocking_reasons)
+            + "). Mandatory review is required."
         )
     elif atomic_conflict_retained:
         confidence = min(float(confidence), 80.0)
@@ -1436,7 +1590,7 @@ def _finalize_verdict_impl(
         final_reason = reason
         if provisional_reason:
             final_reason += f" Whole-clause rationale: {provisional_reason}"
-    elif atomic_conflict_retained or override_note:
+    elif atomic_conflict_retained or atomic_insensitive_retained or override_note:
         provisional_reason = (analysis.reason or "").strip()
         final_reason = f"{reason}{override_note}"
         if provisional_reason:
@@ -1470,6 +1624,7 @@ def _finalize_verdict_impl(
         "atomic_aggregate_status": atomic_status,
         "atomic_advisory_fallback": advisory_fallback,
         "atomic_conflict_retained": atomic_conflict_retained,
+        "atomic_insensitive_retained": atomic_insensitive_retained,
         "atomic_advisory_reasons": advisory_reasons,
         "aggregator_blocking_issues": blocking_reasons,
         "aggregator_advisory_issues": [
@@ -1482,6 +1637,7 @@ def _finalize_verdict_impl(
         "aggregator_abstained": bool(blocking_reasons),
         "aggregator_decision": (
             "retained_atomic_conflict" if atomic_conflict_retained else
+            "retained_atomic_insensitive" if atomic_insensitive_retained else
             "abstained" if not aggregation_eligible else
             "overrode" if provisional and provisional != status else
             "agreed"
@@ -1490,6 +1646,8 @@ def _finalize_verdict_impl(
             aggregation_eligible and provisional and provisional != status
         ),
         "condition_transitions": transitions,
+        # ACC-08: measured, not acted on; feeds ACC-07 triggers once validated live.
+        "observation_disputes": observation_disputes(crs),
         "qualification": [q.model_dump(exclude_none=True) for q in qualifications],
     })
     finalized._diagnostics = diagnostics
@@ -1634,7 +1792,9 @@ def _numeric_condition_status(
         if "tolerance" in (cond.parameter or "").lower():
             nominal = next(
                 (
-                    sibling.threshold
+                    # ACC-12: the nominal is an absolute level in its own unit.
+                    convert_value(float(sibling.threshold), sibling.unit, cond.unit)
+                    if sibling.unit and cond.unit else float(sibling.threshold)
                     for sibling in contract.atomic_conditions
                     if sibling.condition_id != cond.condition_id
                     and sibling.operator in ("==", "=")
@@ -1655,7 +1815,11 @@ def _numeric_condition_status(
             # only when the contract provides no explicit tolerance condition.
             sibling_tolerance = next(
                 (
-                    float(sibling.threshold)
+                    # ACC-12: a tolerance is a difference; convert it without
+                    # the temperature offset and into this condition's unit.
+                    convert_difference(float(sibling.threshold), sibling.unit, cond.unit)
+                    if sibling.unit and cond.unit and sibling.unit != cond.unit
+                    else float(sibling.threshold)
                     for sibling in contract.atomic_conditions
                     if sibling.condition_id != cond.condition_id
                     and "tolerance" in (sibling.parameter or "").lower()

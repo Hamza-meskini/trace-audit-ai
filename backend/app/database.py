@@ -135,7 +135,7 @@ def _configure_sqlite_connection(dbapi_connection: Any, _record: Any) -> None:
 if active_backend == "databricks":
     url = settings.databricks_sqlalchemy_url
     logger.info("Using Databricks SQL Warehouse engine (%s.%s)", settings.effective_databricks_catalog, settings.effective_databricks_schema)
-    sync_engine = create_engine(url, echo=settings.DEBUG, pool_pre_ping=True)
+    sync_engine = create_engine(url, echo=settings.SQL_ECHO, pool_pre_ping=True)
     if settings.DATABRICKS_BATCH_INSERTS:
         configure_databricks_batch_inserts(sync_engine)
     databricks_session_factory = sessionmaker(bind=sync_engine, expire_on_commit=False)
@@ -144,7 +144,7 @@ if active_backend == "databricks":
 else:
     db_url = settings.effective_database_url
     logger.info("Using local SQLite engine: %s", db_url)
-    engine = create_async_engine(db_url, echo=settings.DEBUG)
+    engine = create_async_engine(db_url, echo=settings.SQL_ECHO)
     event.listen(engine.sync_engine, "connect", _configure_sqlite_connection)
     async_session = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
     sync_engine = None

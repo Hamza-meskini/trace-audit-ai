@@ -17,6 +17,12 @@ from app.services.databricks_custom_reranker import _invoke_reranker, rerank_can
 from app.services.retrieval import RetrievedChunk
 
 
+@pytest.fixture(autouse=True)
+def _workspace_in_egress_allow_list(monkeypatch):
+    """The fake workspace host stands in for the configured Databricks host."""
+    monkeypatch.setattr(databricks_custom_reranker.settings, "EGRESS_ALLOWED_HOSTS", ["workspace.example"])
+
+
 def test_endpoint_adapter_sends_json_encoded_document_lists(monkeypatch) -> None:
     monkeypatch.setattr(databricks_custom_reranker.settings, "DATABRICKS_TOKEN", "test")
     monkeypatch.setattr(databricks_custom_reranker.settings, "DATABRICKS_CUSTOM_RERANKER_ENDPOINT", "bge-reranker-v2-m3")

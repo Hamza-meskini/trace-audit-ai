@@ -10,7 +10,8 @@ command:
     # Install Bun if not present
     if ! command -v bun > /dev/null 2>&1; then
       echo "📦 Installing Bun..."
-      curl -fsSL https://bun.sh/install | bash
+      # Pinned to the version CI verifies (.github/workflows/verify.yml).
+      curl -fsSL https://bun.sh/install | bash -s "bun-v1.4.2"
       export BUN_INSTALL="$HOME/.bun"
       export PATH="$BUN_INSTALL/bin:$PATH"
     else
@@ -132,6 +133,14 @@ env:
   - name: "OPENAI_BASE_URL"
     value: "https://api.openai.com/v1"
   
+  # ========================================
+  # Outbound egress allow-list (see DEPLOYMENT.md)
+  # ========================================
+  # The Databricks workspace host is always allowed. Gemini embeddings (the
+  # benchmarked retrieval path) need Google approved explicitly; owner decision:
+  # - name: "EGRESS_ALLOWED_HOSTS"
+  #   value: '["generativelanguage.googleapis.com"]'
+
   # ========================================
   # CORS Configuration
   # ========================================

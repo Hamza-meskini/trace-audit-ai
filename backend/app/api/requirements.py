@@ -2,6 +2,7 @@
 
 import re
 import uuid
+from typing import Literal
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import select
@@ -14,6 +15,7 @@ from app.models.document import EvidenceChunk, Document
 from app.schemas.requirement import RequirementResponse, RequirementCreate, EvidenceResponse, RequirementReviewRequest
 from app.models.finding import Finding
 from app.services import audit_progress
+from app.services.identity import request_identity
 from app.services.review_status import is_human_reviewed, latest_human_decision, review_origin
 
 router = APIRouter(prefix="/projects/{project_id}/requirements", tags=["Requirements"])
@@ -94,18 +96,23 @@ async def list_requirements(
     status: str | None = Query(None),
     severity: str | None = Query(None),
     review: str | None = Query(None),
+    view: Literal["full", "summary"] = Query("full"),
     db: AsyncSession = Depends(get_db, scope="function"),
 ):
+    # ARC-05: view=summary skips the evidence chunks and the long text fields,
+    # which the list pages never show; the detail endpoint returns them.
+    summary = view == "summary"
     query = (
         select(Requirement)
         .where(Requirement.project_id == project_id)
-        .options(
+        .order_by(Requirement.req_code)
+    )
+    if not summary:
+        query = query.options(
             selectinload(Requirement.evidence_links)
             .selectinload(RequirementEvidence.evidence_chunk)
             .selectinload(EvidenceChunk.document)
         )
-        .order_by(Requirement.req_code)
-    )
 
     if category:
         query = query.where(Requirement.category == category)
@@ -121,13 +128,13 @@ async def list_requirements(
 
     responses = []
     for req in reqs:
-        evidence = [_build_evidence_response(link) for link in req.evidence_links]
+        evidence = [] if summary else [_build_evidence_response(link) for link in req.evidence_links]
         resp = RequirementResponse(
             id=req.id,
             project_id=req.project_id,
             req_code=req.req_code,
             title=req.title,
-            description=req.description,
+            description=None if summary else req.description,
             category=req.category,
             source_document=req.source_document,
             sources_count=req.sources_count,
@@ -135,8 +142,8 @@ async def list_requirements(
             confidence=req.confidence,
             review_state=req.review_state,
             severity=req.severity,
-            ai_analysis=req.ai_analysis,
-            ai_recommendation=req.ai_recommendation,
+            ai_analysis=None if summary else req.ai_analysis,
+            ai_recommendation=None if summary else req.ai_recommendation,
             evidence=evidence,
             created_at=req.created_at,
             updated_at=req.updated_at,
@@ -237,14 +244,12 @@ async def save_review(project_id: str, requirement_id: str, body: RequirementRev
     if req is None:
         raise HTTPException(404, "Requirement not found")
 
-    forwarded_user = (
-        request.headers.get("X-Forwarded-User")
-        or request.headers.get("X-Databricks-User")
-        or request.headers.get("X-Forwarded-Email")
-    )
-    reviewer = body.reviewer.strip()
-    if forwarded_user and (not reviewer or reviewer == "Local reviewer"):
-        reviewer = forwarded_user.strip()
+    # On Databricks Apps the SSO identity from the proxy is the reviewer of
+    # record; the typed name is kept only as display text. Elsewhere the typed
+    # name is all there is, and the event is marked unverified.
+    identity = request_identity(request)
+    typed_name = body.reviewer.strip()
+    reviewer = identity.display if identity.verified else typed_name
 
     if not reviewer or not body.comment.strip():
         raise HTTPException(422, "Reviewer and rationale cannot be blank")
@@ -252,6 +257,9 @@ async def save_review(project_id: str, requirement_id: str, body: RequirementRev
         raise HTTPException(422, "A human-assessed verdict is required when overriding the AI verdict")
     human_verdict = req.coverage_status if body.resolution_type == "Confirm AI assessment" else body.human_verdict
     event = {"id": str(uuid.uuid4()), "action": body.action, "reviewer": reviewer,
+             "reviewer_display": typed_name or reviewer,
+             "reviewer_identity": identity.user, "reviewer_email": identity.email,
+             "identity_source": identity.source, "identity_verified": identity.verified,
              "comment": body.comment.strip(), "created_at": datetime.now(timezone.utc).isoformat(),
              "ai_verdict": req.coverage_status, "previous_review_state": req.review_state,
              "assessment_at": (req.extracted_parameters or {}).get("verification", {}).get("assessed_at"),

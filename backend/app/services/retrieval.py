@@ -60,10 +60,11 @@ def prepare_lexical_corpus(chunks: list[dict[str, Any]]) -> PreparedLexicalCorpu
     return PreparedLexicalCorpus(tokens_by_content, total_tokens / max(len(chunks), 1), len(chunks))
 
 
-REQ_CODE_REGEX = re.compile(r"\b(REQ[-_]?[A-Za-z0-9_-]*\d+)\b", re.IGNORECASE)
-CLAUSE_CODE_REGEX = re.compile(
-    r"\b([A-Za-z][A-Za-z0-9_-]*\d+(?:\.\d+)+(?:\([A-Za-z0-9]+\))*)\b",
-    re.IGNORECASE,
+from app.services.requirement_ids import (  # noqa: E402  (one shared ID grammar)
+    CLAUSE_CODE_RE as CLAUSE_CODE_REGEX,
+    REQ_CODE_RE as REQ_CODE_REGEX,
+    id_match_key,
+    requirement_id_keys,
 )
 
 # Hybrid scoring weight: α for BM25, (1-α) for semantic embedding
@@ -139,8 +140,14 @@ def _bm25_retrieve(
 
     req_code_match = REQ_CODE_REGEX.search(requirement_text)
     req_code_token = req_code_match.group(1).lower() if req_code_match else None
+    # IDs are compared by match key (case, separators, leading zeros) and
+    # ranges such as "REQ-A-001 to REQ-A-005" name every member (review H3).
+    req_key = id_match_key(req_code_token) if req_code_token else None
     req_suffix_match = re.search(r"(\d+)$", req_code_token or "")
     req_suffix = req_suffix_match.group(1) if req_suffix_match else None
+    # The test-case boost needs the domain too: TC-THM-003 is not ELE-003.
+    req_domain_match = re.search(r"([a-z][a-z0-9]*)[-_]\d+$", req_code_token or "")
+    req_domain = req_domain_match.group(1) if req_domain_match and req_domain_match.group(1) != "req" else None
     clause_codes = {match.lower() for match in CLAUSE_CODE_REGEX.findall(requirement_text)}
 
     core_param_tokens = {
@@ -164,11 +171,12 @@ def _bm25_retrieve(
 
     for c in chunks:
         content = c.get("content", "")
-        content_codes = {m.group(1).lower() for m in REQ_CODE_REGEX.finditer(content)}
-        if req_code_token and content_codes and req_code_token not in content_codes:
+        content_keys = requirement_id_keys(content)
+        if req_key and content_keys and req_key not in content_keys:
             # A chunk explicitly assigned to another requirement is not a
             # candidate merely because it shares generic technical words.
             continue
+        names_requirement = bool(req_key) and req_key in content_keys
         doc_tokens = (
             prepared_corpus.tokens_by_content.get(content)
             if prepared_corpus is not None else None
@@ -177,8 +185,9 @@ def _bm25_retrieve(
             doc_tokens = tokenize(content)
         score = compute_bm25_score(query_tokens, doc_tokens, avg_doc_len=avg_len)
 
-        # 1. Exact Requirement Code Boost (+5.0)
-        if req_code_token and req_code_token in doc_tokens:
+        # 1. Requirement ID Boost (+5.0) for a chunk that names this ID in
+        # any spelling or inside a range.
+        if names_requirement:
             score += 5.0
 
         content_lower = content.lower()
@@ -187,7 +196,13 @@ def _bm25_retrieve(
                 score += 5.0
 
         # Test reports commonly use TC-DOMAIN-NNN rather than the SRS code.
-        if req_suffix and re.search(rf"\bTC[-_][A-Za-z0-9_-]*[-_]{re.escape(req_suffix)}\b", content, re.IGNORECASE):
+        if req_suffix and req_domain:
+            test_case = rf"\bTC[-_](?:[A-Za-z0-9]+[-_])*{re.escape(req_domain)}[-_]0*{int(req_suffix)}\b"
+        elif req_suffix:
+            test_case = rf"\bTC[-_][A-Za-z0-9_-]*[-_]{re.escape(req_suffix)}\b"
+        else:
+            test_case = None
+        if test_case and re.search(test_case, content, re.IGNORECASE):
             score += 6.0
 
         # 2. Number & Unit Parameter Match Boost (+2.0)
@@ -202,7 +217,7 @@ def _bm25_retrieve(
         # 4. Conflict / Specification Indicator Boost (+1.0)
         doc_name_lower = c.get("document_name", "").lower()
         if any(k in doc_name_lower for k in ["datasheet", "ds-", "report", "matrix", "compliance"]):
-            if matched_params or (req_code_token and req_code_token in doc_tokens):
+            if matched_params or names_requirement:
                 score += 1.0
 
         # 5. Structure-intent boost. Captions and compact table rows contain
@@ -216,6 +231,10 @@ def _bm25_retrieve(
 
         if score >= min_score:
             matched = [t for t in query_tokens if t in doc_tokens and len(t) > 2]
+            metadata = c.get("metadata")
+            if names_requirement:
+                # Traceability: record that this chunk names the requirement.
+                metadata = {**(metadata or {}), "requirement_id_match": req_code_token.upper()}
             candidate_pool.append(RetrievedChunk(
                 chunk_id=c.get("id", "") or c.get("chunk_id", ""),
                 document_id=c.get("document_id", ""),
@@ -226,7 +245,7 @@ def _bm25_retrieve(
                 score=score,
                 matched_terms=matched,
                 document_profile=c.get("document_profile"),
-                metadata=c.get("metadata"),
+                metadata=metadata,
             ))
 
     candidate_pool.sort(key=lambda item: item.score, reverse=True)

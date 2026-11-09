@@ -34,9 +34,11 @@ class EvidenceLinkAssessment:
     document_name: str
     page_number: Optional[int]
     quote: str
-    status: str  # "Supports requirement" | "Potential conflict" | "Supporting evidence"
+    status: str  # "Supports requirement" | "Potential conflict" | "Supporting evidence" | "Context (not cited)"
     label: str
     highlight: Optional[str] = None
+    # TRU-05: the conditions whose cited span sits in this chunk.
+    cited_conditions: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -227,15 +229,11 @@ def _supported_review_gate(
                 + "."
             )
 
+    # TRU-04 (G1): the gate reads the confidence Python aggregated from the
+    # audited conditions, not the model's self-reported confidence. The model's
+    # figure stays in diagnostics (llm_provisional_confidence) for review.
     confidence_source = "aggregated"
     review_confidence = outcome.confidence
-    raw_llm_confidence = diagnostics.get("llm_provisional_confidence")
-    if raw_llm_confidence is not None:
-        try:
-            review_confidence = float(raw_llm_confidence)
-            confidence_source = "LLM"
-        except (TypeError, ValueError):
-            pass
 
     if review_confidence < SUPPORTED_AUTO_CLOSE_MIN_CONFIDENCE:
         reasons.append(
@@ -349,10 +347,73 @@ def _condition_results_for_status(
     ]
 
 
+CONTEXT_LINK_STATUS = "Context (not cited)"
+
+
+def _flat_text(value: str) -> str:
+    return re.sub(r"\s+", " ", value or "").strip().lower()
+
+
+def _cited_evidence_links(
+    evidence_items: list[dict],
+    condition_results: list[ConditionVerificationResult],
+    highlight: Optional[str] = None,
+) -> list[EvidenceLinkAssessment]:
+    """TRU-05: label a chunk by what was cited from it, per condition.
+
+    A retrieved chunk is not support just because the requirement was judged
+    Supported. Only a chunk holding a condition's cited span is labelled by
+    that condition's status; every other retrieved chunk is shown as context.
+    """
+    citations = []  # (condition_id, status, flat quote, quote)
+    for result in condition_results:
+        quotes = [span.exact_quote for span in (result.evidence_spans or []) if span.exact_quote]
+        if result.quote:
+            quotes.append(result.quote)
+        for quote in dict.fromkeys(quotes):
+            flat = _flat_text(quote)
+            if len(flat) >= 8:
+                citations.append((result.condition_id, result.status, flat, quote))
+
+    cited_links, context_links = [], []
+    for item in evidence_items:
+        label = item["doc_type"] if item["doc_type"] != "Document" else item["document_name"]
+        content = _flat_text(item["quote"])
+        hits = [c for c in citations if c[2] in content]
+        statuses = {status for _, status, _, _ in hits}
+        if "FAILED" in statuses:
+            status = "Potential conflict"
+            span = next(quote for _, st, _, quote in hits if st == "FAILED")
+        elif "PROVEN" in statuses:
+            status = "Supports requirement"
+            span = next(quote for _, st, _, quote in hits if st == "PROVEN")
+        elif hits:
+            status = "Supporting evidence"
+            span = hits[0][3]
+        elif highlight and highlight.lower() in (item["quote"] or "").lower():
+            # A deterministic validator's own highlighted contradiction.
+            status, span = "Potential conflict", highlight
+        else:
+            status, span = CONTEXT_LINK_STATUS, None
+        link = EvidenceLinkAssessment(
+            chunk_id=item["chunk_id"],
+            document_name=item["document_name"],
+            page_number=item["page_number"],
+            quote=item["quote"],
+            status=status,
+            label=label,
+            highlight=(span[:500] if span else None),
+            cited_conditions=sorted({cid for cid, _, _, _ in hits}),
+        )
+        (context_links if status == CONTEXT_LINK_STATUS else cited_links).append(link)
+    return cited_links + context_links
+
+
 def _format_evidence_items(candidate_chunks: list[dict]) -> list[dict]:
     """Normalize candidate chunks into the evidence-item dict used by all checks."""
-    return [
-        {
+    items = []
+    for c in candidate_chunks:
+        item = {
             "chunk_id": c.get("id") or c.get("chunk_id", ""),
             "document_name": c.get("document_name", "Document"),
             "doc_type": c.get("doc_type", "Document"),
@@ -360,8 +421,22 @@ def _format_evidence_items(candidate_chunks: list[dict]) -> list[dict]:
             "quote": c.get("content") or c.get("quote", ""),
             "document_profile": c.get("document_profile"),
         }
-        for c in candidate_chunks
-    ]
+        # Document-level health reasons (likely revision, parser fallback);
+        # present only when ingestion flagged the document.
+        document_review = (c.get("metadata") or {}).get("document_review")
+        if document_review:
+            item["document_review"] = list(document_review)
+        items.append(item)
+    return items
+
+
+def _document_review_reasons(evidence_items: list[dict]) -> list[str]:
+    """Distinct document-health reasons carried by the evidence shown to the verifier."""
+    reasons: dict[str, None] = {}
+    for item in evidence_items:
+        for reason in item.get("document_review") or []:
+            reasons.setdefault(f"Evidence document needs review: {reason}", None)
+    return list(reasons)
 
 
 def _filter_non_spec(
@@ -591,6 +666,7 @@ def _finalize_assessment(
     ]
     if diagnostics.get("aggregator_abstained"):
         review_reasons.append("The contract could not be mechanically verified; review the provisional verdict.")
+    review_reasons.extend(_document_review_reasons(non_spec_items))
     if review_reasons:
         rev_state = "Needs review"
 
@@ -601,21 +677,11 @@ def _finalize_assessment(
         "reasons": review_reasons,
     }
 
-    highlight = outcome.highlight
-    links = []
-    for e in non_spec_items:
-        label = e["doc_type"] if e["doc_type"] != "Document" else e["document_name"]
-        is_highlight_src = highlight and highlight.lower() in e["quote"].lower()
-        link_status = "Potential conflict" if is_highlight_src else ("Supports requirement" if cov_status == "Supported" else "Supporting evidence")
-        links.append(EvidenceLinkAssessment(
-            chunk_id=e["chunk_id"],
-            document_name=e["document_name"],
-            page_number=e["page_number"],
-            quote=e["quote"],
-            status=link_status,
-            label=label,
-            highlight=highlight if is_highlight_src else None,
-        ))
+    links = _cited_evidence_links(
+        non_spec_items,
+        list(outcome.condition_results or []),
+        outcome.highlight,
+    )
 
     recommendation = RECOMMENDATIONS.get(cov_status, "Perform engineering review.")
     if cov_status == "Supported" and review_reasons:

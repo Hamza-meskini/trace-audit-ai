@@ -1322,6 +1322,7 @@ async def _run_benchmark_impl(
     review_correct = 0
     false_supported = 0
     unsafe_auto_close = 0
+    unsafe_any_auto_close = 0
     logic_total = 0
     logic_correct = 0
 
@@ -1338,6 +1339,8 @@ async def _run_benchmark_impl(
         is_false_supported = predicted == "SUPPORTED" and expected != "SUPPORTED"
         false_supported += int(is_false_supported)
         unsafe_auto_close += int(is_false_supported and review_state == "Reviewed")
+        # EVA-07: a wrong auto-closed CONFLICT is just as unsafe.
+        unsafe_any_auto_close += int(predicted != expected and review_state == "Reviewed")
 
         diagnostics = _field(assessment, "pipeline_diagnostics", {}) or {}
         raw_results = diagnostics.get("llm_condition_results", [])
@@ -1424,6 +1427,7 @@ async def _run_benchmark_impl(
             "review_state_accuracy": _percent(review_correct, len(requirements)),
             "false_supported": false_supported,
             "unsafe_false_auto_closes": unsafe_auto_close,
+            "unsafe_auto_closes": unsafe_any_auto_close,
         },
     }
     results = {

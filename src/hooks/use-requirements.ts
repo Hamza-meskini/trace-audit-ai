@@ -8,15 +8,18 @@ export function useRequirements(
 ) {
   return useQuery({
     queryKey: ["requirements", projectId, filters],
-    queryFn: () => api.getRequirements(projectId, filters),
+    queryFn: ({ signal }) => api.getRequirements(projectId, filters, signal),
     enabled: !!projectId && (options?.enabled ?? true),
+    // The list is the heaviest response in the app. Reviews and audit runs
+    // invalidate it explicitly, so list -> detail -> list need not refetch it.
+    staleTime: 60_000,
   });
 }
 
 export function useRequirement(projectId: string, reqId: string) {
   return useQuery({
     queryKey: ["requirements", projectId, reqId],
-    queryFn: () => api.getRequirement(projectId, reqId),
+    queryFn: ({ signal }) => api.getRequirement(projectId, reqId, signal),
     enabled: !!projectId && !!reqId,
   });
 }

@@ -1,0 +1,539 @@
+{
+ "source_sha256": "c5b10938379de8261a6d98840ab6fecdfecdd8677d581804515a9c7d64228f8a",
+ "parse_version": "2.0",
+ "figure_descriptions": true,
+ "result": {
+  "document": {
+   "elements": [
+    {
+     "bbox": [
+      {
+       "coord": [
+        172,
+        461,
+        734,
+        515
+       ],
+       "page_id": 0
+      }
+     ],
+     "confidence": 1,
+     "content": "NOVA PROGRAM",
+     "description": null,
+     "id": 0,
+     "type": "title"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        172,
+        725,
+        1479,
+        800
+       ],
+       "page_id": 0
+      }
+     ],
+     "confidence": 1,
+     "content": "Nova Thermal Control Requirements",
+     "description": null,
+     "id": 1,
+     "type": "title"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        172,
+        1878,
+        772,
+        1993
+       ],
+       "page_id": 0
+      }
+     ],
+     "confidence": 1,
+     "content": "Domain: Thermal control\nRevision A | Synthetic extraction benchmark",
+     "description": null,
+     "id": 2,
+     "type": "text"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        124,
+        89,
+        706,
+        129
+       ],
+       "page_id": 1
+      }
+     ],
+     "confidence": 1,
+     "content": "Nova Thermal Control Requirements",
+     "description": null,
+     "id": 3,
+     "type": "page_header"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        1239,
+        98,
+        1528,
+        126
+       ],
+       "page_id": 1
+      }
+     ],
+     "confidence": 1,
+     "content": "Controlled copy | Page 2 of 4",
+     "description": null,
+     "id": 4,
+     "type": "page_number"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        124,
+        271,
+        693,
+        316
+       ],
+       "page_id": 1
+      }
+     ],
+     "confidence": 1,
+     "content": "2. Functional requirements",
+     "description": null,
+     "id": 5,
+     "type": "section_header"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        164,
+        435,
+        772,
+        470
+       ],
+       "page_id": 1
+      }
+     ],
+     "confidence": 1,
+     "content": "REQ-NVA-THM-001 | Ambient operating range",
+     "description": null,
+     "id": 6,
+     "type": "section_header"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        164,
+        487,
+        1391,
+        517
+       ],
+       "page_id": 1
+      }
+     ],
+     "confidence": 1,
+     "content": "The battery control assembly shall perform all monitoring functions from -30 deg C to +70 deg C ambient.",
+     "description": null,
+     "id": 7,
+     "type": "text"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        164,
+        795,
+        652,
+        828
+       ],
+       "page_id": 1
+      }
+     ],
+     "confidence": 1,
+     "content": "REQ-NVA-THM-002 | Shutdown band",
+     "description": null,
+     "id": 8,
+     "type": "section_header"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        164,
+        847,
+        761,
+        954
+       ],
+       "page_id": 1
+      }
+     ],
+     "confidence": 1,
+     "content": "The controller shall command thermal shutdown at\nor above 90 deg C and shall not command thermal\nshutdown below 85 deg C.",
+     "description": null,
+     "id": 9,
+     "type": "text"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        888,
+        795,
+        1383,
+        828
+       ],
+       "page_id": 1
+      }
+     ],
+     "confidence": 1,
+     "content": "REQ-NVA-THM-003 | Coolant delivery",
+     "description": null,
+     "id": 10,
+     "type": "section_header"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        888,
+        847,
+        1474,
+        917
+       ],
+       "page_id": 1
+      }
+     ],
+     "confidence": 1,
+     "content": "While battery heat rejection is 35 kW, coolant flow\nthrough the pack shall be at least 8.0 L/min.",
+     "description": null,
+     "id": 11,
+     "type": "text"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        124,
+        2250,
+        723,
+        2271
+       ],
+       "page_id": 1
+      }
+     ],
+     "confidence": 1,
+     "content": "Synthetic benchmark document - no real product or certification claim",
+     "description": null,
+     "id": 12,
+     "type": "page_footer"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        126,
+        89,
+        706,
+        129
+       ],
+       "page_id": 2
+      }
+     ],
+     "confidence": 1,
+     "content": "Nova Thermal Control Requirements",
+     "description": null,
+     "id": 13,
+     "type": "page_header"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        1239,
+        98,
+        1528,
+        129
+       ],
+       "page_id": 2
+      }
+     ],
+     "confidence": 1,
+     "content": "Controlled copy | Page 3 of 4",
+     "description": null,
+     "id": 14,
+     "type": "page_number"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        126,
+        271,
+        901,
+        316
+       ],
+       "page_id": 2
+      }
+     ],
+     "confidence": 1,
+     "content": "3. Verification-oriented requirements",
+     "description": null,
+     "id": 15,
+     "type": "section_header"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        126,
+        391,
+        1528,
+        657
+       ],
+       "page_id": 2
+      }
+     ],
+     "confidence": 0.9992,
+     "content": "<table><tr><th>Identifier</th><th>Requirement title</th><th>Normative requirement</th></tr><tr><td>REQ-NVA-THM-004</td><td>Controlled recovery</td><td>After thermal shutdown, recovery shall be permitted only when temperature has remained below 70 deg C for 60 s, and no latched sensor fault is present.</td></tr><tr><td>REQ-NVA-THM-005</td><td>Cell temperature uniformity</td><td>During a 30-minute 2C discharge, the difference between the hottest and coldest measured cell temperatures shall not exceed 5 deg C.</td></tr></table>",
+     "description": null,
+     "id": 16,
+     "type": "table"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        126,
+        709,
+        399,
+        744
+       ],
+       "page_id": 2
+      }
+     ],
+     "confidence": 1,
+     "content": "Applicability notes",
+     "description": null,
+     "id": 17,
+     "type": "section_header"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        126,
+        826,
+        1528,
+        1013
+       ],
+       "page_id": 2
+      }
+     ],
+     "confidence": 0.9992,
+     "content": "<table><tr><th>Context</th><th>Interpretation</th></tr><tr><td>Unless a requirement states otherwise</td><td>Limits apply to the complete production-intent assembly.</td></tr><tr><td>Use of shall</td><td>The complete sentence is normative; table columns do not split obligations.</td></tr></table>",
+     "description": null,
+     "id": 18,
+     "type": "table"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        126,
+        2250,
+        723,
+        2271
+       ],
+       "page_id": 2
+      }
+     ],
+     "confidence": 1,
+     "content": "Synthetic benchmark document - no real product or certification claim",
+     "description": null,
+     "id": 19,
+     "type": "page_footer"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        122,
+        84,
+        711,
+        131
+       ],
+       "page_id": 3
+      }
+     ],
+     "confidence": 1,
+     "content": "Nova Thermal Control Requirements",
+     "description": null,
+     "id": 20,
+     "type": "page_header"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        1237,
+        94,
+        1532,
+        129
+       ],
+       "page_id": 3
+      }
+     ],
+     "confidence": 1,
+     "content": "Controlled copy | Page 4 of 4",
+     "description": null,
+     "id": 21,
+     "type": "page_number"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        122,
+        267,
+        781,
+        323
+       ],
+       "page_id": 3
+      }
+     ],
+     "confidence": 1,
+     "content": "4. Normative installation figure",
+     "description": null,
+     "id": 22,
+     "type": "section_header"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        205,
+        449,
+        1447,
+        1191
+       ],
+       "page_id": 3
+      }
+     ],
+     "confidence": 0.9864,
+     "content": "Installation control - REQ-NVA-THM-006\nINPUT\nOUTPUT\nThe installed cooling module shall move air from the blue inlet toward the red outlet, provide at least 420 m3/h, and leave the service clearance unobstructed.",
+     "description": "A blue \"INPUT\" box is connected by an arrow to a red \"OUTPUT\" box, illustrating an installation control process.",
+     "id": 23,
+     "type": "figure"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        122,
+        1237,
+        832,
+        1268
+       ],
+       "page_id": 3
+      }
+     ],
+     "confidence": 1,
+     "content": "Figure 4-1. Colored geometry and embedded annotation are normative.",
+     "description": null,
+     "id": 24,
+     "type": "caption"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        313,
+        1703,
+        733,
+        1743
+       ],
+       "page_id": 3
+      }
+     ],
+     "confidence": 0.9794,
+     "content": "Interface context (informative)",
+     "description": null,
+     "id": 25,
+     "type": "section_header"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        329,
+        1822,
+        1290,
+        2005
+       ],
+       "page_id": 3
+      }
+     ],
+     "confidence": 0.8994,
+     "content": "Sensor Controller Actuator",
+     "description": "Three labeled boxes—Sensor, Controller, and Actuator—are connected by arrows in a linear diagram.",
+     "id": 26,
+     "type": "figure"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        122,
+        2245,
+        726,
+        2274
+       ],
+       "page_id": 3
+      }
+     ],
+     "confidence": 1,
+     "content": "Synthetic benchmark document - no real product or certification claim",
+     "description": null,
+     "id": 27,
+     "type": "page_footer"
+    }
+   ],
+   "pages": [
+    {
+     "id": 0,
+     "image_uri": "fixture://c5b10938379d/page-0.png"
+    },
+    {
+     "id": 1,
+     "image_uri": "fixture://c5b10938379d/page-1.png"
+    },
+    {
+     "id": 2,
+     "image_uri": "fixture://c5b10938379d/page-2.png"
+    },
+    {
+     "id": 3,
+     "image_uri": "fixture://c5b10938379d/page-3.png"
+    }
+   ]
+  },
+  "error_status": null,
+  "metadata": {
+   "file_metadata": null,
+   "id": "fixture",
+   "version": "2.0"
+  }
+ }
+}

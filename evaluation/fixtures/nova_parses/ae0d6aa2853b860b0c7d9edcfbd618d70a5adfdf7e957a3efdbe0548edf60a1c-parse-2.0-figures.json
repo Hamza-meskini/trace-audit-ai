@@ -1,0 +1,651 @@
+{
+ "source_sha256": "ae0d6aa2853b860b0c7d9edcfbd618d70a5adfdf7e957a3efdbe0548edf60a1c",
+ "parse_version": "2.0",
+ "figure_descriptions": true,
+ "result": {
+  "document": {
+   "elements": [
+    {
+     "bbox": [
+      {
+       "coord": [
+        170,
+        374,
+        1451,
+        524
+       ],
+       "page_id": 0
+      }
+     ],
+     "confidence": 1,
+     "content": "Nova Electrical and Thermal Verification\nReport",
+     "description": null,
+     "id": 0,
+     "type": "title"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        235,
+        842,
+        417,
+        875
+       ],
+       "page_id": 0
+      }
+     ],
+     "confidence": 1,
+     "content": "Report scope",
+     "description": null,
+     "id": 1,
+     "type": "section_header"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        235,
+        931,
+        999,
+        1148
+       ],
+       "page_id": 0
+      }
+     ],
+     "confidence": 1,
+     "content": "Requirements evaluated: 12\nDomains: Electrical safety, Thermal control\nMethods: bench test, environmental exposure, inspection, log review\nResult vocabulary: PASS, FAIL, NOT TESTED, INCONCLUSIVE",
+     "description": null,
+     "id": 2,
+     "type": "text"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        170,
+        2161,
+        667,
+        2187
+       ],
+       "page_id": 0
+      }
+     ],
+     "confidence": 1,
+     "content": "NOVA-DV | Revision A | Synthetic controlled copy",
+     "description": null,
+     "id": 3,
+     "type": "page_footer"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        114,
+        89,
+        814,
+        129
+       ],
+       "page_id": 1
+      }
+     ],
+     "confidence": 1,
+     "content": "Nova Electrical and Thermal Verification Report",
+     "description": null,
+     "id": 4,
+     "type": "page_header"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        1118,
+        98,
+        1538,
+        129
+       ],
+       "page_id": 1
+      }
+     ],
+     "confidence": 1,
+     "content": "Controlled verification record | Page 2 of 5",
+     "description": null,
+     "id": 5,
+     "type": "page_number"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        116,
+        264,
+        500,
+        304
+       ],
+       "page_id": 1
+      }
+     ],
+     "confidence": 1,
+     "content": "1. Executed results",
+     "description": null,
+     "id": 6,
+     "type": "section_header"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        116,
+        332,
+        814,
+        363
+       ],
+       "page_id": 1
+      }
+     ],
+     "confidence": 1,
+     "content": "Each disposition applies only to the criterion stated in the same record.",
+     "description": null,
+     "id": 7,
+     "type": "text"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        116,
+        407,
+        1537,
+        1097
+       ],
+       "page_id": 1
+      }
+     ],
+     "confidence": 0.9891,
+     "content": "<table><tr><th>REQ-NVA-ELE-001 Operating voltage window</th><td>PASS - Executed for REQ-NVA-ELE-001; the recorded result confirms: Functional coverage includes 350 V DC.<br>PASS - Executed for REQ-NVA-ELE-001; the recorded result confirms: Functional coverage includes 820 V DC.</td><td>Bench / inspection record Reviewed by DV team</td></tr><tr><th>REQ-NVA-ELE-002 Sleep current</th><td>PASS - Executed for REQ-NVA-ELE-002; the recorded result confirms: Wake line remains low for at least 120 seconds.<br>IN PROGRESS - Partial execution exists for REQ-NVA-ELE-002, but verification is not complete: Controller supply current does not exceed 5 mA.</td><td>Bench / inspection record Reviewed by DV team</td></tr><tr><th>REQ-NVA-ELE-003 Post-impact isolation</th><td>PASS - Executed for REQ-NVA-ELE-003; the recorded result confirms: Isolation measurement occurs 60 seconds after impact.<br>FAIL - Executed for REQ-NVA-ELE-003; the observed result does not satisfy: Isolation resistance per bus voltage is at least 500 ohm/V.</td><td>Bench / inspection record Reviewed by DV team</td></tr><tr><th>REQ-NVA-ELE-004 Contactor opening</th><td>NOT TESTED - No test or inspection was performed for REQ-NVA-ELE-004: A validated crash input is received.<br>NOT TESTED - No test or inspection was performed for REQ-NVA-ELE-004: Both positive and negative contactors reach open state.<br>NOT TESTED - No test or inspection was performed for REQ-NVA-ELE-004: Opening completes within 20 ms.</td><td>Bench / inspection record Reviewed by DV team</td></tr></table>",
+     "description": null,
+     "id": 8,
+     "type": "table"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        116,
+        2248,
+        718,
+        2274
+       ],
+       "page_id": 1
+      }
+     ],
+     "confidence": 1,
+     "content": "Synthetic benchmark evidence - not a certification or production claim",
+     "description": null,
+     "id": 9,
+     "type": "page_footer"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        114,
+        89,
+        814,
+        129
+       ],
+       "page_id": 2
+      }
+     ],
+     "confidence": 1,
+     "content": "Nova Electrical and Thermal Verification Report",
+     "description": null,
+     "id": 10,
+     "type": "page_header"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        1118,
+        98,
+        1538,
+        129
+       ],
+       "page_id": 2
+      }
+     ],
+     "confidence": 1,
+     "content": "Controlled verification record | Page 3 of 5",
+     "description": null,
+     "id": 11,
+     "type": "page_number"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        114,
+        264,
+        500,
+        304
+       ],
+       "page_id": 2
+      }
+     ],
+     "confidence": 1,
+     "content": "2. Executed results",
+     "description": null,
+     "id": 12,
+     "type": "section_header"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        114,
+        332,
+        814,
+        363
+       ],
+       "page_id": 2
+      }
+     ],
+     "confidence": 1,
+     "content": "Each disposition applies only to the criterion stated in the same record.",
+     "description": null,
+     "id": 13,
+     "type": "text"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        116,
+        407,
+        1537,
+        1097
+       ],
+       "page_id": 2
+      }
+     ],
+     "confidence": 0.9885,
+     "content": "<table><tr><th>REQ-NVA-ELE-005 Precharge behavior</th><td>INCONCLUSIVE - Work was attempted for REQ-NVA-ELE-005, but incomplete scope or calibration prevents deciding: DC link reaches at least 90 percent of pack voltage.</td><td>Bench / inspection record Reviewed by DV team</td></tr><tr><td></td><td>INCONCLUSIVE - Work was attempted for REQ-NVA-ELE-005, but incomplete scope or calibration prevents deciding: Required level is reached within 2.0 seconds.</td><td></td></tr><tr><td></td><td>INCONCLUSIVE - Work was attempted for REQ-NVA-ELE-005, but incomplete scope or calibration prevents deciding: DC-link overshoot above pack voltage does not exceed 10 V.</td><td></td></tr><tr><th>REQ-NVA-THM-001 Ambient operating range</th><td>PASS - Executed for REQ-NVA-THM-001; the recorded result confirms: Monitoring functions operate at -30 deg C.</td><td>Bench / inspection record Reviewed by DV team</td></tr><tr><td></td><td>NOT TESTED - No test or inspection was performed for REQ-NVA-THM-001: Monitoring functions operate at +70 deg C.</td><td></td></tr><tr><th>REQ-NVA-THM-002 Shutdown band</th><td>PASS - Executed for REQ-NVA-THM-002; the recorded result confirms: Thermal shutdown is commanded at or above 90 deg C.</td><td>Bench / inspection record Reviewed by DV team</td></tr><tr><td></td><td>FAIL - Executed for REQ-NVA-THM-002; the observed result does not satisfy: Thermal shutdown is not commanded below 85 deg C.</td><td></td></tr><tr><th>REQ-NVA-THM-003 Coolant delivery</th><td>NOT TESTED - No test or inspection was performed for REQ-NVA-THM-003: Battery heat rejection is 35 kW.</td><td>Bench / inspection record Reviewed by DV team</td></tr><tr><td></td><td>NOT TESTED - No test or inspection was performed for REQ-NVA-THM-003: Pack coolant flow is at least 8.0 L/min.</td><td></td></tr></table>",
+     "description": null,
+     "id": 14,
+     "type": "table"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        114,
+        2245,
+        718,
+        2274
+       ],
+       "page_id": 2
+      }
+     ],
+     "confidence": 1,
+     "content": "Synthetic benchmark evidence - not a certification or production claim",
+     "description": null,
+     "id": 15,
+     "type": "page_footer"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        114,
+        89,
+        814,
+        129
+       ],
+       "page_id": 3
+      }
+     ],
+     "confidence": 1,
+     "content": "Nova Electrical and Thermal Verification Report",
+     "description": null,
+     "id": 16,
+     "type": "page_header"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        1118,
+        98,
+        1538,
+        129
+       ],
+       "page_id": 3
+      }
+     ],
+     "confidence": 1,
+     "content": "Controlled verification record | Page 4 of 5",
+     "description": null,
+     "id": 17,
+     "type": "page_number"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        116,
+        264,
+        500,
+        304
+       ],
+       "page_id": 3
+      }
+     ],
+     "confidence": 1,
+     "content": "3. Executed results",
+     "description": null,
+     "id": 18,
+     "type": "section_header"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        116,
+        332,
+        814,
+        363
+       ],
+       "page_id": 3
+      }
+     ],
+     "confidence": 1,
+     "content": "Each disposition applies only to the criterion stated in the same record.",
+     "description": null,
+     "id": 19,
+     "type": "text"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        116,
+        407,
+        1537,
+        858
+       ],
+       "page_id": 3
+      }
+     ],
+     "confidence": 0.9831,
+     "content": "<table><tr><th>REQ-NVA-THM-004 Controlled recovery</th><td>INCONCLUSIVE - Work was attempted for REQ-NVA-THM-004, but incomplete scope or calibration prevents deciding: Temperature is below 70 deg C.<br>INCONCLUSIVE - Work was attempted for REQ-NVA-THM-004, but incomplete scope or calibration prevents deciding: Temperature remains below the limit for 60 seconds.<br>INCONCLUSIVE - Work was attempted for REQ-NVA-THM-004, but incomplete scope or calibration prevents deciding: No latched temperature-sensor fault is present.</td><td>Bench / inspection record Reviewed by DV team</td></tr><tr><th>REQ-NVA-THM-005 Cell temperature uniformity</th><td>PASS - Executed for REQ-NVA-THM-005; the recorded result confirms: Discharge rate is 2C.<br>PASS - Executed for REQ-NVA-THM-005; the recorded result confirms: Discharge duration is at least 30 minutes.<br>PASS - Executed for REQ-NVA-THM-005; the recorded result confirms: Maximum cell-temperature difference is 5 deg C or less.</td><td>Bench / inspection record Reviewed by DV team</td></tr></table>",
+     "description": null,
+     "id": 20,
+     "type": "table"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        116,
+        2248,
+        718,
+        2274
+       ],
+       "page_id": 3
+      }
+     ],
+     "confidence": 1,
+     "content": "Synthetic benchmark evidence - not a certification or production claim",
+     "description": null,
+     "id": 21,
+     "type": "page_footer"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        111,
+        84,
+        817,
+        131
+       ],
+       "page_id": 4
+      }
+     ],
+     "confidence": 1,
+     "content": "Nova Electrical and Thermal Verification Report",
+     "description": null,
+     "id": 22,
+     "type": "page_header"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        1115,
+        94,
+        1409,
+        129
+       ],
+       "page_id": 4
+      }
+     ],
+     "confidence": 1,
+     "content": "Controlled verification record",
+     "description": null,
+     "id": 23,
+     "type": "page_header"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        1419,
+        94,
+        1540,
+        129
+       ],
+       "page_id": 4
+      }
+     ],
+     "confidence": 1,
+     "content": "Page 5 of 5",
+     "description": null,
+     "id": 24,
+     "type": "page_number"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        111,
+        260,
+        771,
+        316
+       ],
+       "page_id": 4
+      }
+     ],
+     "confidence": 1,
+     "content": "4. Image-based inspection result",
+     "description": null,
+     "id": 25,
+     "type": "section_header"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        174,
+        496,
+        624,
+        536
+       ],
+       "page_id": 4
+      }
+     ],
+     "confidence": 0.9987,
+     "content": "VISUAL INSPECTION RECORD",
+     "description": null,
+     "id": 26,
+     "type": "section_header"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        174,
+        557,
+        662,
+        596
+       ],
+       "page_id": 4
+      }
+     ],
+     "confidence": 0.9974,
+     "content": "REQ-NVA-ELE-006 | Emergency discharge",
+     "description": null,
+     "id": 27,
+     "type": "section_header"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        174,
+        603,
+        652,
+        901
+       ],
+       "page_id": 4
+      }
+     ],
+     "confidence": 0.9734,
+     "content": "PASS\nthe recorded result confirms: Exposed DC bus falls below 60 V.\n\nPASS\nthe recorded result confirms: Voltage limit is achieved within 5.0 s\n\nPASS\nthe recorded result confirms: Red high-voltage warning indicator i",
+     "description": null,
+     "id": 28,
+     "type": "text"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        174,
+        950,
+        672,
+        989
+       ],
+       "page_id": 4
+      }
+     ],
+     "confidence": 0.9972,
+     "content": "REQ-NVA-THM-006 | Cooling flow direction",
+     "description": null,
+     "id": 29,
+     "type": "section_header"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        174,
+        996,
+        997,
+        1293
+       ],
+       "page_id": 4
+      }
+     ],
+     "confidence": 0.9923,
+     "content": "PASS\nthe recorded result confirms: Air moves from the blue inlet toward the red outlet.\n\nUNTESTED\nNOT TESTED - No test or inspection was performed for REQ-NVA-THM-006: Cooling airflow is at least 420 m3/h.\n\nUNTESTED\nNOT TESTED - No test or inspection was performed for REQ-NVA-THM-006: Service clearance is unobstructed.",
+     "description": null,
+     "id": 30,
+     "type": "text"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        174,
+        1948,
+        643,
+        1979
+       ],
+       "page_id": 4
+      }
+     ],
+     "confidence": 0.9961,
+     "content": "Image record NOVA-DV-VIS | Reviewer: QA-17 | Controlled copy",
+     "description": null,
+     "id": 31,
+     "type": "page_footer"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        111,
+        2140,
+        1312,
+        2175
+       ],
+       "page_id": 4
+      }
+     ],
+     "confidence": 1,
+     "content": "Figure 4-1. Recorded inspections for REQ-NVA-ELE-006, REQ-NVA-THM-006; interpretation requires the raster content.",
+     "description": null,
+     "id": 32,
+     "type": "caption"
+    },
+    {
+     "bbox": [
+      {
+       "coord": [
+        111,
+        2241,
+        723,
+        2278
+       ],
+       "page_id": 4
+      }
+     ],
+     "confidence": 1,
+     "content": "Synthetic benchmark evidence - not a certification or production claim",
+     "description": null,
+     "id": 33,
+     "type": "page_footer"
+    }
+   ],
+   "pages": [
+    {
+     "id": 0,
+     "image_uri": "fixture://ae0d6aa2853b/page-0.png"
+    },
+    {
+     "id": 1,
+     "image_uri": "fixture://ae0d6aa2853b/page-1.png"
+    },
+    {
+     "id": 2,
+     "image_uri": "fixture://ae0d6aa2853b/page-2.png"
+    },
+    {
+     "id": 3,
+     "image_uri": "fixture://ae0d6aa2853b/page-3.png"
+    },
+    {
+     "id": 4,
+     "image_uri": "fixture://ae0d6aa2853b/page-4.png"
+    }
+   ]
+  },
+  "error_status": null,
+  "metadata": {
+   "file_metadata": null,
+   "id": "fixture",
+   "version": "2.0"
+  }
+ }
+}

@@ -1,6 +1,5 @@
 """Documents API — upload, list, get."""
 
-import os
 import uuid
 from pathlib import Path
 
@@ -17,7 +16,7 @@ from app.models.document import Document, EvidenceChunk
 from app.models.requirement import Requirement, RequirementEvidence
 from app.api.requirements import block_response, public_metadata, chunk_pages
 from app.schemas.document import DocumentResponse, DocumentUploadResponse
-from app.services import audit_progress
+from app.services import audit_progress, data_purge
 
 router = APIRouter(prefix="/projects/{project_id}/documents", tags=["Documents"])
 
@@ -158,11 +157,25 @@ async def _accept_uploads(
     _require_idle(project_id)
     if not files:
         raise HTTPException(status_code=400, detail="Choose at least one file")
+    if len(files) > settings.MAX_UPLOAD_FILES_PER_REQUEST:
+        raise HTTPException(
+            status_code=413,
+            detail=f"Too many files in one upload ({len(files)}). Maximum is {settings.MAX_UPLOAD_FILES_PER_REQUEST}.",
+        )
 
     prepared: list[tuple[Document, Path]] = []
+    total_bytes = 0
+    max_total = settings.MAX_REQUEST_BODY_MB * 1024 * 1024
     try:
         for file in files:
-            prepared.append(await _prepare_upload(project_id, file, doc_type, version))
+            document, path = await _prepare_upload(project_id, file, doc_type, version)
+            prepared.append((document, path))
+            total_bytes += document.file_size or 0
+            if total_bytes > max_total:
+                raise HTTPException(
+                    status_code=413,
+                    detail=f"Upload too large. Maximum per request is {settings.MAX_REQUEST_BODY_MB} MB.",
+                )
     except BaseException:
         await _discard_files([path for _document, path in prepared])
         raise
@@ -219,6 +232,7 @@ async def delete_document(project_id: str, document_id: str, db: AsyncSession = 
     # keys off) nor Delta enforces the reference, so the links would dangle.
     # Remove them, and send every requirement that cited this document back to
     # review: its stored verdict now rests on evidence that no longer exists.
+    purge = await data_purge.plan_purge(db, [doc.id])
     document_chunks = select(EvidenceChunk.id).where(EvidenceChunk.document_id == doc.id)
     affected = (await db.execute(select(Requirement).where(Requirement.id.in_(
         select(RequirementEvidence.requirement_id)
@@ -247,15 +261,11 @@ async def delete_document(project_id: str, document_id: str, db: AsyncSession = 
             requirement.sources_count = int(remaining.get(requirement.id, 0))
             requirement.review_state = "Needs review"
 
-    storage_path = doc.storage_path
     await db.delete(doc)
     await db.commit()
-    # Delete the original only after the rows are gone, so a failed commit
-    # never leaves a document row whose file has already been removed.
-    try:
-        await run_in_threadpool(os.remove, storage_path)
-    except OSError:
-        pass
+    # Erase the original and everything derived from it only after the rows
+    # are gone, so a failed commit never leaves a row whose data was removed.
+    await data_purge.execute_purge(db, purge)
 
 
 async def _scoped_document(db, project_id, document_id):

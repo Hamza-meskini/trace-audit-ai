@@ -351,10 +351,29 @@ function Dashboard() {
                           })
                         : navigate({ to: "/findings" })
                     }
-                    className="cursor-pointer border-b border-border/70 transition-colors last:border-0 hover:bg-accent/50"
+                    className="cursor-pointer border-b border-border/70 transition-colors last:border-0 hover:bg-accent/50 focus-within:bg-accent/50"
                   >
                     <td className="px-5 py-3">
-                      <Mono className="text-foreground">{f.finding_code}</Mono>
+                      {f.requirement_id ? (
+                        <Link
+                          to="/requirements/$id"
+                          params={{ id: f.requirement_id }}
+                          onClick={(event) => event.stopPropagation()}
+                          className="rounded-sm hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                          aria-label={`Open requirement for finding ${f.finding_code}`}
+                        >
+                          <Mono className="text-foreground">{f.finding_code}</Mono>
+                        </Link>
+                      ) : (
+                        <Link
+                          to="/findings"
+                          onClick={(event) => event.stopPropagation()}
+                          className="rounded-sm hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                          aria-label={`Open findings list (${f.finding_code})`}
+                        >
+                          <Mono className="text-foreground">{f.finding_code}</Mono>
+                        </Link>
+                      )}
                     </td>
                     <td className="px-5 py-3 font-medium">
                       {f.requirement_title || "Requirement"}

@@ -13,7 +13,7 @@ from app.models.project import Project
 from app.models.document import Document, EvidenceChunk
 from app.models.requirement import Requirement
 from app.models.finding import Finding
-from app.services import audit_progress
+from app.services import audit_progress, data_purge
 from app.services.excel_export import generate_audit_report_excel
 from app.schemas.project import (
     ProjectCreate,
@@ -100,7 +100,12 @@ async def delete_project(project_id: str, db: AsyncSession = Depends(get_db, sco
     project = result.scalar_one_or_none()
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
+    document_ids = (await db.execute(select(Document.id).where(Document.project_id == project_id))).scalars().all()
+    purge = await data_purge.plan_purge(db, document_ids, project_id=project_id)
     await db.delete(project)
+    await db.commit()
+    # Files, caches and Volume images go only after the rows are committed.
+    await data_purge.execute_purge(db, purge)
 
 
 @router.get("/{project_id}/stats", response_model=ProjectStatsResponse)

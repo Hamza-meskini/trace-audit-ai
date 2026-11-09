@@ -63,10 +63,16 @@ def test_static_files_cannot_escape_build(tmp_path):
     async def run():
         async with httpx.AsyncClient(transport=httpx.ASGITransport(app=main.app), base_url="http://test") as client:
             assert (await client.get("/projects")).status_code == 200
-            identity = (await client.get("/api/me", headers={"X-Forwarded-User": "reviewer", "X-Forwarded-Email": "reviewer@example.test"})).json()
+            sso_headers = {"X-Forwarded-User": "reviewer", "X-Forwarded-Email": "reviewer@example.test"}
+            with patch.object(settings, "TRUST_FORWARDED_IDENTITY", "true"):
+                identity = (await client.get("/api/me", headers=sso_headers)).json()
             assert identity["user"] == "reviewer"
             assert identity["provider"] == "databricks_sso"
             assert identity["authenticated"] is True
+            # Outside the Databricks Apps proxy anyone can send the header.
+            with patch.object(settings, "TRUST_FORWARDED_IDENTITY", "false"):
+                identity = (await client.get("/api/me", headers=sso_headers)).json()
+            assert identity["authenticated"] is False and identity["provider"] == "local"
             for path in ("/%2e%2e/private.txt", "/..%5cprivate.txt", "/api/no-such-route"):
                 response = await client.get(path)
                 assert response.status_code == 404

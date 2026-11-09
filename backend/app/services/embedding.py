@@ -18,14 +18,31 @@ from typing import Optional
 import httpx
 
 from app.config import settings
+from app.services.egress import async_client as egress_client, url_allowed
 
 logger = logging.getLogger("traceaudit.embedding")
 
 # ── BM25 Lexical Utilities ──────────────────────────────────────────────────
 
+_TOKEN_RE = re.compile(r"\b[a-z0-9_-]+(?:\.[0-9]+)*\b")
+
+
+def _canonical_number(token: str) -> str:
+    """``2.00`` and ``2.0`` read as ``2``; ``0.20`` as ``0.2`` (UND-10)."""
+    if "." in token and re.fullmatch(r"\d+(?:\.\d+)", token):
+        whole, fraction = token.split(".")
+        fraction = fraction.rstrip("0")
+        return f"{int(whole)}.{fraction}" if fraction else str(int(whole))
+    return token
+
+
 def tokenize(text: str) -> list[str]:
-    """Simple alphanumeric tokenizer."""
-    return re.findall(r"\b[a-zA-Z0-9_-]+\b", text.lower())
+    """Alphanumeric tokenizer that keeps decimal numbers whole.
+
+    ``0.2 V`` used to become the tokens ``0`` and ``2``, which then matched
+    (and earned the number boost on) any chunk containing a 0 and a 2.
+    """
+    return [_canonical_number(token) for token in _TOKEN_RE.findall(text.lower())]
 
 
 def compute_bm25_score(query_tokens: list[str], doc_tokens: list[str], avg_doc_len: float = 50.0, k1: float = 1.5, b: float = 0.75) -> float:
@@ -53,6 +70,7 @@ def compute_bm25_score(query_tokens: list[str], doc_tokens: list[str], avg_doc_l
 # ── Gemini Semantic Embeddings ───────────────────────────────────────────────
 
 import json
+import os
 from pathlib import Path
 
 GEMINI_EMBEDDING_MODEL = "gemini-embedding-001"
@@ -137,7 +155,27 @@ def _has_embedding_key() -> bool:
     global _circuit_open
     if _circuit_open:
         return False
-    return bool(settings.effective_gemini_api_key)
+    if not settings.effective_gemini_api_key:
+        return False
+    if not url_allowed(GEMINI_BATCH_EMBED_API_URL):
+        # Egress allow-list excludes Google: retrieval falls back to BM25.
+        _warn_embeddings_blocked()
+        return False
+    return True
+
+
+_blocked_warned = False
+
+
+def _warn_embeddings_blocked() -> None:
+    global _blocked_warned
+    if not _blocked_warned:
+        _blocked_warned = True
+        logger.warning(
+            "Gemini embeddings disabled: generativelanguage.googleapis.com is not in "
+            "EGRESS_ALLOWED_HOSTS. Retrieval uses BM25 only, which differs from the "
+            "benchmarked configuration."
+        )
 
 
 async def embed_single(text: str, task_type: str = "RETRIEVAL_DOCUMENT") -> Optional[list[float]]:
@@ -163,7 +201,7 @@ async def embed_single(text: str, task_type: str = "RETRIEVAL_DOCUMENT") -> Opti
     }
 
     try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
+        async with egress_client(timeout=10.0) as client:
             resp = await client.post(url, json=payload, headers=headers)
             if resp.status_code == 200:
                 data = resp.json()
@@ -228,7 +266,7 @@ async def embed_batch(texts: list[str], task_type: str = "RETRIEVAL_DOCUMENT") -
         # Try with exponential backoff on rate limits
         for attempt in range(1, 4):
             try:
-                async with httpx.AsyncClient(timeout=15.0) as client:
+                async with egress_client(timeout=15.0) as client:
                     resp = await client.post(url, json=payload, headers=headers)
                     if resp.status_code == 429:
                         _consecutive_rate_limits += 1
@@ -265,6 +303,40 @@ async def embed_batch(texts: list[str], task_type: str = "RETRIEVAL_DOCUMENT") -
                     await asyncio.sleep(2.0 * attempt)
 
     return results
+
+
+def forget_texts(texts: list[str]) -> int:
+    """Erase cached document vectors for ``texts`` from memory and disk.
+
+    Vectors are keyed by a hash of the embedded text: retrieval embeds both the
+    full chunk text and its first 2,048 characters, so both keys are removed.
+    The snapshot is rewritten without them and the journal folded into it.
+    """
+    if not texts:
+        return 0
+    keys = set()
+    for text in texts:
+        for variant in (text, text[:2048]):
+            keys.add(_content_hash(variant, "RETRIEVAL_DOCUMENT"))
+    with _journal_lock:
+        if not _cache_loaded and not (_CACHE_FILE.exists() or _JOURNAL_FILE.exists()):
+            return 0
+    _ensure_cache_loaded()
+    with _journal_lock:
+        removed = [key for key in keys if _embedding_cache.pop(key, None) is not None]
+        if not removed:
+            return 0
+        try:
+            _CACHE_DIR.mkdir(parents=True, exist_ok=True)
+            temporary = _CACHE_FILE.with_suffix(".json.tmp")
+            with open(temporary, "w", encoding="utf-8") as f:
+                json.dump(_embedding_cache, f)
+            os.replace(temporary, _CACHE_FILE)
+            if _JOURNAL_FILE.exists():
+                _JOURNAL_FILE.unlink()
+        except OSError as ex:
+            logger.warning(f"Failed rewriting embedding cache after deletion: {type(ex).__name__}")
+    return len(removed)
 
 
 def cosine_similarity(vec_a: list[float], vec_b: list[float]) -> float:

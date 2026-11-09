@@ -1,22 +1,22 @@
-"""API endpoints for visitor lead registration, management, and CSV export."""
+"""Admin endpoints for previously captured visitor leads (list, export, delete).
+
+The public capture endpoint (POST /api/visitors) was removed: nothing in the
+frontend called it, and it collected e-mail addresses, IP addresses and user
+agents. These remaining endpoints let the owner export and then erase the
+leads already stored; see backend/scripts/purge_visitor_leads.py.
+"""
 
 import csv
 import io
-from datetime import datetime, timezone
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.models.visitor import Visitor
-from app.schemas.visitor import (
-    VisitorCreate,
-    VisitorListResponse,
-    VisitorOut,
-    VisitorRegisterResponse,
-)
+from app.schemas.visitor import VisitorListResponse, VisitorOut
 
 router = APIRouter(prefix="/visitors", tags=["Visitors"])
 
@@ -24,82 +24,6 @@ router = APIRouter(prefix="/visitors", tags=["Visitors"])
 def _csv_cell(value: str) -> str:
     """Keep untrusted spreadsheet cells from being interpreted as formulas."""
     return "'" + value if value.lstrip().startswith(("=", "+", "-", "@")) or value.startswith(("\t", "\r", "\n")) else value
-
-
-def _extract_client_ip(request: Request) -> str | None:
-    """Extract real client IP respecting Databricks and reverse proxy headers."""
-    forwarded_for = request.headers.get("x-forwarded-for")
-    if forwarded_for:
-        return forwarded_for.split(",")[0].strip()
-    if request.client:
-        return request.client.host
-    return None
-
-
-@router.post(
-    "",
-    response_model=VisitorRegisterResponse,
-    status_code=status.HTTP_201_CREATED,
-    summary="Register a website visitor email / lead request",
-)
-async def register_visitor(
-    payload: VisitorCreate,
-    request: Request,
-    db: Annotated[AsyncSession, Depends(get_db, scope="function")],
-):
-    """Store or update a visitor email from the website."""
-    normalized_email = payload.email.strip().lower()
-    client_ip = _extract_client_ip(request)
-    user_agent = request.headers.get("user-agent")
-
-    stmt = select(Visitor).where(Visitor.email == normalized_email)
-    result = await db.execute(stmt)
-    existing_visitor = result.scalar_one_or_none()
-
-    if existing_visitor:
-        if payload.full_name:
-            existing_visitor.full_name = payload.full_name
-        if payload.company:
-            existing_visitor.company = payload.company
-        if payload.role:
-            existing_visitor.role = payload.role
-        if payload.notes:
-            existing_visitor.notes = payload.notes
-        if payload.source:
-            existing_visitor.source = payload.source
-        if client_ip:
-            existing_visitor.ip_address = client_ip
-        if user_agent:
-            existing_visitor.user_agent = user_agent
-        existing_visitor.updated_at = datetime.now(timezone.utc)
-
-        await db.flush()
-        await db.refresh(existing_visitor)
-        return VisitorRegisterResponse(
-            status="success",
-            message="Your email is already registered. Information updated successfully!",
-            lead=VisitorOut.model_validate(existing_visitor),
-        )
-
-    visitor = Visitor(
-        email=normalized_email,
-        full_name=payload.full_name,
-        company=payload.company,
-        role=payload.role,
-        notes=payload.notes,
-        source=payload.source,
-        ip_address=client_ip,
-        user_agent=user_agent,
-    )
-    db.add(visitor)
-    await db.flush()
-    await db.refresh(visitor)
-
-    return VisitorRegisterResponse(
-        status="success",
-        message="Thank you! Your email has been registered successfully.",
-        lead=VisitorOut.model_validate(visitor),
-    )
 
 
 @router.get(

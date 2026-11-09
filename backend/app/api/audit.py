@@ -13,6 +13,7 @@ from app.models.document import Document
 from app.services import audit_progress
 from app.services import audit_worker
 from app.services.llm_client import ensure_model_allowed
+from app.services import model_readiness
 
 logger = logging.getLogger("traceaudit.api")
 
@@ -48,6 +49,12 @@ async def trigger_audit(
         ensure_model_allowed(model_name)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
+    job = audit_progress.latest(project_id)
+    if not (job and job.get("status") in ("queued", "running", "cancelling")):
+        # REL-03: refuse to start while a role model is not serving queries.
+        reason = await model_readiness.not_ready_reason(model_name)
+        if reason:
+            raise HTTPException(status_code=503, detail=reason)
     try:
         thinking = body.thinking_level if body and body.thinking_level else None
         job = audit_progress.start(project_id, model_name, thinking)
