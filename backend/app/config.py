@@ -149,6 +149,11 @@ class Settings(BaseSettings):
     AUDIT_WORKER_CONCURRENCY: int = 2
     AUDIT_WORKER_POLL_SECONDS: float = 1.0
     AUDIT_CACHE_VERSION: str = "audit-v2"
+    # Keys only the per-requirement verification cache. Bump it whenever the
+    # deterministic verdict logic changes (aggregation, qualification, review
+    # gate) so cached verdicts are recomputed; human sign-offs survive when the
+    # verdict and its evidence are unchanged.
+    VERDICT_LOGIC_VERSION: str = "verdict-2026-11-09-atomic-conflict"
     AUDIT_CACHE_MAX_ENTRIES: int = 50_000
     
     # Gemini Thinking Configuration (https://ai.google.dev/gemini-api/docs/thinking)

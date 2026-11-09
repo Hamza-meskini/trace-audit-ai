@@ -54,7 +54,14 @@ class ReplayFidelityTests(unittest.TestCase):
         self.assertEqual(report["simulate"], "derived-status")
         self.assertGreater(report["simulated_label_changes"], 0)
 
-    def test_current_code_reproduces_every_saved_verdict_offline(self):
+    def test_current_code_reproduces_every_expected_verdict_offline(self):
+        """Every row matches its saved verdict, or the ledger entry that explains the change.
+
+        evaluation/replay_expectations.json lists each intended change with its
+        reason and commit. A change missing from the ledger, a ledger entry the
+        code no longer produces (for example after reverting a fix) and an entry
+        whose reason is still TODO all fail.
+        """
         report = self._replay()
         self.assertIsNone(report["simulate"])
         self.assertEqual(report["simulated_label_changes"], 0)
@@ -62,10 +69,13 @@ class ReplayFidelityTests(unittest.TestCase):
         self.assertEqual(report["integrity"]["network_attempts"], 0)
         self.assertEqual(report["integrity"]["unexpected_calls"], 0)
         summary = report["summary"]
+        expectations = report["expectations"]
         self.assertEqual(summary["instances"], 240)
-        self.assertEqual(summary["status_matches_saved"], 240)
-        self.assertEqual(summary["review_matches_saved"], 240)
+        self.assertTrue(expectations["ok"], json.dumps(
+            {k: expectations[k] for k in ("unexplained", "stale", "todo_reasons")}, indent=1))
+        self.assertEqual(expectations["matches_expected"], 240)
         self.assertEqual(summary["unsafe_false_auto_closes"], 0)
+        self.assertEqual(summary["wrong_conflict_auto_closes"], 0)
 
 
 if __name__ == "__main__":

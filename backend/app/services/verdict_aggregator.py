@@ -9,7 +9,10 @@ unmapped obligations, ambiguity and low decomposition confidence are advisory:
 they force review but do not prevent a final status for the extracted conditions.
 Malformed Boolean structure, ambiguous alignment and invalid decisive evidence
 make the aggregator abstain; the provisional verdict is then retained with
-reduced confidence and mandatory-review diagnostics.
+reduced confidence and mandatory-review diagnostics. One exception: when the
+only blockers are unresolved (not contradicted) evidence admissibility or
+malformed literal bounds and the atomic aggregate is CONFLICT, that CONFLICT is
+kept instead, still as a mandatory-review result.
 
 Precedence for mandatory conditions:
     1. Any mandatory condition FAILED                     -> CONFLICT
@@ -37,7 +40,7 @@ from typing import Any, Optional
 
 from app.schemas.contract import RequirementContract, AtomicConditionContract
 from app.schemas.contract_logic import contract_tree
-from app.schemas.predicate import predicate_issues
+from app.schemas.predicate import is_bound_defect, predicate_issues
 from app.schemas.validation_issue import ValidationIssue
 from app.schemas.claim import EvidenceClaim
 from app.services.taxonomy import condition_to_verdict
@@ -743,8 +746,14 @@ def aggregation_input_issues(
     if len(known_ids) != len(condition_ids):
         issues.append("the contract contains duplicate condition IDs")
     for condition in conditions:
-        issues.extend(ValidationIssue(f"condition {condition.condition_id} {message}", "PREDICATE", condition.condition_id)
-                      for message in predicate_issues(condition))
+        issues.extend(
+            ValidationIssue(
+                f"condition {condition.condition_id} {message}",
+                "PREDICATE_BOUND" if is_bound_defect(message) else "PREDICATE_OPERATOR",
+                condition.condition_id,
+            )
+            for message in predicate_issues(condition)
+        )
     if contract.contract_complete is False:
         issues.append("the extracted atomic contract is incomplete")
     if contract.unmapped_obligations:
@@ -856,6 +865,20 @@ def aggregation_input_issues(
                 "EVIDENCE_VALIDATION", condition_id, blocking=decisive is None,
             ))
 
+    # A malformed literal bound matters only where its condition decides a
+    # status. UNTESTED and INCONCLUSIVE results establish nothing, so their
+    # bound defects stay visible as advisory findings. Operator defects, and
+    # bounds on conditions without an aligned result, keep blocking.
+    issues = [
+        ValidationIssue(issue, issue.code, issue.path, blocking=False)
+        if (
+            isinstance(issue, ValidationIssue)
+            and issue.code == "PREDICATE_BOUND"
+            and getattr(by_id.get(issue.path), "status", None) in {"UNTESTED", "INCONCLUSIVE"}
+        )
+        else issue
+        for issue in issues
+    ]
     return list(dict.fromkeys(issues))
 
 
@@ -898,6 +921,35 @@ def aggregation_blocking_issues(issues: list[str]) -> list[str]:
             or any(fragment in issue for fragment in structural_fragments)
         ))
     ]
+
+
+def abstention_is_admissibility_only(
+    contract: RequirementContract,
+    condition_results: list[ConditionVerificationResult],
+    blocking_issues: list[str],
+) -> bool:
+    """True when aggregation abstained only on unresolved admissibility or bounds.
+
+    An UNRESOLVED evidence validation means qualification could not establish
+    that a citation is admissible; it does not refute the citation. A
+    malformed literal bound leaves the condition's comparison readable. Neither
+    makes the Boolean contract non-executable. Contradicted citations, operator
+    defects, unknown or omitted conditions and malformed logic all return False.
+    """
+    if not blocking_issues:
+        return False
+    states = {
+        result.condition_id: result.validation_state
+        for result in _match_condition_results(contract, condition_results)
+    }
+    for issue in blocking_issues:
+        code = getattr(issue, "code", None)
+        if code == "EVIDENCE_VALIDATION":
+            if states.get(issue.path) != "UNRESOLVED":
+                return False
+        elif code != "PREDICATE_BOUND":
+            return False
+    return True
 
 
 def _aggregate_status_group(operator: str, statuses: list[str]) -> Optional[str]:
@@ -1221,11 +1273,23 @@ def _finalize_verdict_impl(
         if not issue.startswith(condition_issue_prefixes)
     ]
     atomic_status = status
+    # A reported failure is the model's own condition-level finding. When the
+    # only reasons to abstain are unresolved (never contradicted) evidence
+    # admissibility or a malformed literal bound, the Boolean contract still
+    # executes and the whole-clause label would silently discard that failure.
+    # Keep the atomic CONFLICT; aggregation still counts as abstained, so the
+    # review gate keeps it review-only.
+    atomic_conflict_retained = bool(
+        not aggregation_eligible
+        and atomic_status == "CONFLICT"
+        and abstention_is_admissibility_only(contract, crs, blocking_reasons)
+    )
     # With malformed symbolic input there is no sound deterministic override.
     # Keep the holistic decision as an explicitly review-only result. An empty
     # model response remains on the conservative atomic fallback.
     advisory_fallback = bool(
         not aggregation_eligible
+        and not atomic_conflict_retained
         and analysis.condition_results
         and provisional in {
             "SUPPORTED", "PARTIAL", "MISSING", "UNKNOWN", "CONFLICT",
@@ -1240,6 +1304,14 @@ def _finalize_verdict_impl(
             + "; ".join(blocking_reasons)
             + f". The atomic aggregate was {atomic_status}. Mandatory review is required."
         )
+    elif atomic_conflict_retained:
+        confidence = min(float(confidence), 80.0)
+        reason = (
+            "Atomic CONFLICT retained although deterministic aggregation abstained on "
+            "unresolved evidence admissibility or literal-bound findings only: "
+            + "; ".join(blocking_reasons)
+            + ". Mandatory review is required."
+        )
 
     override_note = ""
     if provisional and provisional != status:
@@ -1253,7 +1325,7 @@ def _finalize_verdict_impl(
         final_reason = reason
         if provisional_reason:
             final_reason += f" Whole-clause rationale: {provisional_reason}"
-    elif override_note:
+    elif atomic_conflict_retained or override_note:
         provisional_reason = (analysis.reason or "").strip()
         final_reason = f"{reason}{override_note}"
         if provisional_reason:
@@ -1286,6 +1358,7 @@ def _finalize_verdict_impl(
         "final_status": status,
         "atomic_aggregate_status": atomic_status,
         "atomic_advisory_fallback": advisory_fallback,
+        "atomic_conflict_retained": atomic_conflict_retained,
         "atomic_advisory_reasons": advisory_reasons,
         "aggregator_blocking_issues": blocking_reasons,
         "aggregator_advisory_issues": [
@@ -1297,6 +1370,7 @@ def _finalize_verdict_impl(
         "aggregator_validation_issues": advisory_reasons,
         "aggregator_abstained": bool(blocking_reasons),
         "aggregator_decision": (
+            "retained_atomic_conflict" if atomic_conflict_retained else
             "abstained" if not aggregation_eligible else
             "overrode" if provisional and provisional != status else
             "agreed"

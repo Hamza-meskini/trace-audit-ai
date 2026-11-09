@@ -38,6 +38,7 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
 RUNS_DIR = REPO / "evaluation" / "results" / "runs"
+EXPECTATIONS_PATH = REPO / "evaluation" / "replay_expectations.json"
 DEFAULT_RUNS = (
     "20260915T140120.543292Z",
     "20260915T222056.820191Z",
@@ -81,6 +82,12 @@ def _parse_args(argv=None):
                              "answers every call with the mechanical aggregate of the model's own condition "
                              "results as its requirement status (an upper bound for a derive-the-status prompt: "
                              "it assumes the condition results themselves do not change)")
+    parser.add_argument("--expectations", default=str(EXPECTATIONS_PATH),
+                        help="ledger of intended verdict changes against the saved runs "
+                             "(default: evaluation/replay_expectations.json)")
+    parser.add_argument("--write-expectations", action="store_true",
+                        help="add every unexplained change to the ledger with reason TODO and drop stale "
+                             "entries; a human must replace each TODO before the gate passes")
     return parser.parse_args(argv)
 
 
@@ -485,9 +492,92 @@ def paired_flips(current: list[dict], reference: dict[tuple[str, str], str]) -> 
             "wrong_to_wrong_items": changed}
 
 
+def load_ledger(path: Path) -> dict:
+    if not path.exists():
+        return {"changes": []}
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def check_expectations(instances: list[dict], ledger: dict) -> dict:
+    """Compare replayed rows with the saved runs plus the ledger of intended changes.
+
+    A row is explained when it matches the saved run and has no ledger entry, or
+    matches its ledger entry. Everything else fails the gate: an unexplained
+    change, a ledger entry the code no longer produces (stale, e.g. a reverted
+    fix), or an entry whose reason is still TODO.
+    """
+    entries = {(item["run_id"], item["requirement_id"]): item for item in ledger.get("changes", [])}
+    replayed = {(item["run_id"], item["requirement_id"]) for item in instances}
+    unexplained, stale, todo = [], [], []
+    matches = 0
+    for item in instances:
+        key = (item["run_id"], item["requirement_id"])
+        entry = entries.get(key)
+        label = (f"{item['requirement_id']} @{item['run_id'][:15]}: saved {item['saved_predicted']}/"
+                 f"{item['saved_review']} -> now {item['predicted']}/{item['review']}")
+        if entry is None:
+            if item["predicted"] == item["saved_predicted"] and item["review"] == item["saved_review"]:
+                matches += 1
+            else:
+                unexplained.append(label)
+            continue
+        if item["predicted"] == entry["expected_status"] and item["review"] == entry["expected_review"]:
+            matches += 1
+            if not str(entry.get("reason") or "").strip() or entry.get("reason") == "TODO":
+                todo.append(label)
+        else:
+            stale.append(f"{label} (ledger expects {entry['expected_status']}/{entry['expected_review']})")
+    stale.extend(
+        f"{code} @{run[:15]}: ledger entry for a row that was not replayed"
+        for (run, code) in entries if (run, code) not in replayed and run in {i["run_id"] for i in instances}
+    )
+    return {
+        "ledger_entries": len(entries),
+        "matches_expected": matches,
+        "unexplained": unexplained,
+        "stale": stale,
+        "todo_reasons": todo,
+        "ok": not unexplained and not stale and not todo,
+    }
+
+
+def write_ledger(instances: list[dict], ledger: dict, path: Path) -> int:
+    """Record every row that differs from its saved run; keep existing reasons."""
+    previous = {(item["run_id"], item["requirement_id"]): item for item in ledger.get("changes", [])}
+    changes = []
+    for item in instances:
+        if item["predicted"] == item["saved_predicted"] and item["review"] == item["saved_review"]:
+            continue
+        key = (item["run_id"], item["requirement_id"])
+        old = previous.get(key) or {}
+        keep = old.get("expected_status") == item["predicted"] and old.get("expected_review") == item["review"]
+        changes.append({
+            "run_id": item["run_id"],
+            "requirement_id": item["requirement_id"],
+            "gold": item["expected"],
+            "saved_status": item["saved_predicted"],
+            "saved_review": item["saved_review"],
+            "expected_status": item["predicted"],
+            "expected_review": item["review"],
+            "reason": old.get("reason", "TODO") if keep else "TODO",
+            "commit": old.get("commit", "") if keep else "",
+        })
+    changes.sort(key=lambda entry: (entry["requirement_id"], entry["run_id"]))
+    ledger = {**{k: v for k, v in ledger.items() if k != "changes"}, "changes": changes}
+    path.write_text(json.dumps(ledger, indent=1, ensure_ascii=False) + "\n", encoding="utf-8")
+    return sum(entry["reason"] == "TODO" for entry in changes)
+
+
 def main(args) -> int:
     results = [asyncio.run(replay_run(run_id)) for run_id in args.runs]
     instances = [item for result in results for item in result["instances"]]
+    ledger_path = Path(args.expectations)
+    ledger = load_ledger(ledger_path)
+    if args.write_expectations and not args.simulate:
+        todo = write_ledger(instances, ledger, ledger_path)
+        ledger = load_ledger(ledger_path)
+        print(f"  wrote {ledger_path} ({len(ledger['changes'])} entries, {todo} with reason TODO)")
+    expectations = check_expectations(instances, ledger)
     if args.compare:
         earlier = json.loads(Path(args.compare).read_text(encoding="utf-8"))
         reference = {(item["run_id"], item["requirement_id"]): item["predicted"] for item in earlier["instances"]}
@@ -517,6 +607,7 @@ def main(args) -> int:
         "flips": flips,
         "integrity": integrity,
         "integrity_ok": ok,
+        "expectations": expectations,
         "instances": instances,
     }
     print(f"[{args.label}] backend={BACKEND}")
@@ -532,7 +623,14 @@ def main(args) -> int:
     print(f"  integrity: {'OK' if ok else 'FAILED'} {integrity['calls']} network={integrity['network_attempts']} "
           f"unexpected={integrity['unexpected_calls']} approximate={integrity['approximate_calls']} "
           f"errors={len(integrity['swallowed_errors'])}")
+    print(f"  expectations: {'OK' if expectations['ok'] else 'FAILED'} matches {expectations['matches_expected']}/"
+          f"{summary['instances']} (ledger {expectations['ledger_entries']}), unexplained "
+          f"{len(expectations['unexplained'])}, stale {len(expectations['stale'])}, "
+          f"TODO reasons {len(expectations['todo_reasons'])}")
     if not args.quiet:
+        for kind in ("unexplained", "stale", "todo_reasons"):
+            for line in expectations[kind][:40]:
+                print(f"    {kind}: {line}")
         for kind in ("fixed_items", "broken_items", "wrong_to_wrong_items"):
             for line in flips[kind]:
                 print(f"    {kind.split('_')[0]:>6}: {line}")

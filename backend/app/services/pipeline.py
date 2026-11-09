@@ -72,6 +72,7 @@ def _verification_fingerprint(
 ) -> str:
     return stable_key({
         "version": settings.AUDIT_CACHE_VERSION,
+        "verdict_logic": settings.VERDICT_LOGIC_VERSION,
         "model": model,
         "thinking_level": thinking_level,
         "corpus": corpus_fingerprint,
@@ -241,6 +242,75 @@ async def _persist_cache_reuse(session, requirement_id: str, run_id: Optional[st
     req.extracted_parameters = data
 
 
+HUMAN_DECISION_STATES = ("Approved", "Rejected", "Reviewed", "Needs review")
+
+
+def _latest_human_decision(req: Requirement) -> dict | None:
+    """The reviewer event that set the current review state, if a human set it."""
+    for event in reversed((req.extracted_parameters or {}).get("review_history") or []):
+        if event.get("system"):
+            return None
+        if event.get("action") == "Comment":
+            continue
+        if event.get("action") == req.review_state and req.review_state in HUMAN_DECISION_STATES:
+            return event
+        return None
+    return None
+
+
+def _carry_human_review(
+    req: Requirement,
+    assessment: RequirementAssessment,
+    prior_chunk_ids: set[str],
+) -> tuple[str, dict | None]:
+    """Decide the review state a fresh assessment persists with.
+
+    A human sign-off survives a re-audit when the verdict and the linked evidence
+    chunks are unchanged. When either changed, the requirement returns to
+    "Needs review" and a system event records which decision was invalidated, so
+    the earlier sign-off stays visible in the review history.
+    """
+    decision = _latest_human_decision(req)
+    if decision is None:
+        return assessment.review_state, None
+    new_chunk_ids = {link.chunk_id for link in assessment.evidence_links}
+    diagnostics = dict(assessment.pipeline_diagnostics or {})
+    if assessment.coverage_status == req.coverage_status and new_chunk_ids == prior_chunk_ids:
+        diagnostics["human_review_preserved"] = {"state": req.review_state, "event_id": decision.get("id")}
+        assessment.pipeline_diagnostics = diagnostics
+        return req.review_state, None
+    if req.review_state == "Needs review":
+        # A reviewer kept it under review; a changed assessment must not auto-close it.
+        return "Needs review", None
+    changes = []
+    if assessment.coverage_status != req.coverage_status:
+        changes.append(f"verdict {req.coverage_status} -> {assessment.coverage_status}")
+    if new_chunk_ids != prior_chunk_ids:
+        changes.append(
+            f"evidence changed ({len(new_chunk_ids - prior_chunk_ids)} added, "
+            f"{len(prior_chunk_ids - new_chunk_ids)} removed)"
+        )
+    diagnostics["human_review_invalidated"] = {"state": req.review_state, "event_id": decision.get("id")}
+    assessment.pipeline_diagnostics = diagnostics
+    event = {
+        "id": str(uuid.uuid4()),
+        "action": "Needs review",
+        "reviewer": "TraceAudit re-audit",
+        "system": True,
+        "comment": (
+            f"Re-audit changed the basis of the '{req.review_state}' decision by "
+            f"{decision.get('reviewer') or 'a reviewer'}: {'; '.join(changes)}. Review again."
+        ),
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "ai_verdict": assessment.coverage_status,
+        "previous_review_state": req.review_state,
+        "invalidated_event_id": decision.get("id"),
+        "resolution_type": "Re-audit",
+        "human_verdict": None,
+    }
+    return "Needs review", event
+
+
 async def _persist_requirement_assessment(
     session,
     *,
@@ -256,6 +326,10 @@ async def _persist_requirement_assessment(
 ) -> None:
     result = await session.execute(select(Requirement).where(Requirement.id == requirement_id))
     req = result.scalar_one()
+    prior_chunk_ids = set((await session.execute(
+        select(RequirementEvidence.evidence_chunk_id).where(RequirementEvidence.requirement_id == req.id)
+    )).scalars().all())
+    review_state, review_event = _carry_human_review(req, assessment, prior_chunk_ids)
     await session.execute(
         delete(RequirementEvidence).where(RequirementEvidence.requirement_id == req.id)
     )
@@ -263,7 +337,7 @@ async def _persist_requirement_assessment(
 
     req.coverage_status = assessment.coverage_status
     req.confidence = assessment.confidence
-    req.review_state = assessment.review_state
+    req.review_state = review_state
     req.ai_analysis = assessment.ai_analysis
     req.ai_recommendation = assessment.ai_recommendation
     req.sources_count = len(assessment.evidence_links)
@@ -293,6 +367,8 @@ async def _persist_requirement_assessment(
         ],
         "result_cache": _assessment_cache_payload(assessment),
     }
+    if review_event is not None:
+        data["review_history"] = [*data.get("review_history", []), review_event]
     req.extracted_parameters = data
 
     for ev_link in assessment.evidence_links:
@@ -313,7 +389,7 @@ async def _persist_requirement_assessment(
             finding_code=f"F-{ordinal:03d}",
             finding_type=finding_type_for(assessment.coverage_status),
             severity=finding_severity_for(req.severity, assessment.coverage_status),
-            review_state=assessment.review_state,
+            review_state=review_state,
             category=req.category,
             sources_count=len(assessment.evidence_links),
             description=assessment.ai_analysis,

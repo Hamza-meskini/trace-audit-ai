@@ -22,6 +22,26 @@ def normalize_comparison(value: Any) -> str | None:
     }.get(raw, raw or None)
 
 
+# Defects in the literal operands of a supported comparison operator: a bound
+# or allowed-value list is missing, reversed or mis-shaped. The condition still
+# names what is compared and how. Every other predicate issue (a missing,
+# unsupported or mismatched operator) leaves the comparison itself unknown.
+BOUND_DEFECTS = frozenset({
+    "has an interval without both bounds",
+    "has reversed interval bounds",
+    "requires a nonempty allowed-value list",
+    "has a comparison without a right operand",
+    "uses a list with a scalar comparison",
+    "requires a numeric literal or an explicit relational operand",
+    "mixes a relational operand with literal bounds",
+})
+
+
+def is_bound_defect(message: str) -> bool:
+    """True when a ``predicate_issues`` message concerns operands, not the operator."""
+    return message in BOUND_DEFECTS
+
+
 def predicate_issues(condition: Any, *, require_operator: bool = False) -> list[str]:
     """Check supplied comparisons while allowing legacy prose-only predicates."""
     op = normalize_comparison(condition.operator)
