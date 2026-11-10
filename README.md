@@ -76,11 +76,13 @@ environment variables or `backend/.env`. Settings that affect security and custo
 allow-list, SSO identity, `SETTINGS_ADMINS`, call recording) are covered in
 [`DEPLOYMENT.md`](DEPLOYMENT.md), along with deployment to Databricks Apps.
 
-## Contributing
+## Development rules
 
-Issues and pull requests are welcome. Before opening a PR, make sure `pytest` and the replay pass
-and the frontend checks are clean. Never commit `.env` files, customer documents or recordings.
+Before merging, make sure `pytest` and the replay pass and the frontend checks are clean. Never
+commit `.env` files, customer documents or recordings.
 
 ## License
 
-[MIT](LICENSE). Third-party dependencies keep their own licences; note that PyMuPDF is AGPL-3.0.
+Proprietary. All rights reserved; see [LICENSE](LICENSE). Use requires a written license or pilot
+agreement. Third-party dependencies keep their own licences; PyMuPDF is AGPL-3.0 unless a
+commercial licence is obtained from Artifex.
