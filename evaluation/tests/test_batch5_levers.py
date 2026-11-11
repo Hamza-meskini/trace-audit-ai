@@ -86,6 +86,7 @@ def test_retry_after_pauses_every_caller_of_that_model_only():
 
 def test_optional_pacing_spaces_requests(monkeypatch):
     monkeypatch.setattr(settings, "LLM_REQUESTS_PER_MINUTE", 1200)  # one every 50 ms
+    monkeypatch.setattr(settings, "LLM_REQUEST_BURST", 1)
     key = request_limits.provider_key("databricks", "paced")
 
     async def go():
@@ -287,3 +288,43 @@ def test_requirement_list_summary_view_leaves_out_evidence_and_long_text(tmp_pat
     assert len(full[0]["evidence"]) == 1 and full[0]["ai_analysis"] == "narrative"
     assert summary[0]["evidence"] == [] and summary[0]["description"] is None and summary[0]["ai_analysis"] is None
     assert summary[0]["coverage_status"] == "Supported" and summary[0]["req_code"] == "REQ-1"
+
+
+# ── Maverick workspace quota (measured 2026-11-10) ──────────────────────────
+
+def test_burst_goes_through_then_pacing_starts(monkeypatch):
+    monkeypatch.setattr(settings, "LLM_REQUESTS_PER_MINUTE", 600)  # one every 100 ms
+    monkeypatch.setattr(settings, "LLM_REQUEST_BURST", 3)
+    key = request_limits.provider_key("databricks", "burst")
+
+    async def go():
+        return [await request_limits.wait_for_provider(key) for _ in range(4)]
+
+    waits = asyncio.run(go())
+    assert waits[:3] == [0.0, 0.0, 0.0] and waits[3] > 0.05
+
+
+def test_workspace_quota_429s_get_their_own_backoff_budget(monkeypatch):
+    quota = MagicMock(status_code=429)
+    quota.headers = {}
+    quota.text = "REQUEST_LIMIT_EXCEEDED"
+    _fake_databricks(monkeypatch, [quota, quota, quota, _ok('{"status":"PROVEN"}')])
+    sleep = AsyncMock()
+    monkeypatch.setattr(llm_client.asyncio, "sleep", sleep)
+    diagnostics = {}
+    result = asyncio.run(llm_client.call_databricks_chat_completions("p", json_mode=True, diagnostics=diagnostics))
+    assert result == '{"status":"PROVEN"}'  # three quota refusals no longer fail the call
+    assert diagnostics["rate_limit_retries"] == 3 and diagnostics["attempt_count"] == 4
+    delays = [call.args[0] for call in sleep.await_args_list]
+    assert delays == sorted(delays) and delays[0] >= 1.0  # backoff grows
+
+
+def test_persistent_quota_refusal_still_ends_the_call(monkeypatch):
+    quota = MagicMock(status_code=429)
+    quota.headers = {}
+    quota.text = "REQUEST_LIMIT_EXCEEDED"
+    client = _fake_databricks(monkeypatch, [quota] * 10)
+    monkeypatch.setattr(llm_client.asyncio, "sleep", AsyncMock())
+    # One call gives up (the circuit breaker decides when repeated quota failures stop the audit).
+    assert asyncio.run(llm_client.call_databricks_chat_completions("p", json_mode=True)) is None
+    assert client.post.await_count == llm_client.DATABRICKS_MAX_ATTEMPTS + llm_client.DATABRICKS_RATE_LIMIT_RETRIES

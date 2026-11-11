@@ -168,17 +168,25 @@ class Settings(BaseSettings):
     # audit from monopolising all model or reranker slots when several projects
     # run at the same time.
     LLM_GLOBAL_CONCURRENCY: int = 8
-    # REL-06: optional even pacing per provider/model; 0 = no pacing (Retry-After
-    # cooldowns are always shared across callers).
-    LLM_REQUESTS_PER_MINUTE: int = 0
+    # REL-06: shared request rate per provider/model. Measured 2026-11-10 on the
+    # pay-per-token Maverick endpoint: about 1 request/s sustained per workspace
+    # (REQUEST_LIMIT_EXCEEDED above that), bursts of ~8 accepted. 54/min keeps a
+    # margin; set 0 to disable pacing on provisioned-throughput endpoints.
+    LLM_REQUESTS_PER_MINUTE: int = 54
+    # Requests allowed back to back before pacing starts.
+    LLM_REQUEST_BURST: int = 6
     # EVA-03: opt-in raw request/answer recording. Empty = off. Must be outside
     # the git checkout (recordings hold customer text).
     LLM_RECORD_DIR: str = ""
     # ARC-02: SSO users (X-Forwarded-User or email) allowed to change the global
     # AI settings when the app runs behind Databricks Apps SSO. Empty = nobody.
     SETTINGS_ADMINS: list[str] = []
-    # End-to-end requirement workers. Each worker can hold a verdict slot and a
-    # citation slot, so four stays inside the global cap of eight.
+    # End-to-end requirement workers. Measured 2026-11-10 on a 10-requirement
+    # audit against pay-per-token Maverick: 4 workers 165 s with no errors,
+    # 6 workers 258 s (429/503 retries), 8 workers stopped by HTTP 503 capacity
+    # errors. Verification calls generate 1.5-2.5k tokens each, so the endpoint's
+    # shared capacity, not this number, is the limit. Raise it only on a
+    # provisioned-throughput endpoint.
     AUDIT_REQUIREMENT_CONCURRENCY: int = 4
     AUDIT_RETRIEVAL_CONCURRENCY: int = 4
     AUDIT_VISION_CONCURRENCY: int = 3

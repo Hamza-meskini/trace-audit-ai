@@ -69,12 +69,16 @@ async def wait_for_provider(key: str) -> float:
         waited += remaining
     per_minute = int(getattr(settings, "LLM_REQUESTS_PER_MINUTE", 0) or 0)
     if per_minute > 0:
+        # GCRA: up to LLM_REQUEST_BURST requests go at once, then one every interval.
+        interval = 60.0 / per_minute
+        tolerance = interval * max(0, int(getattr(settings, "LLM_REQUEST_BURST", 1) or 1) - 1)
         now = time.monotonic()
-        slot = max(now, _next_slot.get(key, 0.0))
-        _next_slot[key] = slot + 60.0 / per_minute
-        if slot > now:
-            await asyncio.sleep(slot - now)
-            waited += slot - now
+        arrival = max(_next_slot.get(key, now), now)
+        start = max(now, arrival - tolerance)
+        _next_slot[key] = arrival + interval
+        if start > now:
+            await asyncio.sleep(start - now)
+            waited += start - now
     return waited
 
 

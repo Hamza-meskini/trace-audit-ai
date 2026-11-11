@@ -44,6 +44,11 @@ MAX_ATTEMPTS = 3
 # is saved as an operational failure instead of holding a model slot through
 # two more 90-second attempts.
 DATABRICKS_MAX_ATTEMPTS = 2
+# A 429 on pay-per-token Foundation Model APIs is the workspace QPS quota
+# (REQUEST_LIMIT_EXCEEDED, no Retry-After), not an outage: it clears within
+# seconds. It gets its own short backoff budget instead of using up the single
+# retry meant for real errors.
+DATABRICKS_RATE_LIMIT_RETRIES = 4
 DEFAULT_DATABRICKS_TEMPERATURE = 0.0
 
 
@@ -827,10 +832,22 @@ async def _call_databricks_chat_completions_untraced(
             "rate_limit_retries": 0,
         })
 
-    for attempt in range(DATABRICKS_MAX_ATTEMPTS):
+    rate_limit_budget = [DATABRICKS_RATE_LIMIT_RETRIES]
+    repeat_attempt = [False]
+
+    def attempt_numbers():
+        attempt_number = 0
+        while attempt_number < DATABRICKS_MAX_ATTEMPTS:
+            yield attempt_number
+            if repeat_attempt[0]:  # a 429 backoff does not consume an attempt
+                repeat_attempt[0] = False
+                continue
+            attempt_number += 1
+
+    for attempt in attempt_numbers():
         try:
             if diagnostics is not None:
-                diagnostics["attempt_count"] = attempt + 1
+                diagnostics["attempt_count"] = int(diagnostics.get("attempt_count", 0)) + 1
             # The caller that was refused already slept the announced delay.
             limit_waited = 0.0 if backed_off else await request_limits.wait_for_provider(limit_key)
             backed_off = False
@@ -855,11 +872,20 @@ async def _call_databricks_chat_completions_untraced(
                         f"Databricks API rate/capacity [{resp.status_code}] for model {model}. "
                         f"Retrying (attempt {attempt+1}/{DATABRICKS_MAX_ATTEMPTS})..."
                     )
-                    retry_delay = _databricks_retry_delay(resp, attempt)
-                    if resp.status_code == 429:
+                    rate_limited = resp.status_code == 429
+                    retry_delay = _databricks_retry_delay(
+                        resp,
+                        DATABRICKS_RATE_LIMIT_RETRIES - rate_limit_budget[0] if rate_limited else attempt,
+                    )
+                    if rate_limited:
                         # Other callers of this model wait out the same delay.
                         request_limits.note_rate_limited(limit_key, retry_delay)
-                    if attempt < DATABRICKS_MAX_ATTEMPTS - 1:
+                    if rate_limited and rate_limit_budget[0] > 0:
+                        rate_limit_budget[0] -= 1
+                        repeat_attempt[0] = True
+                        await asyncio.sleep(retry_delay)
+                        backed_off = True
+                    elif attempt < DATABRICKS_MAX_ATTEMPTS - 1:
                         await asyncio.sleep(retry_delay)
                         backed_off = True
                     continue

@@ -44,6 +44,7 @@ def _isolated_provider_limits(monkeypatch):
     from app.services import request_limits
 
     monkeypatch.setattr(settings, "LLM_RECORD_DIR", "")
+    monkeypatch.setattr(settings, "LLM_REQUESTS_PER_MINUTE", 0)  # tests opt in to pacing
     request_limits.reset_provider_limits()
     yield
     request_limits.reset_provider_limits()
